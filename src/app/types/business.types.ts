@@ -49,4 +49,5 @@ export interface BusinessApplication {
   reviewed_at: string;
   reviewed_by: string;
   created_at: string;
+
 }
