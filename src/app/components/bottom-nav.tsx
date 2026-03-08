@@ -33,7 +33,7 @@ export function BottomNav({ userType = "creator", unreadNotifications = 0 }: Bot
     { icon: Briefcase, label: "Campaigns", path: "/business/campaigns" },
     {
       icon: Bell,
-      label: "Alerts",
+      label: "Notification",
       path: "/notifications?role=business",
       badge: unreadNotifications,
     },
