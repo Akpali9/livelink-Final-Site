@@ -15,7 +15,6 @@ import { CampaignSetupBannerPromo } from "./screens/campaign-setup-banner-promo"
 import { CampaignSetupPromoOnly } from "./screens/campaign-setup-promo-only";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { BecomeBusiness } from "./screens/become-business";
-import { Businesses } from "./screens/-businesses";
 import { GigAccepted } from "./screens/gig-accepted";
 import { BusinessSubmissionSuccess } from "./screens/business-submission-success";
 import { Campaigns } from "./screens/campaigns";
@@ -40,7 +39,6 @@ import { BecomeCreator, AdminApplicationQueue } from "./screens/become-creator";
 import { AdminDashboard } from "./screens/admin-dashboard";
 import { EditProfile } from "./screens/edit-profile";
 import { supabase } from "./lib/supabase";
-import { Suspense } from "react";
 
 async function requireAuth() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -96,19 +94,24 @@ async function loadUser() {
   return { user: session.user, profile: null, userType };
 }
 
-const LoadingScreen = () => (
-  <div className="flex items-center justify-center min-h-screen">
-    <div className="text-center">
-      <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-      <p className="text-gray-600">Loading application...</p>
+function NotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-white text-[#1D1D1D] px-8">
+      <div className="w-16 h-16 bg-[#1D1D1D] flex items-center justify-center mb-6">
+        <span className="text-white font-black text-2xl italic">?</span>
+      </div>
+      <h1 className="text-4xl font-black uppercase tracking-tighter italic mb-2">404</h1>
+      <p className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic mb-8">Page not found</p>
+      <a href="/" className="px-6 py-3 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest italic hover:bg-[#389C9A] transition-colors">
+        Go Home
+      </a>
     </div>
-  </div>
-);
+  );
+}
 
 const routes: RouteObject[] = [
   {
     path: "/",
-    // ✅ Use ONLY Component — never mix element + Component on the same route
     Component: RootLayout,
     loader: loadUser,
     children: [
@@ -117,12 +120,13 @@ const routes: RouteObject[] = [
       { path: "login/creator",   Component: CreatorLogin,  loader: redirectIfAuthenticated },
       { path: "login/business",  Component: BusinessLogin, loader: redirectIfAuthenticated },
       { path: "become-creator",  Component: BecomeCreator, loader: redirectIfAuthenticated },
-      { path: "become-business", Component: BecomeBusiness,loader: redirectIfAuthenticated },
+      { path: "become-business", Component: BecomeBusiness, loader: redirectIfAuthenticated },
 
       // Creator routes
       { path: "dashboard",                      Component: Dashboard,             loader: requireCreator },
+      // ✅ profile/edit MUST come before profile/:id to avoid conflict
+      { path: "profile/edit",                   Component: EditProfile,           loader: requireCreator },
       { path: "profile/:id",                    Component: Profile,               loader: requireCreator },
-      { path: "profile/edit",                   Component: EditProfile,           loader: requireCreator }, // ← new
       { path: "campaigns",                      Component: Campaigns,             loader: requireCreator },
       { path: "creator/campaign/:id",           Component: CreatorCampaignDetail, loader: requireCreator },
       { path: "creator/upcoming-gig/:id",       Component: UpcomingGigDetail,     loader: requireCreator },
@@ -159,24 +163,11 @@ const routes: RouteObject[] = [
       // Admin routes
       { path: "admin",               Component: AdminDashboard,        loader: requireAdmin },
       { path: "admin/applications",  Component: AdminApplicationQueue, loader: requireAdmin },
+
+      // 404
       { path: "*", Component: NotFound },
     ],
   },
 ];
 
 export const router = createBrowserRouter(routes);
-
-function NotFound() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-white text-[#1D1D1D] px-8">
-      <div className="w-16 h-16 bg-[#1D1D1D] flex items-center justify-center mb-6">
-        <span className="text-white font-black text-2xl italic">?</span>
-      </div>
-      <h1 className="text-4xl font-black uppercase tracking-tighter italic mb-2">404</h1>
-      <p className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic mb-8">Page not found</p>
-      <a href="/" className="px-6 py-3 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest italic hover:bg-[#389C9A] transition-colors">
-        Go Home
-      </a>
-    </div>
-  );
-}
