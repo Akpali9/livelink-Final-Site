@@ -15,7 +15,7 @@ import { CampaignSetupBannerPromo } from "./screens/campaign-setup-banner-promo"
 import { CampaignSetupPromoOnly } from "./screens/campaign-setup-promo-only";
 
 import { BecomeBusiness } from "./screens/become-business";
-import { BrowseBusinesses } from "./screens/browse-businesses";
+import { Businesses } from "./screens/-businesses";
 import { GigAccepted } from "./screens/gig-accepted";
 import { BusinessSubmissionSuccess } from "./screens/business-submission-success";
 import { Campaigns } from "./screens/campaigns";
@@ -148,7 +148,7 @@ const routes: RouteObject[] = [
       { path: "business/campaign/:id",          Component: BusinessCampaignCreators,  loader: requireBusiness },
       { path: "business/campaign/:campaignId/creator/:creatorId", Component: BusinessCampaignDetail, loader: requireBusiness },
       { path: "business/submission-success",    Component: BusinessSubmissionSuccess, loader: requireBusiness },
-      { path: "browse",                         Component: Browse,                    loader: requireBusiness },
+      { path: "browse",                         Component: Browse,                    loader: requireAuth },
       { path: "business/settings",              Component: BusinessSettings,          loader: requireBusiness },
 
       // Shared routes
