@@ -159,8 +159,24 @@ const routes: RouteObject[] = [
       // Admin routes
       { path: "admin",               Component: AdminDashboard,        loader: requireAdmin },
       { path: "admin/applications",  Component: AdminApplicationQueue, loader: requireAdmin },
+      { path: "*", Component: NotFound },
     ],
   },
 ];
 
 export const router = createBrowserRouter(routes);
+
+function NotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-white text-[#1D1D1D] px-8">
+      <div className="w-16 h-16 bg-[#1D1D1D] flex items-center justify-center mb-6">
+        <span className="text-white font-black text-2xl italic">?</span>
+      </div>
+      <h1 className="text-4xl font-black uppercase tracking-tighter italic mb-2">404</h1>
+      <p className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic mb-8">Page not found</p>
+      <a href="/" className="px-6 py-3 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest italic hover:bg-[#389C9A] transition-colors">
+        Go Home
+      </a>
+    </div>
+  );
+}
