@@ -13,7 +13,7 @@ import { CampaignTypeSelection } from "./screens/campaign-type-selection";
 import { CampaignSetupBanner } from "./screens/campaign-setup-banner";
 import { CampaignSetupBannerPromo } from "./screens/campaign-setup-banner-promo";
 import { CampaignSetupPromoOnly } from "./screens/campaign-setup-promo-only";
-import { BecomeCreator, AdminApplicationQueue, AdminDashboard } from "./screens/become-creator";
+
 import { BecomeBusiness } from "./screens/become-business";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { GigAccepted } from "./screens/gig-accepted";
@@ -36,6 +36,8 @@ import { RootLayout } from "./components/layout";
 import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
+import { BecomeCreator, AdminApplicationQueue } from "./screens/become-creator";
+import { AdminDashboard } from "./screens/admin-dashboard";
 import { supabase } from "./lib/supabase";
 import { Suspense } from "react";
 
@@ -119,7 +121,7 @@ const routes: RouteObject[] = [
       // Creator routes
       { path: "dashboard",                      Component: Dashboard,             loader: requireCreator },
       { path: "profile/:id",                    Component: Profile,               loader: requireCreator },
-      { path: "profile/edit",                   Component: Profile,           loader: requireCreator }, // ← new
+      { path: "profile/edit",                   Component: EditProfile,           loader: requireCreator }, // ← new
       { path: "campaigns",                      Component: Campaigns,             loader: requireCreator },
       { path: "creator/campaign/:id",           Component: CreatorCampaignDetail, loader: requireCreator },
       { path: "creator/upcoming-gig/:id",       Component: UpcomingGigDetail,     loader: requireCreator },
