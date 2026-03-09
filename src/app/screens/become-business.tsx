@@ -791,7 +791,7 @@ export function BecomeBusiness() {
                   </span>
                 </label>
               </div>
-              <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Review Registration</h2>
+              <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2 mt-12">Review Registration</h2>
               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please confirm your details are correct before submitting for review.</p>
               
               <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-8 rounded-none flex flex-col gap-6">
