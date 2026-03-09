@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { Toaster, toast } from "sonner";
 import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
+import { useAuth } from "../lib/contexts/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Megaphone,
@@ -20,6 +21,7 @@ import {
 
 export function BusinessDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("");
@@ -30,20 +32,24 @@ export function BusinessDashboard() {
 
   /* ── Fetch business ── */
   useEffect(() => {
+    if (!user) return;
     const fetchBusiness = async () => {
-      const { data: business, error } = await supabase
-  .from("businesses")
-  .select("id, name")
-  .eq("user_id", user.id)
-  .maybeSingle(); // ✅ returns null instead of 406 when no row found
+      const { data: business } = await supabase
+        .from("businesses")
+        .select("id, name")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-if (business) {
-  setBusinessId(business.id);
-  setBusinessName(business.name || "");
-} else {
-  // No business profile yet — redirect to registration
-  navigate("/become-business");
-}
+      if (business) {
+        setBusinessId(business.id);
+        setBusinessName(business.name || "");
+      } else {
+        navigate("/become-business");
+      }
+    };
+    fetchBusiness();
+  }, [user]);
+
   /* ── Fetch data ── */
   useEffect(() => {
     if (!businessId) return;
@@ -137,9 +143,9 @@ if (business) {
         {/* ── Stats Grid ── */}
         <div className="grid grid-cols-2 gap-3 px-6 mt-4">
           {[
-            { label: "Active",    val: active,           sub: "Live Now",   icon: Zap,         color: "text-[#389C9A]" },
-            { label: "Pending",   val: pending,          sub: "Reviewing",  icon: Clock,       color: "text-[#FEDB71]" },
-            { label: "Completed", val: completed,        sub: "Finished",   icon: CheckCircle2,color: "text-[#1D1D1D]/40" },
+            { label: "Active",    val: active,           sub: "Live Now",    icon: Zap,          color: "text-[#389C9A]" },
+            { label: "Pending",   val: pending,          sub: "Reviewing",   icon: Clock,        color: "text-[#FEDB71]" },
+            { label: "Completed", val: completed,        sub: "Finished",    icon: CheckCircle2, color: "text-[#1D1D1D]/40" },
             { label: "Spent",     val: `₦${totalSpent.toLocaleString()}`, sub: "Total Budget", icon: DollarSign, color: "text-[#389C9A]" },
           ].map((s, i) => (
             <motion.div
@@ -272,7 +278,7 @@ if (business) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`w-2 h-2 flex-shrink-0 ${
-                          c.status === "ACTIVE" ? "bg-[#389C9A]" :
+                          c.status === "ACTIVE"         ? "bg-[#389C9A]" :
                           c.status === "PENDING REVIEW" ? "bg-[#FEDB71]" :
                           "bg-[#1D1D1D]/20"
                         }`} />
@@ -317,9 +323,9 @@ if (business) {
           <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic mb-4">Quick Actions</h2>
           <div className="flex flex-col gap-2">
             {[
-              { label: "Browse Creators",    path: "/browse",         icon: Users },
-              { label: "Create Campaign",    path: "/campaign/type",  icon: Megaphone },
-              { label: "Business Settings",  path: "/business/settings", icon: ArrowRight },
+              { label: "Browse Creators",   path: "/browse",            icon: Users },
+              { label: "Create Campaign",   path: "/campaign/type",     icon: Megaphone },
+              { label: "Business Settings", path: "/business/settings", icon: ArrowRight },
             ].map((action) => (
               <button
                 key={action.path}
