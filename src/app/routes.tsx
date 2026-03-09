@@ -1,12 +1,12 @@
-import { createBrowserRouter, RouteObject } from "react-router";
+import { createBrowserRouter, RouteObject, redirect } from "react-router";
 import { Home } from "./screens/home";
 import { LoginPortal } from "./screens/login-portal";
 import { CreatorLogin } from "./screens/creator-login";
 import { BusinessLogin } from "./screens/business-login";
 import { Browse } from "./screens/browse";
 import { Profile } from "./screens/profile";
-import { Dashboard } from "./screens/dashboard"; // This should now work
-import { BusinessDashboard } from "./screens/business-dashboard"; // This should now work
+import { Dashboard } from "./screens/dashboard";
+import { BusinessDashboard } from "./screens/business-dashboard";
 import { BusinessProfile } from "./screens/business-profile";
 import { CampaignCreation } from "./screens/campaign-creation";
 import { CampaignTypeSelection } from "./screens/campaign-type-selection";
@@ -32,82 +32,132 @@ import { CampaignDeclined } from "./screens/campaign-declined";
 import { Notifications } from "./screens/notifications";
 import { UpcomingGigDetail } from "./screens/upcoming-gig-detail";
 import { BusinessCampaignOverview } from "./screens/business-campaign-overview";
-import { RootLayout } from "../app/components/layout";
+import { RootLayout } from "./components/layout";
 import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
-import { ProtectedRoute } from "../app/components/ProtectedRoute";
+import { AdminDashboard } from "./screens/admin-dashboard";
+import { EditProfile } from "./screens/edit-profile"; // ← new
+import { supabase } from "./lib/supabase";
+import { Suspense } from "react";
 
-// Helper functions for protected routes
-const protectCreator = (Component: React.ComponentType) => (
-  <ProtectedRoute userType="creator">
-    <Component />
-  </ProtectedRoute>
-);
+async function requireAuth() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return redirect("/login/portal");
+  return null;
+}
 
-const protectBusiness = (Component: React.ComponentType) => (
-  <ProtectedRoute userType="business">
-    <Component />
-  </ProtectedRoute>
-);
+async function requireCreator() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return redirect("/login/portal");
+  if (session.user.user_metadata?.user_type !== 'creator') return redirect("/business/dashboard");
+  return null;
+}
 
-const protectBoth = (Component: React.ComponentType) => (
-  <ProtectedRoute>
-    <Component />
-  </ProtectedRoute>
+async function requireBusiness() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return redirect("/login/portal");
+  if (session.user.user_metadata?.user_type !== 'business') return redirect("/dashboard");
+  return null;
+}
+
+async function requireAdmin() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return redirect("/login/portal");
+  const { data: adminProfile } = await supabase.from('admin_profiles').select('id').eq('id', session.user.id).single();
+  const isAdmin = !!adminProfile || session.user.app_metadata?.role === 'admin';
+  if (!isAdmin) return redirect("/");
+  return null;
+}
+
+async function redirectIfAuthenticated() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    const t = session.user.user_metadata?.user_type;
+    if (t === 'creator') return redirect("/dashboard");
+    if (t === 'business') return redirect("/business/dashboard");
+  }
+  return null;
+}
+
+async function loadUser() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { user: null, profile: null };
+  const userType = session.user.user_metadata?.user_type;
+  if (userType === 'creator') {
+    const { data: profile } = await supabase.from('creators').select('*').eq('user_id', session.user.id).single();
+    return { user: session.user, profile, userType };
+  }
+  if (userType === 'business') {
+    const { data: profile } = await supabase.from('businesses').select('*').eq('user_id', session.user.id).single();
+    return { user: session.user, profile, userType };
+  }
+  return { user: session.user, profile: null, userType };
+}
+
+const LoadingScreen = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="text-center">
+      <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+      <p className="text-gray-600">Loading application...</p>
+    </div>
+  </div>
 );
 
 const routes: RouteObject[] = [
   {
     path: "/",
+    // ✅ Use ONLY Component — never mix element + Component on the same route
     Component: RootLayout,
+    loader: loadUser,
     children: [
-      // Public routes
-      { index: true, Component: Home },
-      { path: "login/portal", Component: LoginPortal },
-      { path: "login/creator", Component: CreatorLogin },
-      { path: "login/business", Component: BusinessLogin },
-      { path: "browse", Component: Browse },
-      { path: "profile/:id", Component: Profile },
-      { path: "browse-businesses", Component: BrowseBusinesses },
-      { path: "become-creator", Component: BecomeCreator },
-      { path: "become-business", Component: BecomeBusiness },
-      
-      // Protected Creator Routes
-      { path: "dashboard", element: protectCreator(Dashboard) },
-      { path: "campaigns", element: protectCreator(Campaigns) },
-      { path: "campaign/type", element: protectCreator(CampaignTypeSelection) },
-      { path: "campaign/setup/banner", element: protectCreator(CampaignSetupBanner) },
-      { path: "campaign/setup/banner-promo", element: protectCreator(CampaignSetupBannerPromo) },
-      { path: "campaign/setup/promo-only", element: protectCreator(CampaignSetupPromoOnly) },
-      { path: "campaign/create", element: protectCreator(CampaignCreation) },
-      { path: "campaign/confirm", element: protectCreator(CampaignConfirm) },
-      { path: "campaign/:id", element: protectCreator(CampaignDetails) },
-      { path: "creator/campaign/:id", element: protectCreator(CreatorCampaignDetail) },
-      { path: "creator/upcoming-gig/:id", element: protectCreator(UpcomingGigDetail) },
-      { path: "settings", element: protectCreator(Settings) },
-      
-      // Protected Business Routes
-      { path: "business/dashboard", element: protectBusiness(BusinessDashboard) },
-      { path: "business/profile", element: protectBusiness(BusinessProfile) },
-      { path: "business/campaign/overview/:id", element: protectBusiness(BusinessCampaignOverview) },
-      { path: "business/campaign/:id", element: protectBusiness(BusinessCampaignCreators) },
-      { path: "business/campaign/:campaignId/creator/:creatorId", element: protectBusiness(BusinessCampaignDetail) },
-      { path: "business/settings", element: protectBusiness(BusinessSettings) },
-      { path: "business/submission-success", element: protectBusiness(BusinessSubmissionSuccess) },
-      
-      // Protected routes for both user types
-      { path: "messages", element: protectBoth(MessagesInbox) },
-      { path: "messages/:id", element: protectBoth(MessageThread) },
-      { path: "notifications", element: protectBoth(Notifications) },
-      { path: "campaign/live-update/:id", element: protectBoth(LiveCampaignUpdate) },
-      { path: "payment/held", element: protectBoth(PaymentHeld) },
-      { path: "campaign/confirmed", element: protectBoth(CampaignAcceptedBusiness) },
-      { path: "campaign/declined", element: protectBoth(CampaignDeclined) },
-      { path: "gig-accepted", element: protectBoth(GigAccepted) },
-      
+      { index: true,             Component: Home,          loader: redirectIfAuthenticated },
+      { path: "login/portal",    Component: LoginPortal,   loader: redirectIfAuthenticated },
+      { path: "login/creator",   Component: CreatorLogin,  loader: redirectIfAuthenticated },
+      { path: "login/business",  Component: BusinessLogin, loader: redirectIfAuthenticated },
+      { path: "become-creator",  Component: BecomeCreator, loader: redirectIfAuthenticated },
+      { path: "become-business", Component: BecomeBusiness,loader: redirectIfAuthenticated },
+
+      // Creator routes
+      { path: "dashboard",                      Component: Dashboard,             loader: requireCreator },
+      { path: "profile/:id",                    Component: Profile,               loader: requireCreator },
+      { path: "profile/edit",                   Component: Profile,           loader: requireCreator }, // ← new
+      { path: "campaigns",                      Component: Campaigns,             loader: requireCreator },
+      { path: "creator/campaign/:id",           Component: CreatorCampaignDetail, loader: requireCreator },
+      { path: "creator/upcoming-gig/:id",       Component: UpcomingGigDetail,     loader: requireCreator },
+      { path: "campaign/live-update/:id",       Component: LiveCampaignUpdate,    loader: requireCreator },
+      { path: "browse-businesses",              Component: BrowseBusinesses,      loader: requireCreator },
+      { path: "gig-accepted",                   Component: GigAccepted,           loader: requireCreator },
+      { path: "settings",                       Component: Settings,              loader: requireCreator },
+
+      // Business routes
+      { path: "business/dashboard",             Component: BusinessDashboard,         loader: requireBusiness },
+      { path: "business/profile",               Component: BusinessProfile,           loader: requireBusiness },
+      { path: "campaign/type",                  Component: CampaignTypeSelection,     loader: requireBusiness },
+      { path: "campaign/setup/banner",          Component: CampaignSetupBanner,       loader: requireBusiness },
+      { path: "campaign/setup/banner-promo",    Component: CampaignSetupBannerPromo,  loader: requireBusiness },
+      { path: "campaign/setup/promo-only",      Component: CampaignSetupPromoOnly,    loader: requireBusiness },
+      { path: "campaign/create",                Component: CampaignCreation,          loader: requireBusiness },
+      { path: "campaign/confirm",               Component: CampaignConfirm,           loader: requireBusiness },
+      { path: "payment/held",                   Component: PaymentHeld,               loader: requireBusiness },
+      { path: "campaign/confirmed",             Component: CampaignAcceptedBusiness,  loader: requireBusiness },
+      { path: "campaign/declined",              Component: CampaignDeclined,          loader: requireBusiness },
+      { path: "campaign/:id",                   Component: CampaignDetails,           loader: requireBusiness },
+      { path: "business/campaign/overview/:id", Component: BusinessCampaignOverview,  loader: requireBusiness },
+      { path: "business/campaign/:id",          Component: BusinessCampaignCreators,  loader: requireBusiness },
+      { path: "business/campaign/:campaignId/creator/:creatorId", Component: BusinessCampaignDetail, loader: requireBusiness },
+      { path: "business/submission-success",    Component: BusinessSubmissionSuccess, loader: requireBusiness },
+      { path: "browse",                         Component: Browse,                    loader: requireBusiness },
+      { path: "business/settings",              Component: BusinessSettings,          loader: requireBusiness },
+
+      // Shared routes
+      { path: "messages",      Component: MessagesInbox, loader: requireAuth },
+      { path: "messages/:id",  Component: MessageThread, loader: requireAuth },
+      { path: "notifications", Component: Notifications, loader: requireAuth },
+
       // Admin routes
-      { path: "admin/applications", element: protectBoth(AdminApplicationQueue) },
+      { path: "admin",               Component: AdminDashboard,        loader: requireAdmin },
+      { path: "admin/applications",  Component: AdminApplicationQueue, loader: requireAdmin },
     ],
   },
 ];
