@@ -137,7 +137,7 @@ const routes: RouteObject[] = [
 
       // Business routes
       { path: "business/dashboard",             Component: BusinessDashboard,         loader: requireBusiness },
-      { path: "business/profile",               Component: BusinessProfile,           loader: requireBusiness },
+      { path: "business/profile",               Component: BusinessProfile,           loader: requireAuth },
       { path: "campaign/type",                  Component: CampaignTypeSelection,     loader: requireBusiness },
       { path: "campaign/setup/banner",          Component: CampaignSetupBanner,       loader: requireBusiness },
       { path: "campaign/setup/banner-promo",    Component: CampaignSetupBannerPromo,  loader: requireBusiness },
