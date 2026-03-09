@@ -72,25 +72,7 @@ export function CreatorLogin() {
           Sign in to access your creator dashboard
         </p>
         
-        {/* Google Login Button */}
-        <button
-          onClick={handleGoogleLogin}
-          disabled={isLoading}
-          className="w-full bg-white border-2 border-black p-3 font-bold flex items-center justify-center gap-2 mb-4 hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
-          <Chrome className="w-5 h-5" />
-          Continue with Google
-        </button>
-
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-300"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white text-gray-500">or</span>
-          </div>
-        </div>
-
+        
         {/* Email Login Form */}
         <form onSubmit={handleEmailLogin} className="flex flex-col gap-4">
           <div className="relative">
