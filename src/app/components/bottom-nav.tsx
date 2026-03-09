@@ -25,7 +25,7 @@ return (
 <Link
 key={item.path}
 to={item.path}
-className={`flex flex-col items-center gap-1 p-2 transition-colors ${
+className={`flex flex-col items-center gap-1 p-1 transition-colors ${
                isActive ? "text-[#389C9A]" : "text-[#1D1D1D]/40 hover:text-[#1D1D1D]"
              }`}
 >
