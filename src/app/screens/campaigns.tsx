@@ -8,14 +8,11 @@ import {
   Clock, 
   CheckCircle2, 
   AlertCircle,
-  Users,
+  Video as VideoIcon,
   DollarSign,
   TrendingUp,
   Filter,
-  RefreshCw,
-  Video,
-  Calendar,
-  BarChart3
+  RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
@@ -25,42 +22,29 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
-interface CampaignCreator {
-  id: string;
-  creator_id: string;
-  streams_completed: number;
-  streams_target: number;
-  status: string;
-  creator?: {
-    id: string;
-    stage_name: string;
-    profile_image: string;
-  };
-}
-
 interface Campaign {
   id: string;
   business_id: string;
   name: string;
   type: string;
-  description?: string;
-  status: 'Active' | 'Upcoming' | 'Completed' | 'Draft' | 'Pending';
+  status: 'Active' | 'Upcoming' | 'Completed' | 'Pending';
   progress: number;
   streams_completed: number;
   streams_target: number;
-  budget: number;
-  spent: number;
-  creator_count: number;
-  creators_accepted: number;
+  earnings: string;
   logo: string;
   business_name: string;
   start_date?: string;
   end_date?: string;
-  campaign_creators?: CampaignCreator[];
-  created_at: string;
+  budget?: number;
+  campaign_creators?: {
+    streams_completed: number;
+    streams_target: number;
+    status: string;
+  }[];
 }
 
-export function BusinessCampaigns() {
+export function Campaigns() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -73,145 +57,96 @@ export function BusinessCampaigns() {
     active: 0,
     upcoming: 0,
     completed: 0,
-    totalSpent: 0,
-    totalCreators: 0,
-    totalStreams: 0
+    totalEarnings: 0
   });
 
   useEffect(() => {
     if (user) {
-      fetchBusinessCampaigns();
+      fetchCampaigns();
     }
   }, [user]);
 
-  const fetchBusinessCampaigns = async () => {
+  const fetchCampaigns = async () => {
     if (!user) return;
     
     try {
       setLoading(true);
 
-      // First get business profile
-      const { data: businessProfile, error: profileError } = await supabase
-        .from("businesses")
-        .select("id, business_name, logo_url")
+      // Get creator profile first to get creator_id if needed
+      const { data: creatorProfile } = await supabase
+        .from("creator_profiles")
+        .select("id")
         .eq("user_id", user.id)
-        .maybeSingle();
+        .single();
 
-      if (profileError) {
-        console.error('Error checking business profile:', profileError);
-        toast.error('Business profile system unavailable');
-        setCampaigns([]);
-        return;
-      }
-
-      if (!businessProfile) {
-        // User is not a business
-        setCampaigns([]);
-        setStats({
-          total: 0,
-          active: 0,
-          upcoming: 0,
-          completed: 0,
-          totalSpent: 0,
-          totalCreators: 0,
-          totalStreams: 0
-        });
-        return;
-      }
-
-      // Fetch campaigns created by this business
-      const { data: campaignsData, error: campaignsError } = await supabase
-        .from("campaigns")
+      // Fetch campaigns where creator is involved
+      const { data: campaignCreators, error: campaignError } = await supabase
+        .from("campaign_creators")
         .select(`
-          *,
-          campaign_creators (
+          id,
+          streams_completed,
+          streams_target,
+          status,
+          accepted_at,
+          completed_at,
+          campaign:campaigns (
             id,
-            creator_id,
-            streams_completed,
-            streams_target,
+            name,
+            type,
             status,
-            creator:creators (
+            budget,
+            start_date,
+            end_date,
+            business:businesses (
               id,
-              stage_name,
-              profile_image
+              business_name,
+              logo_url
             )
           )
         `)
-        .eq("business_id", businessProfile.id)
-        .order("created_at", { ascending: false });
+        .eq("creator_id", creatorProfile?.id || user.id)
+        .order("accepted_at", { ascending: false });
 
-      if (campaignsError) throw campaignsError;
+      if (campaignError) throw campaignError;
 
-      if (campaignsData) {
+      if (campaignCreators) {
         // Transform data to match our interface
-        const formattedCampaigns = campaignsData.map((campaign: any) => {
-          const creators = campaign.campaign_creators || [];
-          const acceptedCreators = creators.filter((c: any) => 
-            c.status === 'ACTIVE' || c.status === 'COMPLETED'
-          );
+        const formattedCampaigns = campaignCreators.map((item: any) => {
+          const campaign = item.campaign;
+          const streamsCompleted = item.streams_completed || 0;
+          const streamsTarget = item.streams_target || 4;
+          const progress = Math.min(100, Math.round((streamsCompleted / streamsTarget) * 100));
           
-          const streamsCompleted = acceptedCreators.reduce(
-            (sum: number, c: any) => sum + (c.streams_completed || 0), 
-            0
-          );
+          // Determine campaign status based on creator's status and dates
+          let status: 'Active' | 'Upcoming' | 'Completed' | 'Pending' = 'Pending';
           
-          const streamsTarget = acceptedCreators.reduce(
-            (sum: number, c: any) => sum + (c.streams_target || 4), 
-            0
-          );
-          
-          const progress = streamsTarget > 0 
-            ? Math.min(100, Math.round((streamsCompleted / streamsTarget) * 100))
-            : 0;
-
-          // Calculate spent amount based on completed streams
-          const spent = acceptedCreators.reduce((sum: number, c: any) => {
-            if (c.status === 'COMPLETED') {
-              // Assuming £50 per completed stream - adjust based on your payment model
-              return sum + (c.streams_completed * 50);
-            }
-            return sum;
-          }, 0);
-
-          // Determine campaign status
-          let status: 'Active' | 'Upcoming' | 'Completed' | 'Draft' | 'Pending' = 'Draft';
-          
-          const now = new Date();
-          const startDate = campaign.start_date ? new Date(campaign.start_date) : null;
-          const endDate = campaign.end_date ? new Date(campaign.end_date) : null;
-          
-          if (campaign.status === 'ACTIVE') {
-            status = 'Active';
-          } else if (campaign.status === 'COMPLETED' || (endDate && endDate < now)) {
+          if (item.status === 'COMPLETED' || progress === 100) {
             status = 'Completed';
-          } else if (campaign.status === 'DRAFT') {
-            status = 'Draft';
-          } else if (startDate && startDate > now) {
+          } else if (item.status === 'ACTIVE') {
+            status = 'Active';
+          } else if (item.status === 'PENDING') {
             status = 'Upcoming';
-          } else {
-            status = 'Pending';
           }
+
+          // Calculate earnings (placeholder - replace with actual earnings logic)
+          const earnings = campaign.budget ? `£${campaign.budget}` : '£0.00';
 
           return {
             id: campaign.id,
-            business_id: campaign.business_id,
+            business_id: campaign.business?.id,
             name: campaign.name,
-            type: campaign.type || 'Standard',
-            description: campaign.description,
+            type: campaign.type,
             status,
             progress,
             streams_completed: streamsCompleted,
             streams_target: streamsTarget,
-            budget: campaign.budget || 0,
-            spent,
-            creator_count: creators.length,
-            creators_accepted: acceptedCreators.length,
-            logo: businessProfile.logo_url || 'https://via.placeholder.com/100',
-            business_name: businessProfile.business_name,
+            earnings,
+            logo: campaign.business?.logo_url || 'https://via.placeholder.com/100',
+            business_name: campaign.business?.business_name || 'Unknown Brand',
             start_date: campaign.start_date,
             end_date: campaign.end_date,
-            campaign_creators: creators,
-            created_at: campaign.created_at
+            budget: campaign.budget,
+            campaign_creators: [item]
           };
         });
 
@@ -222,22 +157,14 @@ export function BusinessCampaigns() {
         const active = formattedCampaigns.filter(c => c.status === 'Active').length;
         const upcoming = formattedCampaigns.filter(c => c.status === 'Upcoming').length;
         const completed = formattedCampaigns.filter(c => c.status === 'Completed').length;
-        const totalSpent = formattedCampaigns.reduce((sum, c) => sum + c.spent, 0);
-        const totalCreators = formattedCampaigns.reduce((sum, c) => sum + c.creator_count, 0);
-        const totalStreams = formattedCampaigns.reduce((sum, c) => sum + c.streams_completed, 0);
+        const totalEarnings = formattedCampaigns
+          .filter(c => c.status === 'Completed')
+          .reduce((sum, c) => sum + (parseFloat(c.earnings.replace('£', '')) || 0), 0);
 
-        setStats({
-          total,
-          active,
-          upcoming,
-          completed,
-          totalSpent,
-          totalCreators,
-          totalStreams
-        });
+        setStats({ total, active, upcoming, completed, totalEarnings });
       }
     } catch (error) {
-      console.error('Error fetching business campaigns:', error);
+      console.error('Error fetching campaigns:', error);
       toast.error('Failed to load campaigns');
     } finally {
       setLoading(false);
@@ -246,7 +173,7 @@ export function BusinessCampaigns() {
 
   const refreshData = async () => {
     setRefreshing(true);
-    await fetchBusinessCampaigns();
+    await fetchCampaigns();
     setRefreshing(false);
     toast.success('Campaigns updated');
   };
@@ -254,24 +181,23 @@ export function BusinessCampaigns() {
   // Filter campaigns based on search and status filter
   const filteredCampaigns = campaigns.filter(camp => {
     const matchesSearch = 
+      camp.business_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       camp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      camp.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (camp.description?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+      camp.type.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesFilter = activeFilter === "All" || camp.status === activeFilter;
     
     return matchesSearch && matchesFilter;
   });
 
-  const filters = ["All", "Active", "Upcoming", "Completed", "Draft", "Pending"];
+  const filters = ["All", "Active", "Upcoming", "Completed", "Pending"];
 
   const getStatusColor = (status: string) => {
     switch(status) {
       case 'Active': return 'bg-[#389C9A] text-white border-[#389C9A]';
       case 'Upcoming': return 'bg-[#FEDB71] text-[#1D1D1D] border-[#1D1D1D]/10';
       case 'Completed': return 'bg-green-500 text-white border-green-500';
-      case 'Draft': return 'bg-gray-200 text-gray-600 border-gray-300';
-      case 'Pending': return 'bg-orange-100 text-orange-600 border-orange-200';
+      case 'Pending': return 'bg-gray-100 text-gray-500 border-gray-200';
       default: return 'bg-gray-100 text-gray-400 border-gray-200';
     }
   };
@@ -286,28 +212,13 @@ export function BusinessCampaigns() {
   };
 
   const getCampaignLink = (campaign: Campaign) => {
-    if (campaign.status === 'Draft') {
-      return `/campaign/setup/${campaign.id}`;
-    } else if (campaign.status === 'Active') {
-      return `/business/campaign/overview/${campaign.id}`;
+    if (campaign.status === 'Active') {
+      return `/campaign/live-update/${campaign.id}`;
     } else if (campaign.status === 'Upcoming') {
-      return `/business/campaign/${campaign.id}/preview`;
+      return `/creator/upcoming-gig/${campaign.id}`;
     } else {
-      return `/business/campaign/${campaign.id}/analytics`;
+      return `/campaign/${campaign.id}/summary`;
     }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch(status) {
-      case 'Active': return <Clock className="w-3 h-3" />;
-      case 'Completed': return <CheckCircle2 className="w-3 h-3" />;
-      case 'Draft': return <AlertCircle className="w-3 h-3" />;
-      default: return <Calendar className="w-3 h-3" />;
-    }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return `£${amount.toLocaleString()}`;
   };
 
   if (loading) {
@@ -319,29 +230,6 @@ export function BusinessCampaigns() {
             <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
             <p className="text-sm text-gray-500">Loading your campaigns...</p>
           </div>
-        </div>
-        <BottomNav />
-      </div>
-    );
-  }
-
-  // If user is not a business
-  if (!loading && campaigns.length === 0 && !stats.total) {
-    return (
-      <div className="min-h-screen bg-white">
-        <AppHeader showBack title="My Campaigns" />
-        <div className="flex flex-col items-center justify-center h-[70vh] px-8 text-center">
-          <Video className="w-16 h-16 text-[#389C9A] mb-4" />
-          <h3 className="text-lg font-black uppercase mb-2">Not a Business</h3>
-          <p className="text-sm text-gray-500 mb-6 max-w-[280px]">
-            You need to be a business to create and manage campaigns.
-          </p>
-          <Link 
-            to="/become-business" 
-            className="bg-[#1D1D1D] text-white px-8 py-4 text-xs font-black uppercase tracking-widest italic"
-          >
-            Become a Business
-          </Link>
         </div>
         <BottomNav />
       </div>
@@ -365,39 +253,21 @@ export function BusinessCampaigns() {
           </div>
           <div className="text-center">
             <p className="text-lg font-black text-green-500">{stats.completed}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Completed</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Done</p>
           </div>
           <div className="text-center">
-            <p className="text-lg font-black text-[#1D1D1D]">{formatCurrency(stats.totalSpent)}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Spent</p>
+            <p className="text-lg font-black text-[#1D1D1D]">₦{stats.totalEarnings}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Earned</p>
           </div>
         </div>
 
-        {/* Secondary Stats Row */}
-        <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-[#F8F8F8] border border-[#1D1D1D]/10">
-          <div className="flex items-center gap-3">
-            <Users className="w-5 h-5 text-[#389C9A]" />
-            <div>
-              <p className="text-sm font-black">{stats.totalCreators}</p>
-              <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Total Creators</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <BarChart3 className="w-5 h-5 text-[#FEDB71]" />
-            <div>
-              <p className="text-sm font-black">{stats.totalStreams}</p>
-              <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Streams Completed</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Create New Campaign Button */}
+        {/* Find Opportunities Button */}
         <div className="flex items-center justify-between mb-6">
           <Link 
-            to="/campaign/type" 
+            to="/browse-businesses" 
             className="w-full bg-[#1D1D1D] text-white py-4 px-6 text-[10px] font-black uppercase italic tracking-widest flex items-center justify-between active:scale-[0.98] transition-all hover:bg-[#389C9A]"
           >
-            Create New Campaign
+            Find New Opportunities
             <Plus className="w-5 h-5 text-[#FEDB71]" />
           </Link>
         </div>
@@ -443,15 +313,15 @@ export function BusinessCampaigns() {
       <main className="max-w-[480px] mx-auto w-full px-6 py-8">
         {filteredCampaigns.length === 0 ? (
           <div className="mt-12 p-8 border-2 border-dashed border-[#1D1D1D]/10 flex flex-col items-center text-center">
-            <Video className="w-12 h-12 opacity-20 mb-4 text-[#389C9A]" />
+            <VideoIcon className="w-12 h-12 opacity-20 mb-4 text-[#389C9A]" />
             <p className="text-sm font-medium text-[#1D1D1D]/40 leading-relaxed max-w-[220px] italic mb-4">
               {searchQuery 
                 ? "No campaigns match your search"
-                : "Create your first campaign to start working with creators."}
+                : "New campaigns appear here once you've been accepted by a brand."}
             </p>
             {!searchQuery && (
-              <Link to="/campaign/type" className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] underline italic">
-                Create Campaign →
+              <Link to="/browse-businesses" className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] underline italic">
+                Find Opportunities →
               </Link>
             )}
           </div>
@@ -476,10 +346,10 @@ export function BusinessCampaigns() {
                       </div>
                       <div>
                         <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-1 group-hover:italic transition-all">
-                          {camp.name}
+                          {camp.business_name}
                         </h3>
                         <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic">
-                          {camp.type} • {camp.creator_count} Creator{camp.creator_count !== 1 ? 's' : ''}
+                          {camp.name} • {camp.type}
                         </p>
                       </div>
                     </div>
@@ -491,7 +361,7 @@ export function BusinessCampaigns() {
                   {/* Progress Bar */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-end text-[9px] font-black uppercase tracking-widest italic">
-                      <span className="opacity-40">Overall Progress</span>
+                      <span className="opacity-40">Progress</span>
                       <span className="text-[#389C9A]">
                         {camp.streams_completed}/{camp.streams_target} Streams
                       </span>
@@ -504,70 +374,44 @@ export function BusinessCampaigns() {
                     </div>
                   </div>
 
-                  {/* Budget/Spend Row */}
-                  <div className="grid grid-cols-2 gap-4 py-2 border-y border-[#1D1D1D]/10">
+                  {/* Footer */}
+                  <div className="flex items-center justify-between pt-2">
                     <div>
-                      <p className="text-[7px] font-black uppercase tracking-widest opacity-30 mb-1 italic">Budget</p>
-                      <p className="text-sm font-black text-[#389C9A]">{formatCurrency(camp.budget)}</p>
+                      <p className="text-[7px] font-black uppercase tracking-widest opacity-30 mb-1 italic">
+                        {camp.status === 'Completed' ? 'Total Earned' : 'Potential Earnings'}
+                      </p>
+                      <p className="text-xl font-black italic leading-none text-[#389C9A]">
+                        {camp.earnings}
+                      </p>
                     </div>
-                    <div>
-                      <p className="text-[7px] font-black uppercase tracking-widest opacity-30 mb-1 italic">Spent</p>
-                      <p className="text-sm font-black">{formatCurrency(camp.spent)}</p>
+                    
+                    <div className="flex items-center gap-2">
+                      {/* Status-specific indicators */}
+                      {camp.status === 'Active' && (
+                        <div className="flex items-center gap-1 text-[8px] font-black text-[#389C9A]">
+                          <Clock className="w-3 h-3" /> Live
+                        </div>
+                      )}
+                      {camp.status === 'Upcoming' && (
+                        <div className="flex items-center gap-1 text-[8px] font-black text-[#FEDB71]">
+                          <Clock className="w-3 h-3" /> Starts Soon
+                        </div>
+                      )}
+                      {camp.status === 'Completed' && (
+                        <div className="flex items-center gap-1 text-[8px] font-black text-green-500">
+                          <CheckCircle2 className="w-3 h-3" /> Done
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest underline underline-offset-4 decoration-[#389C9A] text-[#1D1D1D]">
+                        Manage <ChevronRight className="w-3 h-3 text-[#FEDB71]" />
+                      </div>
                     </div>
                   </div>
 
-                  {/* Creators Preview */}
-                  {camp.campaign_creators && camp.campaign_creators.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <div className="flex -space-x-2">
-                        {camp.campaign_creators.slice(0, 3).map((creator, idx) => (
-                          <div 
-                            key={creator.id || idx}
-                            className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 overflow-hidden"
-                          >
-                            {creator.creator?.profile_image ? (
-                              <img 
-                                src={creator.creator.profile_image} 
-                                alt={creator.creator.stage_name}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full bg-[#389C9A] flex items-center justify-center text-white text-xs font-black">
-                                {(creator.creator?.stage_name?.[0] || 'C').toUpperCase()}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      {camp.creator_count > 3 && (
-                        <span className="text-[8px] font-black text-[#1D1D1D]/40">
-                          +{camp.creator_count - 3} more
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Footer */}
-                  <div className="flex items-center justify-between pt-2">
-                    <div className="flex items-center gap-3">
-                      {/* Status-specific indicators */}
-                      <div className={`flex items-center gap-1 text-[8px] font-black ${
-                        camp.status === 'Active' ? 'text-[#389C9A]' :
-                        camp.status === 'Completed' ? 'text-green-500' :
-                        camp.status === 'Draft' ? 'text-gray-400' :
-                        'text-[#FEDB71]'
-                      }`}>
-                        {getStatusIcon(camp.status)}
-                        {camp.status === 'Active' && 'Live Now'}
-                        {camp.status === 'Upcoming' && 'Starts ' + new Date(camp.start_date || '').toLocaleDateString()}
-                        {camp.status === 'Completed' && 'Completed'}
-                        {camp.status === 'Draft' && 'Draft'}
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest underline underline-offset-4 decoration-[#389C9A] text-[#1D1D1D]">
-                      Manage <ChevronRight className="w-3 h-3 text-[#FEDB71]" />
-                    </div>
+                  {/* Campaign Type Badge */}
+                  <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <VideoIcon className="w-12 h-12" />
                   </div>
                 </motion.div>
               ))}
@@ -576,22 +420,22 @@ export function BusinessCampaigns() {
             {/* Summary Stats */}
             <div className="mt-8 p-6 bg-[#F8F8F8] border-2 border-[#1D1D1D]">
               <h4 className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-4">Campaign Summary</h4>
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-2xl font-black">{stats.active}</p>
                   <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Active Now</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-black">{formatCurrency(stats.totalSpent)}</p>
-                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Total Spent</p>
+                  <p className="text-2xl font-black">₦{stats.totalEarnings}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Total Earned</p>
                 </div>
                 <div>
                   <p className="text-2xl font-black">{stats.completed}</p>
                   <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Completed</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-black">{stats.totalCreators}</p>
-                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Total Creators</p>
+                  <p className="text-2xl font-black">{stats.upcoming}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Upcoming</p>
                 </div>
               </div>
             </div>
