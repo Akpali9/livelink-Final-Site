@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouteObject, redirect } from "react-router";
+import { createBrowserRouter, RouteObject, redirect } from "react-router-dom";
 import { Home } from "./screens/home";
 import { LoginPortal } from "./screens/login-portal";
 import { CreatorLogin } from "./screens/creator-login";
@@ -154,7 +154,7 @@ const routes: RouteObject[] = [
       { path: "business/submission-success",    Component: BusinessSubmissionSuccess, loader: requireBusiness },
       { path: "business/campaign/overview/:id", Component: BusinessCampaignOverview,  loader: requireAuth },
       { path: "business/campaign/:id",          Component: BusinessCampaignCreators,  loader: requireAuth },
-      { path: "offers",                         Component: Offers,                    loader: requireCreator },
+      { path: "offers",                         Component: Offers,                    loader: requireCreatorOrBusiness  },
       { path: "business/campaign/:campaignId/creator/:creatorId", Component: BusinessCampaignDetail, loader: requireBusiness },
       { path: "business/settings",              Component: BusinessSettings,          loader: requireBusiness },
 
