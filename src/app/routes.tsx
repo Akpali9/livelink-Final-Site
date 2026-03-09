@@ -38,6 +38,7 @@ import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { BecomeCreator, AdminApplicationQueue } from "./screens/become-creator";
 import { AdminDashboard } from "./screens/admin-dashboard";
+import { EditProfile } from "./screens/edit-profile";
 import { supabase } from "./lib/supabase";
 import { Suspense } from "react";
 
