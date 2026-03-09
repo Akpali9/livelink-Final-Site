@@ -13,7 +13,7 @@ import { CampaignTypeSelection } from "./screens/campaign-type-selection";
 import { CampaignSetupBanner } from "./screens/campaign-setup-banner";
 import { CampaignSetupBannerPromo } from "./screens/campaign-setup-banner-promo";
 import { CampaignSetupPromoOnly } from "./screens/campaign-setup-promo-only";
-import { BecomeCreator, AdminApplicationQueue } from "./screens/become-creator";
+import { BecomeCreator, AdminApplicationQueue, AdminDashboard } from "./screens/become-creator";
 import { BecomeBusiness } from "./screens/become-business";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { GigAccepted } from "./screens/gig-accepted";
@@ -36,8 +36,6 @@ import { RootLayout } from "./components/layout";
 import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
-import { AdminDashboard } from "./screens/admin-dashboard";
-import { EditProfile } from "./screens/edit-profile"; // ← new
 import { supabase } from "./lib/supabase";
 import { Suspense } from "react";
 
