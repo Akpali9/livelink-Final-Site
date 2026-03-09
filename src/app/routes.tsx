@@ -125,8 +125,8 @@ const routes: RouteObject[] = [
       // Creator routes
       { path: "dashboard",                      Component: Dashboard,             loader: requireCreator },
       // ✅ profile/edit MUST come before profile/:id to avoid conflict
-      { path: "profile/edit",                   Component: EditProfile,           loader: requireCreator },
-      { path: "profile/:id",                    Component: Profile,               loader: requireCreator },
+      { path: "profile/edit",                   Component: EditProfile,           loader: requireAuth },
+      { path: "profile/:id",                    Component: Profile,               loader: requireAuth},
       { path: "campaigns",                      Component: Campaigns,             loader: requireAuth },
       { path: "creator/campaign/:id",           Component: CreatorCampaignDetail, loader: requireCreator },
       { path: "creator/upcoming-gig/:id",       Component: UpcomingGigDetail,     loader: requireCreator },
