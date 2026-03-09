@@ -34,11 +34,13 @@ export function BusinessDashboard() {
   useEffect(() => {
     if (!user) return;
     const fetchBusiness = async () => {
-      const { data: business } = await supabase
+      const { data: business, error: bizError } = await supabase
         .from("businesses")
         .select("id, name")
         .eq("user_id", user.id)
         .maybeSingle();
+
+      if (bizError) console.error("Business fetch error:", bizError);
 
       if (business) {
         setBusinessId(business.id);
