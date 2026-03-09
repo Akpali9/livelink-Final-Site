@@ -34,13 +34,23 @@ export function BusinessDashboard() {
   useEffect(() => {
     if (!user) return;
     const fetchBusiness = async () => {
+      // Email not confirmed — RLS blocks all queries, redirect to confirm screen
+      if (!user.email_confirmed_at) {
+        navigate("/confirm-email", { state: { email: user.email } });
+        return;
+      }
+
       const { data: business, error: bizError } = await supabase
         .from("businesses")
         .select("id, name")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (bizError) console.error("Business fetch error:", bizError);
+      if (bizError) {
+        console.error("Business fetch error:", bizError);
+        setLoading(false);
+        return;
+      }
 
       if (business) {
         setBusinessId(business.id);
