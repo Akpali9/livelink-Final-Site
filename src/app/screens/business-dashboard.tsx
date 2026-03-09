@@ -31,21 +31,19 @@ export function BusinessDashboard() {
   /* ── Fetch business ── */
   useEffect(() => {
     const fetchBusiness = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: business } = await supabase
-        .from("businesses")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .single();
-      if (business) {
-        setBusinessId(business.id);
-        setBusinessName(business.name || "");
-      }
-    };
-    fetchBusiness();
-  }, []);
+      const { data: business, error } = await supabase
+  .from("businesses")
+  .select("id, name")
+  .eq("user_id", user.id)
+  .maybeSingle(); // ✅ returns null instead of 406 when no row found
 
+if (business) {
+  setBusinessId(business.id);
+  setBusinessName(business.name || "");
+} else {
+  // No business profile yet — redirect to registration
+  navigate("/become-business");
+}
   /* ── Fetch data ── */
   useEffect(() => {
     if (!businessId) return;
