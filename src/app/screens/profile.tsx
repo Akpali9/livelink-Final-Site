@@ -1,736 +1,496 @@
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router";
-import { 
-  MapPin,
-  CheckCircle2,
-  Instagram,
-  Youtube,
-  Facebook,
-  Twitch,
-  Video as VideoIcon,
-  ArrowRight,
-  Users,
-  BarChart,
-  Star,
-  Calendar,
-  DollarSign,
-  TrendingUp,
-  MessageSquare,
-  Target,
-  Zap,
-  Eye,
-  AlertCircle,
-  X
-} from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { CheckCircle2, MapPin, Plus, X, Save, Upload, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { BottomNav } from "../components/bottom-nav";
 import { AppHeader } from "../components/app-header";
+import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
-import { useAuth } from "../lib/contexts/AuthContext";
-import { toast } from "sonner";
 
-interface Creator {
-  id: string;
-  user_id: string;
-  name: string;
-  username: string;
-  avatar: string;
-  bio: string;
-  location: string;
-  verified: boolean;
-  availability: string;
-  niches: string[];
-  stats: {
-    avgViewers: number;
-    peakViewers: number;
-    followers: number;
-    totalStreams: number;
-    engagement: number;
-    rating: number;
-    reviews: number;
-  };
-  platforms: {
-    name: string;
-    icon: any;
-    followers: number;
-    url: string;
-  }[];
-  packages: {
-    id: string;
-    name: string;
-    streams: number;
-    price: number;
-    description: string;
-    popular?: boolean;
-  }[];
-  recentStreams: {
-    id: string;
-    title: string;
-    date: string;
-    viewers: number;
-    duration: string;
-  }[];
-  reviews: {
-    id: string;
-    business: string;
-    rating: number;
-    comment: string;
-    date: string;
-  }[];
-}
-
-interface Package {
-  id: string;
-  name: string;
-  streams: number;
-  price: number;
-  description: string;
-  popular?: boolean;
-}
+const PLATFORM_OPTIONS = ["Twitch", "YouTube", "Instagram", "TikTok", "Facebook", "Kick"];
+const NICHE_OPTIONS = ["Gaming", "IRL", "Music", "Art", "Tech", "Sports", "Food", "Travel", "Fitness", "Comedy", "Education", "Beauty"];
+const AVAILABILITY_OPTIONS = ["Available for campaigns", "Limited availability", "Not available"];
 
 export function Profile() {
-  const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [creator, setCreator] = useState<Creator | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isBioExpanded, setIsBioExpanded] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
-  const [offerSent, setOfferSent] = useState(false);
-  const [showOfferModal, setShowOfferModal] = useState(false);
-  const [customOffer, setCustomOffer] = useState({
-    streams: "4",
-    rate: "",
-    type: "Banner Only",
-    message: ""
+  const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
+
+  const [form, setForm] = useState({
+    name: "",
+    username: "",
+    bio: "",
+    location: "",
+    availability: "Available for campaigns",
+    avatar: "",
+    platforms: [] as string[],
+    niches: [] as string[],
+    verified: false,
+    stats: {
+      avgViewers: "",
+      followers: "",
+      totalStreams: "",
+    },
   });
-  const [isBusiness, setIsBusiness] = useState(false);
-  const [businessProfile, setBusinessProfile] = useState<any>(null);
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [nicheInput, setNicheInput] = useState("");
+
+  // Load current user's creator profile
   useEffect(() => {
-    const fetchCreator = async () => {
+    const load = async () => {
       setLoading(true);
-      try {
-        const { data: creatorData, error: creatorError } = await supabase
-          .from("creator_profiles")
-          .select(`
-            *,
-            platforms:creator_platforms(*),
-            stats:creator_stats(*),
-            recent_streams:stream_updates(
-              id,
-              stream_number,
-              stream_date,
-              duration,
-              viewer_count
-            )
-          `)
-          .eq("id", id)
-          .single();
-
-        if (creatorError) throw creatorError;
-
-        const { data: packagesData } = await supabase
-          .from("creator_packages")
-          .select("*")
-          .eq("creator_id", id)
-          .order("price", { ascending: true });
-
-        const formattedCreator: Creator = {
-          id: creatorData.id,
-          user_id: creatorData.user_id,
-          name: creatorData.full_name,
-          username: creatorData.username || `@${creatorData.full_name.toLowerCase().replace(/\s/g, '')}`,
-          avatar: creatorData.avatar_url || 'https://via.placeholder.com/200',
-          bio: creatorData.bio || 'Live streamer and content creator passionate about engaging with audiences.',
-          location: creatorData.location || 'Remote',
-          verified: creatorData.verified || false,
-          availability: creatorData.availability || 'Available for campaigns',
-          niches: creatorData.niches || ['Gaming', 'Entertainment'],
-          stats: {
-            avgViewers: creatorData.avg_concurrent || 250,
-            peakViewers: creatorData.peak_viewers || 500,
-            followers: creatorData.followers || 15000,
-            totalStreams: creatorData.total_streams || 120,
-            engagement: creatorData.engagement_rate || 8.5,
-            rating: creatorData.rating || 4.8,
-            reviews: creatorData.review_count || 24
-          },
-          platforms: creatorData.platforms?.map((p: any) => ({
-            name: p.platform_type,
-            icon: getPlatformIcon(p.platform_type),
-            followers: p.followers_count || 0,
-            url: p.profile_url || '#'
-          })) || [],
-          packages: packagesData || [],
-          recentStreams: creatorData.recent_streams?.slice(0, 5).map((s: any) => ({
-            id: s.id,
-            title: `Stream #${s.stream_number}`,
-            date: new Date(s.stream_date).toLocaleDateString(),
-            viewers: s.viewer_count || 0,
-            duration: s.duration || '45 min'
-          })) || [],
-          reviews: []
-        };
-
-        setCreator(formattedCreator);
-
-        if (user) {
-          const { data: business } = await supabase
-            .from("businesses")
-            .select("*")
-            .eq("user_id", user.id)
-            .single();
-
-          if (business) {
-            setIsBusiness(true);
-            setBusinessProfile(business);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching creator:", error);
-        toast.error("Failed to load creator profile");
-      } finally {
-        setLoading(false);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        navigate("/");
+        return;
       }
-    };
 
-    if (id) fetchCreator();
-  }, [id, user]);
+      const { data, error } = await supabase
+        .from("creators")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .single();
 
-  const getPlatformIcon = (platform: string) => {
-    switch(platform.toLowerCase()) {
-      case 'twitch': return Twitch;
-      case 'youtube': return Youtube;
-      case 'instagram': return Instagram;
-      case 'facebook': return Facebook;
-      default: return VideoIcon;
-    }
-  };
+      if (error && error.code !== "PGRST116") {
+        console.error("Error loading profile:", error.message);
+      }
 
-  const getPlatformIconComponent = (platformName: string) => {
-    switch(platformName.toLowerCase()) {
-      case 'twitch': return <Twitch className="w-3.5 h-3.5" />;
-      case 'youtube': return <Youtube className="w-3.5 h-3.5" />;
-      case 'instagram': return <Instagram className="w-3.5 h-3.5" />;
-      case 'facebook': return <Facebook className="w-3.5 h-3.5" />;
-      default: return <VideoIcon className="w-3.5 h-3.5" />;
-    }
-  };
-
-  const formatNumber = (num: number): string => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toString();
-  };
-
-  const handleSelectPackage = (pkg: Package) => {
-    setSelectedPackage(pkg);
-    setCustomOffer({
-      streams: pkg.streams.toString(),
-      rate: pkg.price.toString(),
-      type: "Banner Only",
-      message: ""
-    });
-    setShowOfferModal(true);
-  };
-
-  const handleCustomOffer = () => {
-    setSelectedPackage(null);
-    setShowOfferModal(true);
-  };
-
-  const handleContact = async () => {
-    if (!user) {
-      toast.error("Please login to contact creator");
-      navigate("/login/business");
-      return;
-    }
-    navigate(`/messages/${creator?.user_id}`);
-  };
-
-  const getEstimates = (streams: number, rate: number) => {
-    if (!creator) return null;
-    const avgViewers = creator.stats.avgViewers;
-    return {
-      uniqueViewers: Math.round(avgViewers * 0.4 * streams + 500),
-      hours: streams * 1.5,
-      impressions: Math.round(avgViewers * 1.4 * streams),
-      totalCost: streams * rate
-    };
-  };
-
-  const estimates = selectedPackage
-    ? getEstimates(selectedPackage.streams, selectedPackage.price)
-    : customOffer.streams && customOffer.rate
-    ? getEstimates(parseInt(customOffer.streams), parseFloat(customOffer.rate))
-    : null;
-
-  const handleSendOffer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) {
-      toast.error("Please login to send an offer");
-      navigate("/login/business");
-      return;
-    }
-    if (!isBusiness) {
-      toast.error("Only businesses can send offers");
-      return;
-    }
-    try {
-      const { error } = await supabase
-        .from("offers")
-        .insert({
-          business_id: businessProfile.id,
-          creator_id: id,
-          streams: parseInt(customOffer.streams),
-          amount: parseFloat(customOffer.rate) * parseInt(customOffer.streams),
-          rate: parseFloat(customOffer.rate),
-          campaign_type: customOffer.type,
-          message: customOffer.message,
-          status: "pending",
-          created_at: new Date().toISOString()
+      if (data) {
+        setCreatorId(data.id);
+        setForm({
+          name: data.name || "",
+          username: data.username || "",
+          bio: data.bio || "",
+          location: data.location || "",
+          availability: data.availability || "Available for campaigns",
+          avatar: data.avatar || "",
+          platforms: data.platforms?.map((p: any) => (typeof p === "string" ? p : p.name)) || [],
+          niches: data.niches || [],
+          verified: data.verified || false,
+          stats: {
+            avgViewers: data.stats?.avgViewers || "",
+            followers: data.stats?.followers || "",
+            totalStreams: data.stats?.totalStreams || "",
+          },
         });
-      if (error) throw error;
-      setOfferSent(true);
-      setShowOfferModal(false);
-      toast.success("Offer sent successfully!");
-      setCustomOffer({ streams: "4", rate: "", type: "Banner Only", message: "" });
-      setSelectedPackage(null);
-    } catch (error) {
-      console.error("Error sending offer:", error);
-      toast.error("Failed to send offer");
-    }
+      }
+      setLoading(false);
+    };
+    load();
+  }, [navigate]);
+
+  const validate = () => {
+    const e: Record<string, string> = {};
+    if (!form.name.trim()) e.name = "Name is required";
+    if (!form.username.trim()) e.username = "Username is required";
+    if (form.username.includes(" ")) e.username = "No spaces in username";
+    if (form.platforms.length === 0) e.platforms = "Select at least one platform";
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  // ── Loading ──────────────────────────────────────────────────────────────
-  if (loading) {
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) return;
+
+    setSaving(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+
+    const payload = {
+      user_id: session.user.id,
+      name: form.name,
+      username: form.username.toLowerCase(),
+      bio: form.bio,
+      location: form.location,
+      availability: form.availability,
+      avatar: form.avatar,
+      platforms: form.platforms.map((p) => ({ name: p })),
+      niches: form.niches,
+      verified: form.verified,
+      stats: form.stats,
+      updated_at: new Date().toISOString(),
+    };
+
+    let error;
+    if (creatorId) {
+      ({ error } = await supabase.from("creators").update(payload).eq("id", creatorId));
+    } else {
+      ({ error } = await supabase.from("creators").insert(payload));
+    }
+
+    if (error) {
+      console.error("Save error:", error.message);
+      setErrors({ submit: error.message });
+    } else {
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        navigate("/profile/me");
+      }, 1200);
+    }
+    setSaving(false);
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+
+    const ext = file.name.split(".").pop();
+    const fileName = `avatar-${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(fileName, file, { upsert: true });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError.message);
+    } else {
+      const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+      setForm((f) => ({ ...f, avatar: data.publicUrl }));
+    }
+    setUploadingAvatar(false);
+  };
+
+  const togglePlatform = (p: string) => {
+    setForm((f) => ({
+      ...f,
+      platforms: f.platforms.includes(p)
+        ? f.platforms.filter((x) => x !== p)
+        : [...f.platforms, p],
+    }));
+  };
+
+  const toggleNiche = (n: string) => {
+    setForm((f) => ({
+      ...f,
+      niches: f.niches.includes(n) ? f.niches.filter((x) => x !== n) : [...f.niches, n],
+    }));
+  };
+
+  const addCustomNiche = () => {
+    const trimmed = nicheInput.trim();
+    if (trimmed && !form.niches.includes(trimmed)) {
+      setForm((f) => ({ ...f, niches: [...f.niches, trimmed] }));
+    }
+    setNicheInput("");
+  };
+
+  if (loading)
     return (
-      <div className="min-h-screen bg-white">
-        <AppHeader showBack title="Creator Profile" />
-        <div className="flex items-center justify-center h-[80vh]">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
-            <p className="text-[9px] font-black uppercase tracking-widest opacity-40">Loading profile...</p>
-          </div>
-        </div>
-        <BottomNav />
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <Loader2 className="w-6 h-6 animate-spin text-[#389C9A]" />
       </div>
     );
-  }
 
-  // ── Not found ────────────────────────────────────────────────────────────
-  if (!creator) {
-    return (
-      <div className="min-h-screen bg-white">
-        <AppHeader showBack title="Creator Profile" />
-        <div className="flex flex-col items-center justify-center h-[80vh] px-8">
-          <AlertCircle className="w-12 h-12 text-[#1D1D1D]/20 mb-4" />
-          <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Not Found</h2>
-          <p className="text-[9px] font-medium opacity-40 uppercase tracking-widest text-center mb-8">
-            This creator doesn't exist
-          </p>
-          <button
-            onClick={() => navigate("/browse")}
-            className="bg-[#1D1D1D] text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest"
-          >
-            Browse Creators
-          </button>
-        </div>
-        <BottomNav />
-      </div>
-    );
-  }
-
-  // ── Main ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
-      <AppHeader showBack title="Creator Profile" />
+      <AppHeader showBack title="Edit Profile" backPath="/profile/me" />
 
       <main className="max-w-[480px] mx-auto w-full">
+        <form onSubmit={handleSave} noValidate>
 
-        {/* ── Profile Header ─────────────────────────────────────────────── */}
-        <div className="border-b-2 border-[#1D1D1D]">
-          <div className="px-5 pt-8 pb-6 flex flex-col items-center text-center">
+          {/* ── Avatar ─────────────────────────────────────── */}
+          <section className="px-6 pt-8 pb-6 border-b border-[#1D1D1D]/10 flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="w-28 h-28 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center">
+                {form.avatar ? (
+                  <img src={form.avatar} alt="avatar" className="w-full h-full object-cover grayscale" />
+                ) : (
+                  <div className="opacity-20 p-6">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-2 -right-2 w-8 h-8 bg-[#389C9A] border-2 border-white flex items-center justify-center"
+              >
+                {uploadingAvatar ? (
+                  <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5 text-white" />
+                )}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarUpload}
+              />
+            </div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 italic">
+              Tap icon to change avatar
+            </p>
+          </section>
 
-            {/* Avatar */}
-            <div className="relative mb-5">
-              <div className="w-28 h-28 border-2 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8]">
-                <ImageWithFallback
-                  src={creator.avatar}
-                  alt={creator.name}
-                  className="w-full h-full object-cover"
+          {/* ── Basic Info ─────────────────────────────────── */}
+          <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-4">
+            <SectionLabel>Basic Info</SectionLabel>
+
+            <Field label="Display Name" error={errors.name}>
+              <input
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Your Name"
+                className={inputCls(!!errors.name)}
+              />
+            </Field>
+
+            <Field label="Username" error={errors.username}>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-[#1D1D1D]/30 italic">@</span>
+                <input
+                  value={form.username}
+                  onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                  placeholder="yourhandle"
+                  className={`${inputCls(!!errors.username)} pl-7`}
                 />
               </div>
-              {creator.verified && (
-                <div className="absolute -bottom-1 -right-1 bg-[#389C9A] p-1 border-2 border-white">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                </div>
-              )}
-            </div>
+            </Field>
 
-            {/* Name */}
-            <h1 className="text-3xl font-black uppercase italic tracking-tighter leading-none mb-1">
-              {creator.name}
-            </h1>
-            <span className="text-[9px] font-black uppercase tracking-[0.25em] opacity-40 mb-4">
-              {creator.username}
-            </span>
+            <Field label="Bio">
+              <textarea
+                value={form.bio}
+                onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
+                placeholder="Tell brands about yourself..."
+                rows={3}
+                className={`${inputCls(false)} resize-none`}
+              />
+              <p className="text-right text-[9px] text-[#1D1D1D]/30 mt-1">{form.bio.length}/500</p>
+            </Field>
 
-            {/* Availability pill */}
-            <div className="flex items-center gap-2 border-2 border-[#1D1D1D] px-3 py-1.5 mb-4">
-              <span className={`w-1.5 h-1.5 ${
-                creator.availability.includes("Available") ? "bg-[#389C9A]" : "bg-[#FEDB71]"
-              }`} />
-              <span className="text-[8px] font-black uppercase tracking-widest">
-                {creator.availability}
-              </span>
-            </div>
+            <Field label="Location">
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#1D1D1D]/30" />
+                <input
+                  value={form.location}
+                  onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                  placeholder="City, Country"
+                  className={`${inputCls(false)} pl-8`}
+                />
+              </div>
+            </Field>
+          </section>
 
-            {/* Location */}
-            <div className="flex items-center gap-1 mb-4 text-[9px] font-black uppercase tracking-widest opacity-40">
-              <MapPin className="w-3 h-3" />
-              <span>{creator.location}</span>
-            </div>
-
-            {/* Platform badges */}
-            <div className="flex flex-wrap justify-center gap-2 mb-5">
-              {creator.platforms.map((p, i) => (
-                <a
-                  key={i}
-                  href={p.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 border border-[#1D1D1D]/20 px-3 py-1.5 text-[8px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors"
+          {/* ── Availability ───────────────────────────────── */}
+          <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
+            <SectionLabel>Availability</SectionLabel>
+            <div className="flex flex-col gap-2">
+              {AVAILABILITY_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, availability: opt }))}
+                  className={`flex items-center gap-3 px-4 py-3 border text-[10px] font-black uppercase tracking-widest italic transition-colors text-left ${
+                    form.availability === opt
+                      ? "border-[#1D1D1D] bg-[#1D1D1D] text-white"
+                      : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]/50"
+                  }`}
                 >
-                  {getPlatformIconComponent(p.name)}
-                  {p.name}
-                  <span className="opacity-40 font-medium">{formatNumber(p.followers)}</span>
-                </a>
+                  <span className={`w-2 h-2 flex-shrink-0 ${
+                    opt === "Available for campaigns" ? "bg-[#389C9A]" : opt === "Limited availability" ? "bg-[#FEDB71]" : "bg-[#1D1D1D]/20"
+                  }`} />
+                  {opt}
+                </button>
               ))}
             </div>
+          </section>
 
-            {/* Niches */}
-            <div className="flex flex-wrap justify-center gap-1.5 mb-5">
-              {creator.niches.map((n, i) => (
-                <span
-                  key={i}
-                  className="text-[8px] font-black uppercase tracking-widest bg-[#F8F8F8] border border-[#1D1D1D]/10 px-3 py-1"
+          {/* ── Platforms ──────────────────────────────────── */}
+          <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
+            <SectionLabel>Platforms</SectionLabel>
+            {errors.platforms && <p className="text-[9px] text-red-500 font-bold uppercase italic">{errors.platforms}</p>}
+            <div className="flex flex-wrap gap-2">
+              {PLATFORM_OPTIONS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => togglePlatform(p)}
+                  className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest italic border transition-colors ${
+                    form.platforms.includes(p)
+                      ? "bg-[#389C9A] border-[#389C9A] text-white"
+                      : "border-[#1D1D1D]/20 hover:border-[#389C9A]/50 hover:text-[#389C9A]"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* ── Niches ─────────────────────────────────────── */}
+          <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
+            <SectionLabel>Content Niches</SectionLabel>
+            <div className="flex flex-wrap gap-2">
+              {NICHE_OPTIONS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => toggleNiche(n)}
+                  className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest italic border transition-colors ${
+                    form.niches.includes(n)
+                      ? "bg-[#FEDB71] border-[#1D1D1D] text-[#1D1D1D]"
+                      : "border-[#1D1D1D]/20 hover:border-[#FEDB71]/70"
+                  }`}
                 >
                   {n}
-                </span>
-              ))}
-            </div>
-
-            {/* Bio */}
-            <div className="w-full mb-6 text-left">
-              <p className={`text-[11px] text-[#1D1D1D]/70 leading-relaxed ${!isBioExpanded ? "line-clamp-3" : ""}`}>
-                {creator.bio}
-              </p>
-              {creator.bio?.length > 120 && (
-                <button
-                  className="mt-1 text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                  onClick={() => setIsBioExpanded(!isBioExpanded)}
-                >
-                  {isBioExpanded ? "Show less" : "Read more"}
                 </button>
-              )}
+              ))}
             </div>
 
-            {/* CTA Buttons */}
-            <div className="flex gap-2 w-full">
+            {/* Custom niche input */}
+            <div className="flex gap-2 mt-2">
+              <input
+                value={nicheInput}
+                onChange={(e) => setNicheInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomNiche(); } }}
+                placeholder="Add custom niche..."
+                className="flex-1 border border-[#1D1D1D]/20 px-3 py-2 text-[10px] font-bold uppercase tracking-wider italic focus:outline-none focus:border-[#1D1D1D]"
+              />
               <button
-                onClick={handleCustomOffer}
-                className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-2"
+                type="button"
+                onClick={addCustomNiche}
+                className="px-3 py-2 bg-[#1D1D1D] text-white text-[9px] font-black uppercase italic"
               >
-                <Zap className="w-4 h-4 text-[#FEDB71]" /> Send Offer
-              </button>
-              <button
-                onClick={handleContact}
-                className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors flex items-center justify-center gap-2"
-              >
-                <MessageSquare className="w-4 h-4" /> Message
+                <Plus className="w-3.5 h-3.5" />
               </button>
             </div>
-          </div>
-        </div>
 
-        {/* ── Stats Grid ─────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-4 border-b-2 border-[#1D1D1D]">
-          {[
-            { icon: <Users className="w-4 h-4 text-[#389C9A]" />, value: formatNumber(creator.stats.followers), label: "Followers" },
-            { icon: <Eye className="w-4 h-4 text-[#389C9A]" />, value: formatNumber(creator.stats.avgViewers), label: "Avg Viewers" },
-            { icon: <TrendingUp className="w-4 h-4 text-[#389C9A]" />, value: `${creator.stats.engagement}%`, label: "Engagement" },
-            { icon: <Star className="w-4 h-4 text-[#FEDB71]" />, value: creator.stats.rating, label: "Rating" },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className={`flex flex-col items-center py-5 px-2 gap-2 ${i < 3 ? "border-r border-[#1D1D1D]/10" : ""}`}
-            >
-              {stat.icon}
-              <p className="text-base font-black leading-none">{stat.value}</p>
-              <p className="text-[7px] font-black uppercase tracking-widest opacity-40 text-center">{stat.label}</p>
-            </div>
-          ))}
-        </div>
+            {/* Selected niches (with remove) */}
+            {form.niches.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {form.niches.map((n) => (
+                  <span
+                    key={n}
+                    className="flex items-center gap-1 px-2 py-1 bg-[#F8F8F8] border border-[#1D1D1D]/10 text-[9px] font-bold uppercase italic"
+                  >
+                    {n}
+                    <button type="button" onClick={() => toggleNiche(n)}>
+                      <X className="w-2.5 h-2.5 text-[#1D1D1D]/40 hover:text-[#1D1D1D]" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </section>
 
-        {/* ── Packages ───────────────────────────────────────────────────── */}
-        {creator.packages.length > 0 && (
-          <div className="px-5 py-7 border-b-2 border-[#1D1D1D]">
-            <h3 className="text-[9px] font-black uppercase tracking-[0.3em] mb-5">Campaign Packages</h3>
-            <div className="flex flex-col gap-3">
-              {creator.packages.map((pkg) => (
+          {/* ── Stats ──────────────────────────────────────── */}
+          <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-4">
+            <SectionLabel>Channel Stats</SectionLabel>
+            <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">Brands use these to evaluate partnerships</p>
+
+            <Field label="Avg. Concurrent Viewers">
+              <input
+                type="number"
+                value={form.stats.avgViewers}
+                onChange={(e) => setForm((f) => ({ ...f, stats: { ...f.stats, avgViewers: e.target.value } }))}
+                placeholder="e.g. 1500"
+                className={inputCls(false)}
+              />
+            </Field>
+
+            <Field label="Total Followers / Subscribers">
+              <input
+                type="number"
+                value={form.stats.followers}
+                onChange={(e) => setForm((f) => ({ ...f, stats: { ...f.stats, followers: e.target.value } }))}
+                placeholder="e.g. 25000"
+                className={inputCls(false)}
+              />
+            </Field>
+
+            <Field label="Total Streams / Videos">
+              <input
+                type="number"
+                value={form.stats.totalStreams}
+                onChange={(e) => setForm((f) => ({ ...f, stats: { ...f.stats, totalStreams: e.target.value } }))}
+                placeholder="e.g. 200"
+                className={inputCls(false)}
+              />
+            </Field>
+          </section>
+
+          {/* ── Submit ─────────────────────────────────────── */}
+          <div className="px-6 py-8 space-y-3">
+            {errors.submit && (
+              <p className="text-[9px] font-bold uppercase italic text-red-500 border border-red-200 bg-red-50 px-4 py-3">
+                {errors.submit}
+              </p>
+            )}
+
+            <AnimatePresence>
+              {saveSuccess && (
                 <motion.div
-                  key={pkg.id}
-                  whileTap={{ scale: 0.99 }}
-                  onClick={() => handleSelectPackage(pkg)}
-                  className={`relative border-2 p-5 cursor-pointer transition-colors ${
-                    pkg.popular
-                      ? "border-[#389C9A] bg-[#389C9A]/5"
-                      : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]"
-                  }`}
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center gap-2 px-4 py-3 bg-[#389C9A]/10 border border-[#389C9A]"
                 >
-                  {pkg.popular && (
-                    <div className="absolute -top-[10px] right-4 bg-[#FEDB71] border border-[#1D1D1D] px-2 py-0.5 text-[7px] font-black uppercase tracking-widest text-[#1D1D1D]">
-                      Popular
-                    </div>
-                  )}
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h4 className="font-black text-sm uppercase tracking-tight">{pkg.name}</h4>
-                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">{pkg.streams} streams</p>
-                    </div>
-                    <p className="text-xl font-black text-[#389C9A]">£{pkg.price}</p>
-                  </div>
-                  <p className="text-[9px] opacity-60 mb-3">{pkg.description}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-[7px] font-black uppercase tracking-widest opacity-40">
-                      <Calendar className="w-3 h-3" />
-                      Est. {pkg.streams * 1.5}h
-                    </div>
-                    <span className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] flex items-center gap-1">
-                      Select <ArrowRight className="w-3 h-3" />
-                    </span>
-                  </div>
+                  <CheckCircle2 className="w-4 h-4 text-[#389C9A]" />
+                  <span className="text-[9px] font-black uppercase tracking-widest italic text-[#389C9A]">Profile saved!</span>
                 </motion.div>
-              ))}
-            </div>
-          </div>
-        )}
+              )}
+            </AnimatePresence>
 
-        {/* ── Recent Streams ─────────────────────────────────────────────── */}
-        {creator.recentStreams.length > 0 && (
-          <div className="px-5 py-7 border-b-2 border-[#1D1D1D]">
-            <h3 className="text-[9px] font-black uppercase tracking-[0.3em] mb-5">Recent Streams</h3>
-            <div className="flex flex-col">
-              {creator.recentStreams.map((stream, i) => (
-                <div
-                  key={stream.id}
-                  className={`flex items-center justify-between py-3.5 ${
-                    i < creator.recentStreams.length - 1 ? "border-b border-[#1D1D1D]/10" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-[#F8F8F8] border border-[#1D1D1D]/10 flex items-center justify-center flex-shrink-0">
-                      <VideoIcon className="w-3.5 h-3.5 text-[#389C9A]" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-tight">{stream.title}</p>
-                      <p className="text-[8px] opacity-40 font-medium">{stream.date}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[11px] font-black">{stream.viewers.toLocaleString()}</p>
-                    <p className="text-[7px] font-black uppercase tracking-widest opacity-40">viewers</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── CTA Banner ─────────────────────────────────────────────────── */}
-        <div className="px-5 py-7">
-          <div className="bg-[#1D1D1D] p-7 relative overflow-hidden">
-            {/* Accent stripe */}
-            <div className="absolute top-0 left-0 w-1 h-full bg-[#389C9A]" />
-            <div className="absolute top-0 right-0 w-16 h-full bg-[#FEDB71]/5" />
-
-            <h4 className="text-xl font-black uppercase italic tracking-tighter text-white mb-1">
-              Ready to collaborate?
-            </h4>
-            <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-6">
-              Send an offer to {creator.name}
-            </p>
             <button
-              onClick={handleCustomOffer}
-              className="w-full bg-white text-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] hover:text-white transition-colors flex items-center justify-center gap-2"
+              type="submit"
+              disabled={saving}
+              className="w-full flex items-center justify-center gap-2 bg-[#1D1D1D] text-white py-4 text-[11px] font-black uppercase tracking-widest italic hover:bg-[#389C9A] transition-colors disabled:opacity-50"
             >
-              Send Offer <ArrowRight className="w-4 h-4" />
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {saving ? "Saving..." : "Save Profile"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/profile/me")}
+              className="w-full py-3 text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40 hover:text-[#1D1D1D] transition-colors"
+            >
+              Cancel
             </button>
           </div>
-        </div>
+
+        </form>
       </main>
-
       <BottomNav />
-
-      {/* ── Offer Modal ──────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {showOfferModal && (
-          <div className="fixed inset-0 z-[100] flex items-end justify-center">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowOfferModal(false)}
-              className="absolute inset-0 bg-[#1D1D1D]/80"
-            />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 28, stiffness: 220 }}
-              className="relative w-full max-w-[480px] bg-white border-t-2 border-[#1D1D1D] max-h-[92vh] overflow-y-auto"
-            >
-              {/* Drag handle */}
-              <div className="w-10 h-1 bg-[#1D1D1D]/10 mx-auto mt-4 mb-2" />
-
-              <div className="px-5 py-4">
-                {/* Modal Header */}
-                <div className="flex justify-between items-start mb-6 border-b-2 border-[#1D1D1D] pb-4">
-                  <div>
-                    <h2 className="text-2xl font-black uppercase tracking-tighter italic">Send Offer</h2>
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-40">to {creator.name}</p>
-                  </div>
-                  <button
-                    onClick={() => setShowOfferModal(false)}
-                    className="p-2 border-2 border-[#1D1D1D]/10 hover:bg-[#1D1D1D] hover:text-white transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleSendOffer} className="space-y-4">
-                  {/* Campaign Type */}
-                  <div>
-                    <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1.5">
-                      Campaign Type
-                    </label>
-                    <select
-                      value={customOffer.type}
-                      onChange={(e) => setCustomOffer({ ...customOffer, type: e.target.value })}
-                      className="w-full p-3.5 border-2 border-[#1D1D1D]/20 focus:border-[#389C9A] outline-none transition-colors text-[11px] font-black uppercase tracking-widest bg-white appearance-none"
-                    >
-                      <option>Banner Only</option>
-                      <option>Promo Code</option>
-                      <option>Banner + Promo Code</option>
-                      <option>Custom</option>
-                    </select>
-                  </div>
-
-                  {/* Streams + Rate side by side */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1.5">
-                        No. of Streams
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={customOffer.streams}
-                        onChange={(e) => setCustomOffer({ ...customOffer, streams: e.target.value })}
-                        className="w-full p-3.5 border-2 border-[#1D1D1D]/20 focus:border-[#389C9A] outline-none transition-colors text-sm font-black"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1.5">
-                        Rate / Stream (£)
-                      </label>
-                      <input
-                        type="number"
-                        min="5"
-                        step="5"
-                        value={customOffer.rate}
-                        onChange={(e) => setCustomOffer({ ...customOffer, rate: e.target.value })}
-                        className="w-full p-3.5 border-2 border-[#1D1D1D]/20 focus:border-[#389C9A] outline-none transition-colors text-sm font-black"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Message */}
-                  <div>
-                    <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1.5">
-                      Message (optional)
-                    </label>
-                    <textarea
-                      value={customOffer.message}
-                      onChange={(e) => setCustomOffer({ ...customOffer, message: e.target.value })}
-                      rows={3}
-                      placeholder="Tell the creator about your campaign..."
-                      className="w-full p-3.5 border-2 border-[#1D1D1D]/20 focus:border-[#389C9A] outline-none transition-colors text-[11px] resize-none"
-                    />
-                  </div>
-
-                  {/* Estimates */}
-                  {estimates && (
-                    <div className="bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4">
-                      <h4 className="text-[8px] font-black uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                        <BarChart className="w-3 h-3 text-[#389C9A]" />
-                        Estimated Reach
-                      </h4>
-                      <div className="grid grid-cols-2 gap-3">
-                        {[
-                          { label: "Unique Viewers", value: estimates.uniqueViewers.toLocaleString() },
-                          { label: "Total Hours", value: `${estimates.hours.toFixed(1)}h` },
-                          { label: "Impressions", value: estimates.impressions.toLocaleString() },
-                          { label: "Total Cost", value: `£${estimates.totalCost}`, highlight: true },
-                        ].map((item) => (
-                          <div key={item.label}>
-                            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">{item.label}</p>
-                            <p className={`text-[11px] font-black ${item.highlight ? "text-[#389C9A]" : ""}`}>
-                              {item.value}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Submit */}
-                  <button
-                    type="submit"
-                    className="w-full bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-2"
-                  >
-                    Send Offer <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
-                  </button>
-                </form>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Success Banner ───────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {offerSent && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            className="fixed top-20 left-0 right-0 flex justify-center z-50 pointer-events-none px-5"
-          >
-            <div className="bg-[#389C9A] text-white px-6 py-4 border-2 border-[#1D1D1D] flex items-center gap-3">
-              <CheckCircle2 className="w-4 h-4" />
-              <span className="text-[9px] font-black uppercase tracking-widest">Offer Sent Successfully!</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
+}
+
+/* ── Helpers ─────────────────────────────────────────────── */
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic mb-3">{children}</p>
+  );
+}
+
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-[9px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">{label}</label>
+      {children}
+      {error && <p className="text-[9px] text-red-500 font-bold uppercase italic">{error}</p>}
+    </div>
+  );
+}
+
+function inputCls(hasError: boolean) {
+  return `w-full border ${hasError ? "border-red-400" : "border-[#1D1D1D]/20 focus:border-[#1D1D1D]"} px-3 py-2.5 text-[11px] font-bold italic focus:outline-none bg-white transition-colors`;
 }
