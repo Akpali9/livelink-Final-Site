@@ -5,6 +5,7 @@ import { CreatorLogin } from "./screens/creator-login";
 import { BusinessLogin } from "./screens/business-login";
 import { Browse } from "./screens/browse";
 import { Profile } from "./screens/profile";
+import { Offers } from "./screens/offers";
 import { Dashboard } from "./screens/dashboard";
 import { BusinessDashboard } from "./screens/business-dashboard";
 import { BusinessProfile } from "./screens/business-profile";
@@ -153,6 +154,7 @@ const routes: RouteObject[] = [
       { path: "business/submission-success",    Component: BusinessSubmissionSuccess, loader: requireBusiness },
       { path: "business/campaign/overview/:id", Component: BusinessCampaignOverview,  loader: requireAuth },
       { path: "business/campaign/:id",          Component: BusinessCampaignCreators,  loader: requireAuth },
+      { path: "offers",                         Component: Offers,                    loader: requireAuth },
       { path: "business/campaign/:campaignId/creator/:creatorId", Component: BusinessCampaignDetail, loader: requireBusiness },
       { path: "business/settings",              Component: BusinessSettings,          loader: requireBusiness },
 
