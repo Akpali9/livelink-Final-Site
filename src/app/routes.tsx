@@ -60,6 +60,18 @@ async function requireBusiness() {
   return null;
 }
 
+// ✅ NEW: Loader for campaign creation (accessible to both creators and businesses)
+async function requireCreatorOrBusiness() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return redirect("/login/portal");
+  
+  const userType = session.user.user_metadata?.user_type;
+  if (userType !== 'creator' && userType !== 'business') {
+    return redirect("/login/portal");
+  }
+  return null;
+}
+
 async function requireAdmin() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return redirect("/login/portal");
@@ -138,27 +150,31 @@ const routes: RouteObject[] = [
       // Business routes
       { path: "business/dashboard",             Component: BusinessDashboard,         loader: requireBusiness },
       { path: "business/profile",               Component: BusinessProfile,           loader: requireAuth },
-      { path: "campaign/type",                  Component: CampaignTypeSelection,     loader: requireBusiness },
-      { path: "campaign/setup/banner",          Component: CampaignSetupBanner,       loader: requireBusiness },
-      { path: "campaign/setup/banner-promo",    Component: CampaignSetupBannerPromo,  loader: requireBusiness },
-      { path: "campaign/setup/promo-only",      Component: CampaignSetupPromoOnly,    loader: requireBusiness },
-      { path: "campaign/create",                Component: CampaignCreation,          loader: requireBusiness },
-      { path: "campaign/confirm",               Component: CampaignConfirm,           loader: requireBusiness },
-      { path: "payment/held",                   Component: PaymentHeld,               loader: requireBusiness },
-      { path: "campaign/confirmed",             Component: CampaignAcceptedBusiness,  loader: requireBusiness },
-      { path: "campaign/declined",              Component: CampaignDeclined,          loader: requireBusiness },
-      { path: "campaign/:id",                   Component: CampaignDetails,           loader: requireBusiness },
+      { path: "business/submission-success",    Component: BusinessSubmissionSuccess, loader: requireBusiness },
       { path: "business/campaign/overview/:id", Component: BusinessCampaignOverview,  loader: requireAuth },
       { path: "business/campaign/:id",          Component: BusinessCampaignCreators,  loader: requireAuth },
       { path: "business/campaign/:campaignId/creator/:creatorId", Component: BusinessCampaignDetail, loader: requireBusiness },
-      { path: "business/submission-success",    Component: BusinessSubmissionSuccess, loader: requireBusiness },
-      { path: "browse",                         Component: Browse,                    loader: requireAuth },
       { path: "business/settings",              Component: BusinessSettings,          loader: requireBusiness },
 
+      // ✅ CAMPAIGN CREATION - Now accessible to both creators and businesses
+      { path: "campaign/type",                  Component: CampaignTypeSelection,     loader: requireCreatorOrBusiness },
+      { path: "campaign/setup/banner",          Component: CampaignSetupBanner,       loader: requireCreatorOrBusiness },
+      { path: "campaign/setup/banner-promo",    Component: CampaignSetupBannerPromo,  loader: requireCreatorOrBusiness },
+      { path: "campaign/setup/promo-only",      Component: CampaignSetupPromoOnly,    loader: requireCreatorOrBusiness },
+      { path: "campaign/create",                Component: CampaignCreation,          loader: requireCreatorOrBusiness },
+      { path: "campaign/confirm",               Component: CampaignConfirm,           loader: requireCreatorOrBusiness },
+      { path: "campaign/:id",                   Component: CampaignDetails,           loader: requireAuth }, // Anyone can view campaign details
+      
+      // ✅ PAYMENT & CONFIRMATION - Shared routes
+      { path: "payment/held",                   Component: PaymentHeld,               loader: requireCreatorOrBusiness },
+      { path: "campaign/confirmed",             Component: CampaignAcceptedBusiness,  loader: requireCreatorOrBusiness },
+      { path: "campaign/declined",              Component: CampaignDeclined,          loader: requireCreatorOrBusiness },
+
       // Shared routes
-      { path: "messages",      Component: MessagesInbox, loader: requireAuth },
-      { path: "messages/:id",  Component: MessageThread, loader: requireAuth },
-      { path: "notifications", Component: Notifications, loader: requireAuth },
+      { path: "browse",          Component: Browse,         loader: requireAuth },
+      { path: "messages",        Component: MessagesInbox,  loader: requireAuth },
+      { path: "messages/:id",    Component: MessageThread,  loader: requireAuth },
+      { path: "notifications",   Component: Notifications,  loader: requireAuth },
 
       // Admin routes
       { path: "admin",               Component: AdminDashboard,        loader: requireAdmin },
