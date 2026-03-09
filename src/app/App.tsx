@@ -43,6 +43,10 @@ export const router = createBrowserRouter([
     ),
   },
   {
+  path="/confirm-email",
+    element: <ConfirmEmail />
+  },
+  {
     path: "/business/settings",
     element: (
       <ProtectedRoute userType="business">
