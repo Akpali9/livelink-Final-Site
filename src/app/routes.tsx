@@ -13,7 +13,7 @@ import { CampaignTypeSelection } from "./screens/campaign-type-selection";
 import { CampaignSetupBanner } from "./screens/campaign-setup-banner";
 import { CampaignSetupBannerPromo } from "./screens/campaign-setup-banner-promo";
 import { CampaignSetupPromoOnly } from "./screens/campaign-setup-promo-only";
-
+import { BrowseBusinesses } from "./screens/browse-businesses";
 import { BecomeBusiness } from "./screens/become-business";
 import { Businesses } from "./screens/-businesses";
 import { GigAccepted } from "./screens/gig-accepted";
