@@ -23,10 +23,8 @@ export function Profile() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [creatorId, setCreatorId] = useState<string | null>(null);
   const [profileType, setProfileType] = useState<ProfileType>("creator");
 
-  // ── Creator form state ───────────────────────────────────
   const [creatorForm, setCreatorForm] = useState({
     name: "",
     username: "",
@@ -40,7 +38,6 @@ export function Profile() {
     stats: { avgViewers: "", followers: "", totalStreams: "" },
   });
 
-  // ── Business form state ──────────────────────────────────
   const [businessForm, setBusinessForm] = useState({
     companyName: "",
     contactName: "",
@@ -57,50 +54,50 @@ export function Profile() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [nicheInput, setNicheInput] = useState("");
 
+  // Load: check both tables independently
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) { navigate("/"); return; }
 
-      const { data } = await supabase
-        .from("creators")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .single();
+      const [{ data: creator }, { data: business }] = await Promise.all([
+        supabase.from("creators").select("*").eq("user_id", session.user.id).single(),
+        supabase.from("businesses").select("*").eq("user_id", session.user.id).single(),
+      ]);
 
-      if (data) {
-        setCreatorId(data.id);
-        const type: ProfileType = data.profile_type || "creator";
-        setProfileType(type);
-
-        if (type === "creator") {
-          setCreatorForm({
-            name: data.name || "",
-            username: data.username || "",
-            bio: data.bio || "",
-            location: data.location || "",
-            availability: data.availability || "Available for campaigns",
-            avatar: data.avatar || "",
-            platforms: data.platforms?.map((p: any) => (typeof p === "string" ? p : p.name)) || [],
-            niches: data.niches || [],
-            verified: data.verified || false,
-            stats: { avgViewers: data.stats?.avgViewers || "", followers: data.stats?.followers || "", totalStreams: data.stats?.totalStreams || "" },
-          });
-        } else {
-          setBusinessForm({
-            companyName: data.company_name || "",
-            contactName: data.contact_name || "",
-            website: data.website || "",
-            bio: data.bio || "",
-            location: data.location || "",
-            avatar: data.avatar || "",
-            industries: data.industries || [],
-            campaignTypes: data.campaign_types || [],
-            budgetRange: data.budget_range || "",
-            verified: data.verified || false,
-          });
-        }
+      if (business) {
+        setProfileType("business");
+        setBusinessForm({
+          companyName: business.company_name || "",
+          contactName: business.contact_name || "",
+          website: business.website || "",
+          bio: business.bio || "",
+          location: business.location || "",
+          avatar: business.avatar || "",
+          industries: business.industries || [],
+          campaignTypes: business.campaign_types || [],
+          budgetRange: business.budget_range || "",
+          verified: business.verified || false,
+        });
+      } else if (creator) {
+        setProfileType("creator");
+        setCreatorForm({
+          name: creator.name || "",
+          username: creator.username || "",
+          bio: creator.bio || "",
+          location: creator.location || "",
+          availability: creator.availability || "Available for campaigns",
+          avatar: creator.avatar || "",
+          platforms: creator.platforms?.map((p: any) => (typeof p === "string" ? p : p.name)) || [],
+          niches: creator.niches || [],
+          verified: creator.verified || false,
+          stats: {
+            avgViewers: creator.stats?.avgViewers || "",
+            followers: creator.stats?.followers || "",
+            totalStreams: creator.stats?.totalStreams || "",
+          },
+        });
       }
       setLoading(false);
     };
@@ -122,40 +119,56 @@ export function Profile() {
     return Object.keys(e).length === 0;
   };
 
+  // Save to the correct table only
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
     setSaving(true);
+
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
 
-    let payload: any = { user_id: session.user.id, email: session.user.email, profile_type: profileType, updated_at: new Date().toISOString() };
+    let error: any = null;
 
     if (profileType === "creator") {
-      payload = { ...payload, name: creatorForm.name, username: creatorForm.username.toLowerCase(), bio: creatorForm.bio, location: creatorForm.location, availability: creatorForm.availability, avatar: creatorForm.avatar, platforms: creatorForm.platforms.map((p) => ({ name: p })), niches: creatorForm.niches, verified: creatorForm.verified, stats: creatorForm.stats };
+      const payload = {
+        user_id: session.user.id,
+        email: session.user.email,
+        name: creatorForm.name,
+        username: creatorForm.username.toLowerCase(),
+        bio: creatorForm.bio,
+        location: creatorForm.location,
+        availability: creatorForm.availability,
+        avatar: creatorForm.avatar,
+        platforms: creatorForm.platforms.map((p) => ({ name: p })),
+        niches: creatorForm.niches,
+        verified: creatorForm.verified,
+        stats: creatorForm.stats,
+        updated_at: new Date().toISOString(),
+      };
+      ({ error } = await supabase.from("creators").upsert(payload, { onConflict: "user_id" }));
     } else {
-      payload = { ...payload, company_name: businessForm.companyName, contact_name: businessForm.contactName, website: businessForm.website, bio: businessForm.bio, location: businessForm.location, avatar: businessForm.avatar, industries: businessForm.industries, campaign_types: businessForm.campaignTypes, budget_range: businessForm.budgetRange, verified: businessForm.verified };
+      const payload = {
+        user_id: session.user.id,
+        email: session.user.email,
+        company_name: businessForm.companyName,
+        contact_name: businessForm.contactName,
+        website: businessForm.website,
+        bio: businessForm.bio,
+        location: businessForm.location,
+        avatar: businessForm.avatar,
+        industries: businessForm.industries,
+        campaign_types: businessForm.campaignTypes,
+        budget_range: businessForm.budgetRange,
+        verified: businessForm.verified,
+        updated_at: new Date().toISOString(),
+      };
+      ({ error } = await supabase.from("businesses").upsert(payload, { onConflict: "user_id" }));
     }
 
-    let error;
-    const { error } = await supabase
-  .from("creators")
-  .upsert(payload, { onConflict: "user_id", ignoreDuplicates: false });
-    );
-    if (creatorId) {
-      ({ error } = await supabase.from("creators").update(payload).eq("id", creatorId));
+    if (error) {
+      setErrors({ submit: error.message });
     } else {
-  const { data: inserted, error: insertError } = await supabase
-    .from("creators")
-    .insert(payload)
-    .select()
-    .single();
-  error = insertError;
-  if (inserted) setCreatorId(inserted.id); 
-}
-
-    if (error) { setErrors({ submit: error.message }); }
-    else {
       setSaveSuccess(true);
       setTimeout(() => { setSaveSuccess(false); navigate("/profile/me"); }, 1200);
     }
@@ -212,7 +225,7 @@ export function Profile() {
       <main className="max-w-[480px] mx-auto w-full">
         <form onSubmit={handleSave} noValidate>
 
-          {/* ── Profile Type Toggle ────────────────────────── */}
+          {/* Profile Type Toggle */}
           <section className="px-6 pt-6 pb-5 border-b border-[#1D1D1D]/10">
             <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic mb-3">I am a</p>
             <div className="grid grid-cols-2 gap-2">
@@ -226,24 +239,12 @@ export function Profile() {
                     onClick={() => { setProfileType(type); setErrors({}); }}
                     className={`relative flex flex-col items-center gap-2 px-4 py-4 border-2 transition-all duration-200 ${
                       isActive
-                        ? type === "creator"
-                          ? "border-[#389C9A] bg-[#389C9A]/5"
-                          : "border-[#FEDB71] bg-[#FEDB71]/10"
+                        ? type === "creator" ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#FEDB71] bg-[#FEDB71]/10"
                         : "border-[#1D1D1D]/15 hover:border-[#1D1D1D]/30"
                     }`}
                   >
-                    <Icon
-                      className={`w-5 h-5 transition-colors ${
-                        isActive
-                          ? type === "creator" ? "text-[#389C9A]" : "text-[#D4A800]"
-                          : "text-[#1D1D1D]/30"
-                      }`}
-                    />
-                    <span
-                      className={`text-[10px] font-black uppercase tracking-widest italic transition-colors ${
-                        isActive ? "text-[#1D1D1D]" : "text-[#1D1D1D]/40"
-                      }`}
-                    >
+                    <Icon className={`w-5 h-5 transition-colors ${isActive ? type === "creator" ? "text-[#389C9A]" : "text-[#D4A800]" : "text-[#1D1D1D]/30"}`} />
+                    <span className={`text-[10px] font-black uppercase tracking-widest italic transition-colors ${isActive ? "text-[#1D1D1D]" : "text-[#1D1D1D]/40"}`}>
                       {type === "creator" ? "Creator" : "Business"}
                     </span>
                     {isActive && (
@@ -259,7 +260,7 @@ export function Profile() {
             </div>
           </section>
 
-          {/* ── Avatar ─────────────────────────────────────── */}
+          {/* Avatar */}
           <section className="px-6 pt-8 pb-6 border-b border-[#1D1D1D]/10 flex flex-col items-center gap-4">
             <div className="relative">
               <div className="w-28 h-28 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center">
@@ -292,14 +293,8 @@ export function Profile() {
 
           <AnimatePresence mode="wait">
             {profileType === "creator" ? (
-              <motion.div
-                key="creator"
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 12 }}
-                transition={{ duration: 0.18 }}
-              >
-                {/* ── Creator: Basic Info ───────────────────── */}
+              <motion.div key="creator" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.18 }}>
+
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-4">
                   <SectionLabel>Basic Info</SectionLabel>
                   <Field label="Display Name" error={errors.name}>
@@ -323,7 +318,6 @@ export function Profile() {
                   </Field>
                 </section>
 
-                {/* ── Creator: Availability ─────────────────── */}
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
                   <SectionLabel>Availability</SectionLabel>
                   <div className="flex flex-col gap-2">
@@ -337,7 +331,6 @@ export function Profile() {
                   </div>
                 </section>
 
-                {/* ── Creator: Platforms ───────────────────── */}
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
                   <SectionLabel>Platforms</SectionLabel>
                   {errors.platforms && <p className="text-[9px] text-red-500 font-bold uppercase italic">{errors.platforms}</p>}
@@ -351,7 +344,6 @@ export function Profile() {
                   </div>
                 </section>
 
-                {/* ── Creator: Niches ──────────────────────── */}
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
                   <SectionLabel>Content Niches</SectionLabel>
                   <div className="flex flex-wrap gap-2">
@@ -383,7 +375,6 @@ export function Profile() {
                   )}
                 </section>
 
-                {/* ── Creator: Stats ───────────────────────── */}
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-4">
                   <SectionLabel>Channel Stats</SectionLabel>
                   <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">Brands use these to evaluate partnerships</p>
@@ -397,16 +388,11 @@ export function Profile() {
                     <input type="number" value={creatorForm.stats.totalStreams} onChange={(e) => setCreatorForm((f) => ({ ...f, stats: { ...f.stats, totalStreams: e.target.value } }))} placeholder="e.g. 200" className={inputCls(false)} />
                   </Field>
                 </section>
+
               </motion.div>
             ) : (
-              <motion.div
-                key="business"
-                initial={{ opacity: 0, x: 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -12 }}
-                transition={{ duration: 0.18 }}
-              >
-                {/* ── Business: Company Info ────────────────── */}
+              <motion.div key="business" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.18 }}>
+
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-4">
                   <SectionLabel>Company Info</SectionLabel>
                   <Field label="Company Name" error={errors.companyName}>
@@ -433,7 +419,6 @@ export function Profile() {
                   </Field>
                 </section>
 
-                {/* ── Business: Industries ─────────────────── */}
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
                   <SectionLabel>Industry</SectionLabel>
                   <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">Select all that apply to your brand</p>
@@ -447,7 +432,6 @@ export function Profile() {
                   </div>
                 </section>
 
-                {/* ── Business: Campaign Types ──────────────── */}
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
                   <SectionLabel>Campaign Types</SectionLabel>
                   <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">What kinds of campaigns do you run?</p>
@@ -461,7 +445,6 @@ export function Profile() {
                   </div>
                 </section>
 
-                {/* ── Business: Budget ──────────────────────── */}
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
                   <SectionLabel>Campaign Budget Range</SectionLabel>
                   <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">Per creator / per campaign</p>
@@ -475,11 +458,12 @@ export function Profile() {
                     ))}
                   </div>
                 </section>
+
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* ── Submit ─────────────────────────────────────── */}
+          {/* Submit */}
           <div className="px-6 py-8 space-y-3">
             {errors.submit && (
               <p className="text-[9px] font-bold uppercase italic text-red-500 border border-red-200 bg-red-50 px-4 py-3">{errors.submit}</p>
@@ -510,8 +494,6 @@ export function Profile() {
     </div>
   );
 }
-
-/* ── Helpers ─────────────────────────────────────────────── */
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic mb-3">{children}</p>;
