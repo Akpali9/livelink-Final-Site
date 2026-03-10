@@ -141,8 +141,14 @@ export function Profile() {
     if (creatorId) {
       ({ error } = await supabase.from("creators").update(payload).eq("id", creatorId));
     } else {
-      ({ error } = await supabase.from("creators").insert(payload));
-    }
+  const { data: inserted, error: insertError } = await supabase
+    .from("creators")
+    .insert(payload)
+    .select()
+    .single();
+  error = insertError;
+  if (inserted) setCreatorId(inserted.id); 
+}
 
     if (error) { setErrors({ submit: error.message }); }
     else {
