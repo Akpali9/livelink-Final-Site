@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
-import { MapPin, Edit2, Loader2, Zap, Briefcase, ExternalLink, Users, Eye, Video, CheckCircle2 } from "lucide-react";
+import { MapPin, Loader2, Zap, Briefcase, ExternalLink, Users, Eye, Video, CheckCircle2 } from "lucide-react";
 import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
@@ -10,7 +10,6 @@ export function Profile() {
   const { id } = useParams();
 
   const [loading, setLoading] = useState(true);
-  const [isOwner, setIsOwner] = useState(false);
   const [profileType, setProfileType] = useState<"creator" | "business" | null>(null);
 
   // Creator data
@@ -26,7 +25,6 @@ export function Profile() {
 
       // "me" = own profile
       const targetUserId = id === "me" ? session.user.id : id;
-      setIsOwner(targetUserId === session.user.id);
 
       // Check businesses first
       const { data: biz } = await supabase
@@ -75,14 +73,7 @@ export function Profile() {
             <span className="text-2xl opacity-20">?</span>
           </div>
           <p className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">No profile found</p>
-          {isOwner && (
-            <button
-              onClick={() => navigate("/profile/edit")}
-              className="px-6 py-3 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest italic hover:bg-[#389C9A] transition-colors"
-            >
-              Create Profile
-            </button>
-          )}
+
         </div>
         <BottomNav />
       </div>
@@ -182,20 +173,7 @@ export function Profile() {
             </a>
           )}
 
-          {/* Edit button (owner only) */}
-          {isOwner && (
-            <button
-              onClick={() => navigate(profileType === "business" ? "/business/profile/edit" : "/profile/edit")}
-              className={`mt-4 w-full flex items-center justify-center gap-2 py-2.5 border-2 text-[10px] font-black uppercase tracking-widest italic transition-colors ${
-                profileType === "creator"
-                  ? "border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white"
-                  : "border-[#D4A800] text-[#D4A800] hover:bg-[#D4A800] hover:text-white"
-              }`}
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-              Edit Profile
-            </button>
-          )}
+
         </section>
 
         {/* ── CREATOR SECTIONS ──────────────────────────────── */}
