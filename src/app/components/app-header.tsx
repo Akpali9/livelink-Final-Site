@@ -102,14 +102,14 @@ export function AppHeader({
         if (!msgError) setUnreadMessages(msgCount || 0);
 
         const { data: msgData, error: msgDataError } = await supabase
-          .from('messages').select(`*, sender:sender_id (id, email, user_metadata)`)
+          .from('messages').select('*')
           .eq('receiver_id', user.id).order('created_at', { ascending: false }).limit(5);
 
         if (!msgDataError && msgData) {
           setRecentMessages(msgData.map(msg => ({
             ...msg,
-            sender_name: msg.sender?.user_metadata?.full_name || msg.sender?.email?.split('@')[0] || 'Unknown',
-            sender_avatar: msg.sender?.user_metadata?.avatar_url
+            sender_name: msg.sender_name || 'Unknown',
+            sender_avatar: msg.sender_avatar || null
           })));
         }
       } catch (error) {
@@ -150,10 +150,8 @@ export function AppHeader({
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` },
         async (payload) => {
           setUnreadMessages(prev => prev + 1);
-          const { data: senderData } = await supabase
-            .from('users').select('email, user_metadata').eq('id', payload.new.sender_id).maybeSingle();
-          const senderName = senderData?.user_metadata?.full_name || senderData?.email?.split('@')[0] || 'Unknown';
-          setRecentMessages(prev => [{ ...payload.new, sender_name: senderName, sender_avatar: senderData?.user_metadata?.avatar_url ?? null }, ...prev].slice(0, 5));
+          const senderName = payload.new.sender_name || 'Unknown';
+          setRecentMessages(prev => [{ ...payload.new, sender_name: senderName, sender_avatar: null }, ...prev].slice(0, 5));
           toast.info(`New message from ${senderName}`, {
             description: payload.new.content.substring(0, 50) + (payload.new.content.length > 50 ? '...' : ''),
             icon: '💬',
