@@ -670,7 +670,7 @@ export function Dashboard() {
         <div className="px-6 pb-12">
           <div className="grid grid-cols-3 gap-3">
             {[
-              { icon: Inbox, count: stats.requestedCount, label: "Requests", path: "/offers", color: "text-[#389C9A]" },
+              { icon: Inbox, count: stats.requestedCount, label: "Requests", path: "/campaigns", color: "text-[#389C9A]" },
               { icon: Clock, count: stats.activeCount, label: "Active", path: "/campaigns?status=active", color: "text-[#FEDB71]" },
               { icon: CheckCircle2, count: stats.completedCount, label: "Completed", path: "/campaigns?status=completed", color: "text-green-500" },
             ].map((card, i) => (
