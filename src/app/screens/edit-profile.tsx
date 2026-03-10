@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { CheckCircle2, MapPin, Plus, X, Save, Upload, Loader2, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AppHeader } from "../components/app-header";
