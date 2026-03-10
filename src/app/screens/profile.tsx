@@ -23,7 +23,10 @@ export function Profile() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Each user is EITHER a creator OR a business — determined on first save
   const [profileType, setProfileType] = useState<ProfileType>("creator");
+  const [hasExistingProfile, setHasExistingProfile] = useState(false);
 
   const [creatorForm, setCreatorForm] = useState({
     name: "",
@@ -44,7 +47,7 @@ export function Profile() {
     website: "",
     bio: "",
     location: "",
-    avatar: "",
+    logo: "",
     industries: [] as string[],
     campaignTypes: [] as string[],
     budgetRange: "",
@@ -54,7 +57,7 @@ export function Profile() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [nicheInput, setNicheInput] = useState("");
 
-  // Load: check both tables independently
+  // ── Load: check which table this user belongs to ──────────
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -66,22 +69,9 @@ export function Profile() {
         supabase.from("businesses").select("*").eq("user_id", session.user.id).single(),
       ]);
 
-      if (business) {
-        setProfileType("business");
-        setBusinessForm({
-          companyName: business.company_name || "",
-          contactName: business.contact_name || "",
-          website: business.website || "",
-          bio: business.bio || "",
-          location: business.location || "",
-          avatar: business.avatar || "",
-          industries: business.industries || [],
-          campaignTypes: business.campaign_types || [],
-          budgetRange: business.budget_range || "",
-          verified: business.verified || false,
-        });
-      } else if (creator) {
+      if (creator) {
         setProfileType("creator");
+        setHasExistingProfile(true);
         setCreatorForm({
           name: creator.name || "",
           username: creator.username || "",
@@ -98,12 +88,28 @@ export function Profile() {
             totalStreams: creator.stats?.totalStreams || "",
           },
         });
+      } else if (business) {
+        setProfileType("business");
+        setHasExistingProfile(true);
+        setBusinessForm({
+          companyName: business.company_name || "",
+          contactName: business.contact_name || "",
+          website: business.website || "",
+          bio: business.bio || "",
+          location: business.location || "",
+          logo: business.logo || "",
+          industries: business.industries || [],
+          campaignTypes: business.campaign_types || [],
+          budgetRange: business.budget_range || "",
+          verified: business.verified || false,
+        });
       }
       setLoading(false);
     };
     load();
   }, [navigate]);
 
+  // ── Validate ───────────────────────────────────────────────
   const validate = () => {
     const e: Record<string, string> = {};
     if (profileType === "creator") {
@@ -119,7 +125,7 @@ export function Profile() {
     return Object.keys(e).length === 0;
   };
 
-  // Save to the correct table only
+  // ── Save: write ONLY to the correct table ─────────────────
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
@@ -156,7 +162,7 @@ export function Profile() {
         website: businessForm.website,
         bio: businessForm.bio,
         location: businessForm.location,
-        avatar: businessForm.avatar,
+        logo: businessForm.logo,
         industries: businessForm.industries,
         campaign_types: businessForm.campaignTypes,
         budget_range: businessForm.budgetRange,
@@ -175,41 +181,39 @@ export function Profile() {
     setSaving(false);
   };
 
+  // ── Avatar / Logo upload ───────────────────────────────────
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingAvatar(true);
     const ext = file.name.split(".").pop();
-    const fileName = `avatar-${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage.from("avatars").upload(fileName, file, { upsert: true });
+    const bucket = profileType === "creator" ? "avatars" : "logos";
+    const fileName = `${profileType}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from(bucket).upload(fileName, file, { upsert: true });
     if (!uploadError) {
-      const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+      const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
       const url = data.publicUrl;
       if (profileType === "creator") setCreatorForm((f) => ({ ...f, avatar: url }));
-      else setBusinessForm((f) => ({ ...f, avatar: url }));
+      else setBusinessForm((f) => ({ ...f, logo: url }));
     }
     setUploadingAvatar(false);
   };
 
   const toggleCreatorPlatform = (p: string) =>
     setCreatorForm((f) => ({ ...f, platforms: f.platforms.includes(p) ? f.platforms.filter((x) => x !== p) : [...f.platforms, p] }));
-
   const toggleNiche = (n: string) =>
     setCreatorForm((f) => ({ ...f, niches: f.niches.includes(n) ? f.niches.filter((x) => x !== n) : [...f.niches, n] }));
-
   const addCustomNiche = () => {
     const trimmed = nicheInput.trim();
     if (trimmed && !creatorForm.niches.includes(trimmed)) setCreatorForm((f) => ({ ...f, niches: [...f.niches, trimmed] }));
     setNicheInput("");
   };
-
   const toggleIndustry = (i: string) =>
     setBusinessForm((f) => ({ ...f, industries: f.industries.includes(i) ? f.industries.filter((x) => x !== i) : [...f.industries, i] }));
-
   const toggleCampaignType = (c: string) =>
     setBusinessForm((f) => ({ ...f, campaignTypes: f.campaignTypes.includes(c) ? f.campaignTypes.filter((x) => x !== c) : [...f.campaignTypes, c] }));
 
-  const currentAvatar = profileType === "creator" ? creatorForm.avatar : businessForm.avatar;
+  const currentImage = profileType === "creator" ? creatorForm.avatar : businessForm.logo;
 
   if (loading)
     return (
@@ -225,25 +229,42 @@ export function Profile() {
       <main className="max-w-[480px] mx-auto w-full">
         <form onSubmit={handleSave} noValidate>
 
-          {/* Profile Type Toggle */}
+          {/* ── Profile Type Toggle (locked once profile exists) ── */}
           <section className="px-6 pt-6 pb-5 border-b border-[#1D1D1D]/10">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic mb-3">I am a</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic">I am a</p>
+              {hasExistingProfile && (
+                <span className="text-[8px] font-black uppercase tracking-widest italic text-[#1D1D1D]/30 border border-[#1D1D1D]/15 px-2 py-1">
+                  Locked
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               {(["creator", "business"] as ProfileType[]).map((type) => {
                 const Icon = type === "creator" ? Zap : Briefcase;
                 const isActive = profileType === type;
+                const isLocked = hasExistingProfile && !isActive;
                 return (
                   <button
                     key={type}
                     type="button"
-                    onClick={() => { setProfileType(type); setErrors({}); }}
+                    disabled={isLocked}
+                    onClick={() => { if (!hasExistingProfile) { setProfileType(type); setErrors({}); } }}
                     className={`relative flex flex-col items-center gap-2 px-4 py-4 border-2 transition-all duration-200 ${
                       isActive
-                        ? type === "creator" ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#FEDB71] bg-[#FEDB71]/10"
-                        : "border-[#1D1D1D]/15 hover:border-[#1D1D1D]/30"
+                        ? type === "creator"
+                          ? "border-[#389C9A] bg-[#389C9A]/5"
+                          : "border-[#FEDB71] bg-[#FEDB71]/10"
+                        : isLocked
+                          ? "border-[#1D1D1D]/8 opacity-30 cursor-not-allowed"
+                          : "border-[#1D1D1D]/15 hover:border-[#1D1D1D]/30"
                     }`}
                   >
-                    <Icon className={`w-5 h-5 transition-colors ${isActive ? type === "creator" ? "text-[#389C9A]" : "text-[#D4A800]" : "text-[#1D1D1D]/30"}`} />
+                    <Icon className={`w-5 h-5 transition-colors ${
+                      isActive
+                        ? type === "creator" ? "text-[#389C9A]" : "text-[#D4A800]"
+                        : "text-[#1D1D1D]/30"
+                    }`} />
                     <span className={`text-[10px] font-black uppercase tracking-widest italic transition-colors ${isActive ? "text-[#1D1D1D]" : "text-[#1D1D1D]/40"}`}>
                       {type === "creator" ? "Creator" : "Business"}
                     </span>
@@ -258,14 +279,19 @@ export function Profile() {
                 );
               })}
             </div>
+            {hasExistingProfile && (
+              <p className="text-[8px] text-[#1D1D1D]/30 font-bold uppercase italic mt-2">
+                Profile type cannot be changed after creation
+              </p>
+            )}
           </section>
 
-          {/* Avatar */}
+          {/* ── Image (Avatar / Logo) ──────────────────────── */}
           <section className="px-6 pt-8 pb-6 border-b border-[#1D1D1D]/10 flex flex-col items-center gap-4">
             <div className="relative">
-              <div className="w-28 h-28 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center">
-                {currentAvatar ? (
-                  <img src={currentAvatar} alt="avatar" className="w-full h-full object-cover grayscale" />
+              <div className={`w-28 h-28 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center ${profileType === "business" ? "rounded-sm" : ""}`}>
+                {currentImage ? (
+                  <img src={currentImage} alt="profile" className="w-full h-full object-cover grayscale" />
                 ) : (
                   <div className="opacity-20 p-6">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
@@ -280,7 +306,7 @@ export function Profile() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-2 -right-2 w-8 h-8 bg-[#389C9A] border-2 border-white flex items-center justify-center"
+                className={`absolute -bottom-2 -right-2 w-8 h-8 border-2 border-white flex items-center justify-center ${profileType === "creator" ? "bg-[#389C9A]" : "bg-[#D4A800]"}`}
               >
                 {uploadingAvatar ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" /> : <Upload className="w-3.5 h-3.5 text-white" />}
               </button>
@@ -291,12 +317,15 @@ export function Profile() {
             </p>
           </section>
 
+          {/* ── Animated form sections ─────────────────────── */}
           <AnimatePresence mode="wait">
-            {profileType === "creator" ? (
+
+            {/* ════ CREATOR FORM ════ */}
+            {profileType === "creator" && (
               <motion.div key="creator" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.18 }}>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-4">
-                  <SectionLabel>Basic Info</SectionLabel>
+                  <SectionLabel accent="teal">Basic Info</SectionLabel>
                   <Field label="Display Name" error={errors.name}>
                     <input value={creatorForm.name} onChange={(e) => setCreatorForm((f) => ({ ...f, name: e.target.value }))} placeholder="Your Name" className={inputCls(!!errors.name)} />
                   </Field>
@@ -319,7 +348,7 @@ export function Profile() {
                 </section>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
-                  <SectionLabel>Availability</SectionLabel>
+                  <SectionLabel accent="teal">Availability</SectionLabel>
                   <div className="flex flex-col gap-2">
                     {AVAILABILITY_OPTIONS.map((opt) => (
                       <button key={opt} type="button" onClick={() => setCreatorForm((f) => ({ ...f, availability: opt }))}
@@ -332,7 +361,7 @@ export function Profile() {
                 </section>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
-                  <SectionLabel>Platforms</SectionLabel>
+                  <SectionLabel accent="teal">Platforms</SectionLabel>
                   {errors.platforms && <p className="text-[9px] text-red-500 font-bold uppercase italic">{errors.platforms}</p>}
                   <div className="flex flex-wrap gap-2">
                     {PLATFORM_OPTIONS.map((p) => (
@@ -345,7 +374,7 @@ export function Profile() {
                 </section>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
-                  <SectionLabel>Content Niches</SectionLabel>
+                  <SectionLabel accent="teal">Content Niches</SectionLabel>
                   <div className="flex flex-wrap gap-2">
                     {NICHE_OPTIONS.map((n) => (
                       <button key={n} type="button" onClick={() => toggleNiche(n)}
@@ -376,7 +405,7 @@ export function Profile() {
                 </section>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-4">
-                  <SectionLabel>Channel Stats</SectionLabel>
+                  <SectionLabel accent="teal">Channel Stats</SectionLabel>
                   <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">Brands use these to evaluate partnerships</p>
                   <Field label="Avg. Concurrent Viewers">
                     <input type="number" value={creatorForm.stats.avgViewers} onChange={(e) => setCreatorForm((f) => ({ ...f, stats: { ...f.stats, avgViewers: e.target.value } }))} placeholder="e.g. 1500" className={inputCls(false)} />
@@ -390,11 +419,14 @@ export function Profile() {
                 </section>
 
               </motion.div>
-            ) : (
+            )}
+
+            {/* ════ BUSINESS FORM ════ */}
+            {profileType === "business" && (
               <motion.div key="business" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.18 }}>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-4">
-                  <SectionLabel>Company Info</SectionLabel>
+                  <SectionLabel accent="yellow">Company Info</SectionLabel>
                   <Field label="Company Name" error={errors.companyName}>
                     <input value={businessForm.companyName} onChange={(e) => setBusinessForm((f) => ({ ...f, companyName: e.target.value }))} placeholder="Acme Inc." className={inputCls(!!errors.companyName)} />
                   </Field>
@@ -420,7 +452,7 @@ export function Profile() {
                 </section>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
-                  <SectionLabel>Industry</SectionLabel>
+                  <SectionLabel accent="yellow">Industry</SectionLabel>
                   <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">Select all that apply to your brand</p>
                   <div className="flex flex-wrap gap-2">
                     {INDUSTRY_OPTIONS.map((i) => (
@@ -433,12 +465,12 @@ export function Profile() {
                 </section>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
-                  <SectionLabel>Campaign Types</SectionLabel>
+                  <SectionLabel accent="yellow">Campaign Types</SectionLabel>
                   <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">What kinds of campaigns do you run?</p>
                   <div className="flex flex-wrap gap-2">
                     {CAMPAIGN_TYPE_OPTIONS.map((c) => (
                       <button key={c} type="button" onClick={() => toggleCampaignType(c)}
-                        className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest italic border transition-colors ${businessForm.campaignTypes.includes(c) ? "bg-[#389C9A] border-[#389C9A] text-white" : "border-[#1D1D1D]/20 hover:border-[#389C9A]/50 hover:text-[#389C9A]"}`}>
+                        className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest italic border transition-colors ${businessForm.campaignTypes.includes(c) ? "bg-[#1D1D1D] border-[#1D1D1D] text-white" : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]/50"}`}>
                         {c}
                       </button>
                     ))}
@@ -446,14 +478,14 @@ export function Profile() {
                 </section>
 
                 <section className="px-6 py-6 border-b border-[#1D1D1D]/10 space-y-3">
-                  <SectionLabel>Campaign Budget Range</SectionLabel>
+                  <SectionLabel accent="yellow">Campaign Budget Range</SectionLabel>
                   <p className="text-[9px] text-[#1D1D1D]/40 font-bold uppercase italic -mt-2">Per creator / per campaign</p>
                   <div className="flex flex-col gap-2">
                     {BUDGET_OPTIONS.map((opt) => (
                       <button key={opt} type="button" onClick={() => setBusinessForm((f) => ({ ...f, budgetRange: opt }))}
-                        className={`flex items-center justify-between px-4 py-3 border text-[10px] font-black uppercase tracking-widest italic transition-colors ${businessForm.budgetRange === opt ? "border-[#1D1D1D] bg-[#1D1D1D] text-white" : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]/50"}`}>
+                        className={`flex items-center justify-between px-4 py-3 border text-[10px] font-black uppercase tracking-widest italic transition-colors ${businessForm.budgetRange === opt ? "border-[#FEDB71] bg-[#FEDB71]/20 text-[#1D1D1D]" : "border-[#1D1D1D]/20 hover:border-[#FEDB71]/60"}`}>
                         {opt}
-                        {businessForm.budgetRange === opt && <CheckCircle2 className="w-3.5 h-3.5" />}
+                        {businessForm.budgetRange === opt && <CheckCircle2 className="w-3.5 h-3.5 text-[#D4A800]" />}
                       </button>
                     ))}
                   </div>
@@ -461,9 +493,10 @@ export function Profile() {
 
               </motion.div>
             )}
+
           </AnimatePresence>
 
-          {/* Submit */}
+          {/* ── Submit ─────────────────────────────────────── */}
           <div className="px-6 py-8 space-y-3">
             {errors.submit && (
               <p className="text-[9px] font-bold uppercase italic text-red-500 border border-red-200 bg-red-50 px-4 py-3">{errors.submit}</p>
@@ -471,14 +504,14 @@ export function Profile() {
             <AnimatePresence>
               {saveSuccess && (
                 <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                  className="flex items-center gap-2 px-4 py-3 bg-[#389C9A]/10 border border-[#389C9A]">
-                  <CheckCircle2 className="w-4 h-4 text-[#389C9A]" />
-                  <span className="text-[9px] font-black uppercase tracking-widest italic text-[#389C9A]">Profile saved!</span>
+                  className={`flex items-center gap-2 px-4 py-3 border ${profileType === "creator" ? "bg-[#389C9A]/10 border-[#389C9A]" : "bg-[#FEDB71]/20 border-[#D4A800]"}`}>
+                  <CheckCircle2 className={`w-4 h-4 ${profileType === "creator" ? "text-[#389C9A]" : "text-[#D4A800]"}`} />
+                  <span className={`text-[9px] font-black uppercase tracking-widest italic ${profileType === "creator" ? "text-[#389C9A]" : "text-[#D4A800]"}`}>Profile saved!</span>
                 </motion.div>
               )}
             </AnimatePresence>
             <button type="submit" disabled={saving}
-              className="w-full flex items-center justify-center gap-2 bg-[#1D1D1D] text-white py-4 text-[11px] font-black uppercase tracking-widest italic hover:bg-[#389C9A] transition-colors disabled:opacity-50">
+              className={`w-full flex items-center justify-center gap-2 text-white py-4 text-[11px] font-black uppercase tracking-widest italic transition-colors disabled:opacity-50 ${profileType === "creator" ? "bg-[#1D1D1D] hover:bg-[#389C9A]" : "bg-[#1D1D1D] hover:bg-[#D4A800]"}`}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {saving ? "Saving..." : "Save Profile"}
             </button>
@@ -495,8 +528,15 @@ export function Profile() {
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic mb-3">{children}</p>;
+/* ── Helpers ─────────────────────────────────────────────── */
+
+function SectionLabel({ children, accent }: { children: React.ReactNode; accent: "teal" | "yellow" }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <span className={`w-1 h-3 ${accent === "teal" ? "bg-[#389C9A]" : "bg-[#FEDB71]"}`} />
+      <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic">{children}</p>
+    </div>
+  );
 }
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
