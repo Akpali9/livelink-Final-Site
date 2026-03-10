@@ -3,6 +3,7 @@ import { Dashboard } from './screens/dashboard';
 import { LoginPortal } from '../app/screens/login-portal';
 import { Settings } from './screens/settings';
 import { ProtectedRoute } from '../app/components/ProtectedRoute';
+import { Offers } from "./screens/offers";
 
 export const router = createBrowserRouter([
   {
@@ -18,6 +19,14 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <Dashboard />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: "/offers",
+    element: (
+      <ProtectedRoute>
+        <Offers />
       </ProtectedRoute>
     ),
   },
