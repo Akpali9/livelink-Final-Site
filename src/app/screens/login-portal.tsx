@@ -210,7 +210,6 @@ export function LoginPortal() {
               </div>
               <div>
                 <p className="text-[11px] font-black uppercase tracking-widest mb-0.5">Register Business</p>
-                <p><a href="{{ .ConfirmationURL }}">Reset Password</a></p>
                 <p className="text-[9px] font-medium text-[#1D1D1D]/40 uppercase tracking-widest italic">Sponsor live streamers</p>
               </div>
             </div>
@@ -219,6 +218,7 @@ export function LoginPortal() {
         </div>
 
         <div className="mt-12 text-center">
+          <p><a href="{{ .ConfirmationURL }}">Reset Password</a></p>
           <Link to="/" className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/30 hover:text-[#1D1D1D] transition-colors italic">
             ← Back to Home
           </Link>
