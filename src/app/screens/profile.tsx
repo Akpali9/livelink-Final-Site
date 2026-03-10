@@ -229,60 +229,58 @@ export function Profile() {
       <main className="max-w-[480px] mx-auto w-full">
         <form onSubmit={handleSave} noValidate>
 
-          {/* ── Profile Type Toggle (locked once profile exists) ── */}
+          {/* Profile Type Toggle */}
           <section className="px-6 pt-6 pb-5 border-b border-[#1D1D1D]/10">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic">I am a</p>
-              {hasExistingProfile && (
-                <span className="text-[8px] font-black uppercase tracking-widest italic text-[#1D1D1D]/30 border border-[#1D1D1D]/15 px-2 py-1">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic mb-3">I am a</p>
+
+            {/* New profile: show both options */}
+            {!hasExistingProfile && (
+              <div className="grid grid-cols-2 gap-2">
+                {(["creator", "business"] as ProfileType[]).map((type) => {
+                  const Icon = type === "creator" ? Zap : Briefcase;
+                  const isActive = profileType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => { setProfileType(type); setErrors({}); }}
+                      className={`relative flex flex-col items-center gap-2 px-4 py-4 border-2 transition-all duration-200 ${
+                        isActive
+                          ? type === "creator" ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#FEDB71] bg-[#FEDB71]/10"
+                          : "border-[#1D1D1D]/15 hover:border-[#1D1D1D]/30"
+                      }`}
+                    >
+                      <Icon className={`w-5 h-5 transition-colors ${isActive ? type === "creator" ? "text-[#389C9A]" : "text-[#D4A800]" : "text-[#1D1D1D]/30"}`} />
+                      <span className={`text-[10px] font-black uppercase tracking-widest italic transition-colors ${isActive ? "text-[#1D1D1D]" : "text-[#1D1D1D]/40"}`}>
+                        {type === "creator" ? "Creator" : "Business"}
+                      </span>
+                      {isActive && (
+                        <motion.div
+                          layoutId="type-indicator"
+                          className={`absolute bottom-0 left-0 right-0 h-0.5 ${type === "creator" ? "bg-[#389C9A]" : "bg-[#FEDB71]"}`}
+                          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Existing profile: show only the active type as a badge */}
+            {hasExistingProfile && (
+              <div className={`flex items-center gap-3 px-4 py-3 border-2 w-full ${profileType === "creator" ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#FEDB71] bg-[#FEDB71]/10"}`}>
+                {profileType === "creator"
+                  ? <Zap className="w-4 h-4 text-[#389C9A]" />
+                  : <Briefcase className="w-4 h-4 text-[#D4A800]" />
+                }
+                <span className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]">
+                  {profileType === "creator" ? "Creator" : "Business"}
+                </span>
+                <span className="ml-auto text-[8px] font-black uppercase tracking-widest italic text-[#1D1D1D]/30">
                   Locked
                 </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {(["creator", "business"] as ProfileType[]).map((type) => {
-                const Icon = type === "creator" ? Zap : Briefcase;
-                const isActive = profileType === type;
-                const isLocked = hasExistingProfile && !isActive;
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    disabled={isLocked}
-                    onClick={() => { if (!hasExistingProfile) { setProfileType(type); setErrors({}); } }}
-                    className={`relative flex flex-col items-center gap-2 px-4 py-4 border-2 transition-all duration-200 ${
-                      isActive
-                        ? type === "creator"
-                          ? "border-[#389C9A] bg-[#389C9A]/5"
-                          : "border-[#FEDB71] bg-[#FEDB71]/10"
-                        : isLocked
-                          ? "border-[#1D1D1D]/8 opacity-30 cursor-not-allowed"
-                          : "border-[#1D1D1D]/15 hover:border-[#1D1D1D]/30"
-                    }`}
-                  >
-                    <Icon className={`w-5 h-5 transition-colors ${
-                      isActive
-                        ? type === "creator" ? "text-[#389C9A]" : "text-[#D4A800]"
-                        : "text-[#1D1D1D]/30"
-                    }`} />
-                    <span className={`text-[10px] font-black uppercase tracking-widest italic transition-colors ${isActive ? "text-[#1D1D1D]" : "text-[#1D1D1D]/40"}`}>
-                      {type === "creator" ? "Creator" : "Business"}
-                    </span>
-                    {isActive && (
-                      <motion.div
-                        layoutId="type-indicator"
-                        className={`absolute bottom-0 left-0 right-0 h-0.5 ${type === "creator" ? "bg-[#389C9A]" : "bg-[#FEDB71]"}`}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {hasExistingProfile && (
-              <p className="text-[8px] text-[#1D1D1D]/30 font-bold uppercase italic mt-2">
-                Profile type cannot be changed after creation
-              </p>
+              </div>
             )}
           </section>
 
