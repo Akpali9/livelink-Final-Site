@@ -69,7 +69,24 @@ export function Profile() {
         supabase.from("businesses").select("*").eq("user_id", session.user.id).single(),
       ]);
 
-      if (creator) {
+      // business takes priority — if a businesses row exists, this is a business account
+      // a creator row only counts if it has a name (not a leftover empty row)
+      if (business) {
+        setProfileType("business");
+        setHasExistingProfile(true);
+        setBusinessForm({
+          companyName: business.company_name || "",
+          contactName: business.contact_name || "",
+          website: business.website || "",
+          bio: business.bio || "",
+          location: business.location || "",
+          logo: business.logo || "",
+          industries: business.industries || [],
+          campaignTypes: business.campaign_types || [],
+          budgetRange: business.budget_range || "",
+          verified: business.verified || false,
+        });
+      } else if (creator && creator.name) {
         setProfileType("creator");
         setHasExistingProfile(true);
         setCreatorForm({
@@ -87,21 +104,6 @@ export function Profile() {
             followers: creator.stats?.followers || "",
             totalStreams: creator.stats?.totalStreams || "",
           },
-        });
-      } else if (business) {
-        setProfileType("business");
-        setHasExistingProfile(true);
-        setBusinessForm({
-          companyName: business.company_name || "",
-          contactName: business.contact_name || "",
-          website: business.website || "",
-          bio: business.bio || "",
-          location: business.location || "",
-          logo: business.logo || "",
-          industries: business.industries || [],
-          campaignTypes: business.campaign_types || [],
-          budgetRange: business.budget_range || "",
-          verified: business.verified || false,
         });
       }
       setLoading(false);
