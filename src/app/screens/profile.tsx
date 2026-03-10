@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
-import { MapPin, Loader2, Zap, Briefcase, ExternalLink, Users, Eye, Video, CheckCircle2 } from "lucide-react";
+import { MapPin, Loader2, Zap, Briefcase, ExternalLink, Users, Eye, Video, CheckCircle2, Edit2 } from "lucide-react";
 import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
@@ -10,11 +10,9 @@ export function Profile() {
   const { id } = useParams();
 
   const [loading, setLoading] = useState(true);
+  const [isOwn, setIsOwn] = useState(false);
   const [profileType, setProfileType] = useState<"creator" | "business" | null>(null);
-
-  // Creator data
   const [creator, setCreator] = useState<any>(null);
-  // Business data
   const [business, setBusiness] = useState<any>(null);
 
   useEffect(() => {
@@ -23,15 +21,11 @@ export function Profile() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) { navigate("/"); return; }
 
-      // "me" = own profile
       const targetUserId = id === "me" ? session.user.id : id;
+      setIsOwn(targetUserId === session.user.id);
 
-      // Check businesses first
       const { data: biz } = await supabase
-        .from("businesses")
-        .select("*")
-        .eq("user_id", targetUserId)
-        .maybeSingle();
+        .from("businesses").select("*").eq("user_id", targetUserId).maybeSingle();
 
       if (biz) {
         setProfileType("business");
@@ -40,14 +34,10 @@ export function Profile() {
         return;
       }
 
-      // Fall back to creators
       const { data: cre } = await supabase
-        .from("creators")
-        .select("*")
-        .eq("user_id", targetUserId)
-        .maybeSingle();
+        .from("creators").select("*").eq("user_id", targetUserId).maybeSingle();
 
-      if (cre && cre.name) {
+      if (cre) {
         setProfileType("creator");
         setCreator(cre);
       }
@@ -73,7 +63,6 @@ export function Profile() {
             <span className="text-2xl opacity-20">?</span>
           </div>
           <p className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">No profile found</p>
-
         </div>
         <BottomNav />
       </div>
@@ -89,11 +78,12 @@ export function Profile() {
 
       <main className="max-w-[480px] mx-auto w-full">
 
-        {/* ── Hero ──────────────────────────────────────────── */}
+        {/* ── Hero ─────────────────────────────────────────── */}
         <section className="px-6 pt-8 pb-6 border-b border-[#1D1D1D]/10">
           <div className="flex items-start gap-5">
+
             {/* Avatar / Logo */}
-            <div className={`w-20 h-20 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center flex-shrink-0`}>
+            <div className="w-20 h-20 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center flex-shrink-0">
               {(profileType === "creator" ? creator?.avatar : business?.logo) ? (
                 <img
                   src={profileType === "creator" ? creator.avatar : business.logo}
@@ -116,7 +106,7 @@ export function Profile() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-lg font-black uppercase tracking-tight italic truncate">
-                  {profileType === "creator" ? creator?.name : business?.company_name}
+                  {profileType === "creator" ? (creator?.name || "Creator") : (business?.company_name || "Business")}
                 </h1>
                 {(creator?.verified || business?.verified) && (
                   <CheckCircle2 className="w-4 h-4 text-[#389C9A] flex-shrink-0" />
@@ -134,10 +124,7 @@ export function Profile() {
               <div className={`inline-flex items-center gap-1.5 px-2 py-1 text-[8px] font-black uppercase tracking-widest italic ${
                 profileType === "creator" ? "bg-[#389C9A]/10 text-[#389C9A]" : "bg-[#FEDB71]/20 text-[#D4A800]"
               }`}>
-                {profileType === "creator"
-                  ? <Zap className="w-2.5 h-2.5" />
-                  : <Briefcase className="w-2.5 h-2.5" />
-                }
+                {profileType === "creator" ? <Zap className="w-2.5 h-2.5" /> : <Briefcase className="w-2.5 h-2.5" />}
                 {profileType === "creator" ? "Creator" : "Business"}
               </div>
             </div>
@@ -155,7 +142,7 @@ export function Profile() {
 
           {/* Bio */}
           {(creator?.bio || business?.bio) && (
-            <p className="mt-3 text-[11px] leading-relaxed text-[#1D1D1D]/70">
+            <p className="mt-3 text-[12px] leading-relaxed text-[#1D1D1D]/70">
               {profileType === "creator" ? creator.bio : business.bio}
             </p>
           )}
@@ -173,10 +160,23 @@ export function Profile() {
             </a>
           )}
 
-
+          {/* Edit button — only on own profile */}
+          {isOwn && (
+            <button
+              onClick={() => navigate(profileType === "business" ? "/business/profile/edit" : "/profile/edit")}
+              className={`mt-5 w-full flex items-center justify-center gap-2 py-3 border-2 text-[10px] font-black uppercase tracking-widest italic transition-colors ${
+                profileType === "creator"
+                  ? "border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white"
+                  : "border-[#D4A800] text-[#D4A800] hover:bg-[#D4A800] hover:text-white"
+              }`}
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              Edit Profile
+            </button>
+          )}
         </section>
 
-        {/* ── CREATOR SECTIONS ──────────────────────────────── */}
+        {/* ── CREATOR SECTIONS ─────────────────────────────── */}
         {profileType === "creator" && (
           <>
             {/* Availability */}
@@ -187,8 +187,8 @@ export function Profile() {
                   creator.availability === "Available for campaigns"
                     ? "border-[#389C9A]/30 bg-[#389C9A]/5 text-[#389C9A]"
                     : creator.availability === "Limited availability"
-                      ? "border-[#FEDB71]/50 bg-[#FEDB71]/10 text-[#D4A800]"
-                      : "border-[#1D1D1D]/10 text-[#1D1D1D]/40"
+                    ? "border-[#FEDB71]/50 bg-[#FEDB71]/10 text-[#D4A800]"
+                    : "border-[#1D1D1D]/10 text-[#1D1D1D]/40"
                 }`}>
                   <span className={`w-2 h-2 flex-shrink-0 rounded-full ${
                     creator.availability === "Available for campaigns" ? "bg-[#389C9A]"
@@ -249,10 +249,9 @@ export function Profile() {
           </>
         )}
 
-        {/* ── BUSINESS SECTIONS ─────────────────────────────── */}
+        {/* ── BUSINESS SECTIONS ────────────────────────────── */}
         {profileType === "business" && (
           <>
-            {/* Industries */}
             {business?.industries?.length > 0 && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Industry</Label>
@@ -266,7 +265,6 @@ export function Profile() {
               </section>
             )}
 
-            {/* Campaign Types */}
             {business?.campaign_types?.length > 0 && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Campaign Types</Label>
@@ -280,7 +278,6 @@ export function Profile() {
               </section>
             )}
 
-            {/* Budget */}
             {business?.budget_range && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Campaign Budget</Label>
@@ -298,12 +295,8 @@ export function Profile() {
   );
 }
 
-/* ── Helpers ─────────────────────────────────────────────── */
-
 function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic mb-3">{children}</p>
-  );
+  return <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 italic mb-3">{children}</p>;
 }
 
 function StatCard({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
