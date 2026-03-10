@@ -218,8 +218,7 @@ export function LoginPortal() {
         </div>
 
         <div className="mt-12 text-center">
-          <p><a href="{{ .ConfirmationURL }}">Reset Password</a></p>
-          <Link to="/" className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/30 hover:text-[#1D1D1D] transition-colors italic">
+                   <Link to="/" className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/30 hover:text-[#1D1D1D] transition-colors italic">
             ← Back to Home
           </Link>
         </div>
