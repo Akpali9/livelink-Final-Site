@@ -44,7 +44,7 @@ export function EditProfile() {
         .maybeSingle();
 
       if (business) {
-        navigate("/business/profile/edit", { replace: true });
+        navigate("/business/profile", { replace: true });
         return;
       }
 
