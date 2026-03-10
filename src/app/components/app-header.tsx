@@ -1,35 +1,23 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router";
 import { 
-  MessageSquare, 
-  Bell, 
-  User, 
-  ArrowLeft, 
-  Settings, 
-  LogOut,
-  Home,
-  CheckCircle,
-  AlertCircle,
-  Calendar,
-  DollarSign,
-  Users,
-  Briefcase,
-  X,
-  Mail,
-  Send
+  MessageSquare, Bell, User, ArrowLeft, Settings, LogOut,
+  Home, CheckCircle, AlertCircle, Calendar, DollarSign,
+  Briefcase, Mail, Send
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
 import { ImageWithFallback } from "./ImageWithFallback";
+import { useProfileType } from "../hooks/useProfileType";
 
 interface AppHeaderProps {
   title?: string;
   showBack?: boolean;
   backPath?: string;
   showLogo?: boolean;
-  userType?: "creator" | "business";
+  userType?: "creator" | "business"; // optional override
   subtitle?: string;
   showHome?: boolean;
 }
@@ -56,17 +44,17 @@ interface Message {
 }
 
 export function AppHeader({ 
-  title, 
-  showBack = false, 
-  backPath, 
-  showLogo = false,
-  userType = "creator",
-  subtitle,
-  showHome = false
+  title, showBack = false, backPath, showLogo = false,
+  userType: userTypeProp, subtitle, showHome = false
 }: AppHeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
+
+  // Auto-detect profile type from DB; prop overrides if provided
+  const { profileType: detectedType } = useProfileType();
+  const userType = userTypeProp ?? detectedType ?? "creator";
+
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
@@ -99,33 +87,23 @@ export function AppHeader({
       setLoading(true);
       try {
         const { count: notifCount, error: notifError } = await supabase
-          .from('notifications')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('is_read', false);
+          .from('notifications').select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id).eq('is_read', false);
         if (!notifError) setUnreadNotifications(notifCount || 0);
 
         const { data: notifData, error: notifDataError } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(5);
+          .from('notifications').select('*').eq('user_id', user.id)
+          .order('created_at', { ascending: false }).limit(5);
         if (!notifDataError && notifData) setNotifications(notifData);
 
         const { count: msgCount, error: msgError } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('receiver_id', user.id)
-          .eq('is_read', false);
+          .from('messages').select('*', { count: 'exact', head: true })
+          .eq('receiver_id', user.id).eq('is_read', false);
         if (!msgError) setUnreadMessages(msgCount || 0);
 
         const { data: msgData, error: msgDataError } = await supabase
-          .from('messages')
-          .select(`*, sender:sender_id (id, email, user_metadata)`)
-          .eq('receiver_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(5);
+          .from('messages').select(`*, sender:sender_id (id, email, user_metadata)`)
+          .eq('receiver_id', user.id).order('created_at', { ascending: false }).limit(5);
 
         if (!msgDataError && msgData) {
           setRecentMessages(msgData.map(msg => ({
@@ -172,17 +150,10 @@ export function AppHeader({
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` },
         async (payload) => {
           setUnreadMessages(prev => prev + 1);
-
-          // ✅ .maybeSingle() — returns null instead of 406 when sender row not found
           const { data: senderData } = await supabase
-            .from('users')
-            .select('email, user_metadata')
-            .eq('id', payload.new.sender_id)
-            .maybeSingle();
-
+            .from('users').select('email, user_metadata').eq('id', payload.new.sender_id).maybeSingle();
           const senderName = senderData?.user_metadata?.full_name || senderData?.email?.split('@')[0] || 'Unknown';
           setRecentMessages(prev => [{ ...payload.new, sender_name: senderName, sender_avatar: senderData?.user_metadata?.avatar_url ?? null }, ...prev].slice(0, 5));
-
           toast.info(`New message from ${senderName}`, {
             description: payload.new.content.substring(0, 50) + (payload.new.content.length > 50 ? '...' : ''),
             icon: '💬',
@@ -261,16 +232,17 @@ export function AppHeader({
     return date.toLocaleDateString();
   };
 
-  const settingsPath      = userType === "business" ? "/business/settings"        : "/settings";
-  const profilePath       = userType === "business" ? "/business/profile"         : "/profile/me";
-  const messagesPath      = userType === "business" ? "/messages?role=business"   : "/messages?role=creator";
-  const notificationsPath = userType === "business" ? "/notifications?role=business" : "/notifications?role=creator";
-  const dashboardPath     = userType === "business" ? "/business/dashboard"       : "/dashboard";
+  // ── Routes based on detected type ─────────────────────────
+  const isBusiness        = userType === "business";
+  const settingsPath      = isBusiness ? "/business/settings"           : "/settings";
+  const profilePath       = isBusiness ? "/business/profile"            : "/profile/me";
+  const messagesPath      = isBusiness ? "/messages?role=business"      : "/messages?role=creator";
+  const notificationsPath = isBusiness ? "/notifications?role=business" : "/notifications?role=creator";
+  const dashboardPath     = isBusiness ? "/business/dashboard"          : "/dashboard";
 
   const isHome      = location.pathname === "/";
   const isMessages  = location.pathname.startsWith("/messages");
   const showActions = !isHome && !isMessages && isAuthenticated;
-  const isMobile    = windowWidth < 640;
 
   return (
     <header className="px-5 pt-10 pb-4 border-b border-[#1D1D1D]/10 sticky top-0 bg-white z-50">
@@ -303,7 +275,7 @@ export function AppHeader({
         <div className="flex items-center gap-3 relative">
           {showActions && (
             <>
-              {/* Messages Button */}
+              {/* Messages */}
               <div className="relative">
                 <button
                   onClick={() => { setShowMessages(!showMessages); setShowNotifications(false); setShowProfileMenu(false); }}
@@ -319,7 +291,7 @@ export function AppHeader({
                 </button>
               </div>
 
-              {/* Notifications Button */}
+              {/* Notifications */}
               <div className="relative">
                 <button
                   onClick={() => { setShowNotifications(!showNotifications); setShowMessages(false); setShowProfileMenu(false); }}
@@ -410,7 +382,7 @@ export function AppHeader({
                             <div className="p-8 text-center">
                               <div className="w-12 h-12 bg-[#F8F8F8] mx-auto mb-3 flex items-center justify-center border border-[#1D1D1D]/10"><Send className="w-5 h-5 opacity-20" /></div>
                               <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No messages yet</p>
-                              <p className="text-[8px] opacity-30 mt-1">Start a conversation with a business</p>
+                              <p className="text-[8px] opacity-30 mt-1">{isBusiness ? "Start a conversation with a creator" : "Start a conversation with a business"}</p>
                             </div>
                           ) : recentMessages.map(msg => (
                             <Link key={msg.id} to={`/messages/${msg.sender_id}`} onClick={() => { setShowMessages(false); if (!msg.is_read) markMessageAsRead(msg.id); }} className={`block p-4 border-b border-[#1D1D1D]/10 hover:bg-[#F8F8F8] transition-colors ${!msg.is_read ? 'bg-[#389C9A]/5' : ''}`}>
@@ -455,7 +427,7 @@ export function AppHeader({
               className="w-9 h-9 border-2 border-[#1D1D1D] flex items-center justify-center bg-white active:scale-95 transition-transform rounded-none overflow-hidden"
               aria-label="Profile menu"
             >
-              {userAvatar ? <img src={userAvatar} alt={userName} className="w-full h-full object-cover" /> : <User className="w-4.5 h-4.5" />}
+              {userAvatar ? <img src={userAvatar} alt={userName} className="w-full h-full object-cover" /> : <User className="w-4 h-4" />}
             </button>
 
             <AnimatePresence>
@@ -477,9 +449,10 @@ export function AppHeader({
                           <p className="text-[8px] font-medium opacity-40 truncate">{user?.email}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest">
-                        <CheckCircle className="w-3 h-3 text-[#389C9A]" />
-                        <span>{userType === 'business' ? 'Business' : 'Creator'}</span>
+                      {/* Badge showing correct type */}
+                      <div className={`flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-2 py-1 w-fit ${isBusiness ? "bg-[#FEDB71]/20 text-[#D4A800]" : "bg-[#389C9A]/10 text-[#389C9A]"}`}>
+                        {isBusiness ? <Briefcase className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
+                        <span>{isBusiness ? "Business" : "Creator"}</span>
                       </div>
                     </div>
                     <div className="p-2">
@@ -489,7 +462,7 @@ export function AppHeader({
                       <Link to={settingsPath} onClick={() => setShowProfileMenu(false)} className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white flex items-center gap-3 transition-colors rounded-none">
                         <Settings className="w-3.5 h-3.5 text-[#389C9A]" /> Settings
                       </Link>
-                      {userType === 'business' ? (
+                      {isBusiness ? (
                         <Link to="/business/dashboard" onClick={() => setShowProfileMenu(false)} className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white flex items-center gap-3 transition-colors rounded-none">
                           <Briefcase className="w-3.5 h-3.5 text-[#389C9A]" /> Dashboard
                         </Link>
