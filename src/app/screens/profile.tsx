@@ -33,7 +33,7 @@ export function Profile() {
         .from("businesses")
         .select("*")
         .eq("user_id", targetUserId)
-        .single();
+        .maybeSingle();
 
       if (biz) {
         setProfileType("business");
@@ -47,7 +47,7 @@ export function Profile() {
         .from("creators")
         .select("*")
         .eq("user_id", targetUserId)
-        .single();
+        .maybeSingle();
 
       if (cre && cre.name) {
         setProfileType("creator");
