@@ -41,7 +41,7 @@ export function EditProfile() {
         .from("businesses")
         .select("id")
         .eq("user_id", session.user.id)
-        .single();
+        .maybeSingle();
 
       if (business) {
         navigate("/business/profile/edit", { replace: true });
@@ -53,7 +53,7 @@ export function EditProfile() {
         .from("creators")
         .select("*")
         .eq("user_id", session.user.id)
-        .single();
+        .maybeSingle();
 
       if (creator) {
         setForm({
