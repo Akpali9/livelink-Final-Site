@@ -163,7 +163,7 @@ export function Profile() {
           {/* Edit button — only on own profile */}
           {isOwn && (
             <button
-              onClick={() => navigate(profileType === "business" ? "/profile/edit" : "/profile/edit")}
+              onClick={() => navigate("/profile/edit")}
               className={`mt-5 w-full flex items-center justify-center gap-2 py-3 border-2 text-[10px] font-black uppercase tracking-widest italic transition-colors ${
                 profileType === "creator"
                   ? "border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white"
