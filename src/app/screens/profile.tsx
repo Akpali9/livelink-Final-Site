@@ -129,7 +129,7 @@ export function Profile() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
 
-    let payload: any = { id: session.user.id, user_id: session.user.id, email: session.user.email, profile_type: profileType, updated_at: new Date().toISOString() };
+    let payload: any = { user_id: session.user.id, email: session.user.email, profile_type: profileType, updated_at: new Date().toISOString() };
 
     if (profileType === "creator") {
       payload = { ...payload, name: creatorForm.name, username: creatorForm.username.toLowerCase(), bio: creatorForm.bio, location: creatorForm.location, availability: creatorForm.availability, avatar: creatorForm.avatar, platforms: creatorForm.platforms.map((p) => ({ name: p })), niches: creatorForm.niches, verified: creatorForm.verified, stats: creatorForm.stats };
