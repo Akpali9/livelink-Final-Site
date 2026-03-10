@@ -140,10 +140,8 @@ export function Profile() {
     let error;
     const { error } = await supabase
   .from("creators")
-  .upsert(
-    { ...payload, id: session.user.id },
-    { onConflict: "id", ignoreDuplicates: false }
-  );
+  .upsert(payload, { onConflict: "user_id", ignoreDuplicates: false });
+    );
     if (creatorId) {
       ({ error } = await supabase.from("creators").update(payload).eq("id", creatorId));
     } else {
