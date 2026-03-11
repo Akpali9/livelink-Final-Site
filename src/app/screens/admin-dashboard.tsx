@@ -338,6 +338,18 @@ export function AdminDashboard() {
   }, [adminId]);
 
   useEffect(() => {
+    // Realtime revenue updates
+    const revCh = supabase.channel('admin-revenue')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaign_payout_cycles' }, async () => {
+        const [{ data: all }, { data: pending }] = await Promise.all([
+          supabase.from('campaign_payout_cycles').select('amount'),
+          supabase.from('campaign_payout_cycles').select('amount').eq('status', 'pending'),
+        ]);
+        const totalRevenue = all?.reduce((sum: number, r: any) => sum + (parseFloat(r.amount) || 0), 0) || 0;
+        const pendingPayouts = pending?.reduce((sum: number, r: any) => sum + (parseFloat(r.amount) || 0), 0) || 0;
+        setStats(s => ({ ...s, totalRevenue, pendingPayouts }));
+      }).subscribe();
+
     const ch = supabase.channel('admin-apps')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'creators' }, () => {
         setStats(s => ({ ...s, totalCreators: s.totalCreators + 1, pendingCreators: s.pendingCreators + 1 }));
@@ -347,7 +359,7 @@ export function AdminDashboard() {
         setStats(s => ({ ...s, totalBusinesses: s.totalBusinesses + 1, pendingBusinesses: s.pendingBusinesses + 1 }));
         toast.info('New business application');
       }).subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => { supabase.removeChannel(revCh); supabase.removeChannel(ch); };
   }, []);
 
   const init = async () => {
@@ -370,6 +382,8 @@ export function AdminDashboard() {
         { count: tb }, { count: pb }, { count: ab },
         { count: tcamp }, { count: acamp },
         { data: activity },
+        { data: allPayouts },
+        { data: pendingPayoutRows },
       ] = await Promise.all([
         supabase.from('creators').select('*', { count: 'exact', head: true }),
         supabase.from('creators').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
@@ -380,11 +394,16 @@ export function AdminDashboard() {
         supabase.from('campaigns').select('*', { count: 'exact', head: true }),
         supabase.from('campaigns').select('*', { count: 'exact', head: true }).eq('status', 'active'),
         supabase.from('admin_activity_log').select('*').order('created_at', { ascending: false }).limit(20),
+        supabase.from('campaign_payout_cycles').select('amount'),
+        supabase.from('campaign_payout_cycles').select('amount').eq('status', 'pending'),
       ]);
+      const totalRevenue = allPayouts?.reduce((sum: number, r: any) => sum + (parseFloat(r.amount) || 0), 0) || 0;
+      const pendingPayouts = pendingPayoutRows?.reduce((sum: number, r: any) => sum + (parseFloat(r.amount) || 0), 0) || 0;
       setStats(s => ({
         ...s, totalCreators: tc || 0, pendingCreators: pc || 0, approvedCreators: ac || 0,
         totalBusinesses: tb || 0, pendingBusinesses: pb || 0, approvedBusinesses: ab || 0,
         totalCampaigns: tcamp || 0, activeCampaigns: acamp || 0,
+        totalRevenue, pendingPayouts,
       }));
       setRecentActivity(activity || []);
     } catch (e) { console.error(e); }
