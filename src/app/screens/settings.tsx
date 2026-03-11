@@ -991,6 +991,7 @@ export function Settings() {
 
     setSaving(true);
     try {
+      // Update notification preferences
       await supabase
         .from("creator_profiles")
         .update({
@@ -1096,11 +1097,11 @@ export function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-24 max-w-md mx-auto relative">
+    <div className="min-h-screen bg-white pb-32 max-w-md mx-auto relative">
       <AppHeader showBack title="Settings" userType="creator" />
 
       {/* MAIN CONTENT */}
-      <div className="mt-14 px-4 py-6 space-y-8">
+      <div className="mt-14 px-4 py-6 space-y-8 pb-20">
         
         {/* SECTION 1: ACCOUNT */}
         <div>
@@ -2580,25 +2581,6 @@ export function Settings() {
                 REQUEST ACCOUNT DELETION
               </button>
             </div>
-              <div className=" bg-white border-t border-[#1D1D1D]/10 ">
-        <button
-          onClick={handleSaveAll}
-          disabled={saving}
-          className="w-full bg-[#1D1D1D] text-white py-4 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              SAVING...
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="w-5 h-5 text-[#FEDB71]" />
-              SAVE ALL CHANGES
-            </>
-          )}
-        </button>
-      </div>
           </div>
         </div>
 
@@ -2658,13 +2640,30 @@ export function Settings() {
               Log out
             </button>
           </p>
-         
-
         </div>
       </div>
 
-      {/* Sticky Save Button */}
-     
+      {/* STICKY SAVE BUTTON - Fixed at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-[#1D1D1D]/10 z-50 max-w-md mx-auto">
+        <button
+          onClick={handleSaveAll}
+          disabled={saving}
+          className="w-full bg-[#1D1D1D] text-white py-4 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {saving ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              SAVING...
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="w-5 h-5 text-[#FEDB71]" />
+              SAVE ALL CHANGES
+            </>
+          )}
+        </button>
+      </div>
+
       {/* PAUSE ACCOUNT MODAL */}
       <AnimatePresence>
         {showPauseModal && (
