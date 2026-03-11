@@ -2639,7 +2639,7 @@ export function Settings() {
               Log out
             </button>
           </p>
-           <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-[#1D1D1D]/10 z-40">
+           <div className=" bg-white border-t border-[#1D1D1D]/10 ">
         <button
           onClick={handleSaveAll}
           disabled={saving}
