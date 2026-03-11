@@ -675,9 +675,9 @@ export function BusinessProfile() {
               </label>
               <div className="relative">
                 <select
-                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none appearance-none cursor-pointer rounded-xl pr-12"
                   value={formData.industry}
                   onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none appearance-none cursor-pointer rounded-xl pr-12"
                 >
                   {industryOptions.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -768,7 +768,7 @@ export function BusinessProfile() {
                       <select
                         value={link.platform}
                         onChange={(e) => updateSocialLink(i, 'platform', e.target.value)}
-                        className="absolute left-12 top-1/2 -translate-y-1/2 bg-transparent text-[8px] font-black uppercase tracking-widest outline-none"
+                        className="absolute left-12 top-1/2 -translate-y-1/2 bg-transparent text-[8px] font-black uppercase tracking-widest outline-none cursor-pointer"
                       >
                         <option value="instagram">Instagram</option>
                         <option value="twitter">Twitter</option>
@@ -798,7 +798,7 @@ export function BusinessProfile() {
                 </AnimatePresence>
               </div>
               <button
-                onClick={addSocialLink}
+                onClick={() => setSocialLinks([...socialLinks, { platform: "instagram", url: "" }])}
                 className="flex items-center justify-center gap-2 border-2 border-[#1D1D1D] p-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl italic"
               >
                 <Plus className="w-4 h-4 text-[#389C9A]" /> Add Social Link
@@ -987,10 +987,6 @@ export function BusinessProfile() {
   );
 
   // Helper functions for social links
-  function addSocialLink() {
-    setSocialLinks([...socialLinks, { platform: "other", url: "" }]);
-  }
-
   function updateSocialLink(index: number, field: 'platform' | 'url', value: string) {
     const newLinks = [...socialLinks];
     newLinks[index][field] = value;
