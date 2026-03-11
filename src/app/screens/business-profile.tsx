@@ -25,7 +25,8 @@ import {
   Upload,
   FileText,
   Download,
-  Eye
+  Eye,
+  Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AppHeader } from "../components/app-header";
@@ -85,6 +86,8 @@ export function BusinessProfile() {
   const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'unverified' | 'rejected'>('unverified');
   const [verificationDocuments, setVerificationDocuments] = useState<VerificationDocument[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
   
   // Track unsaved changes
@@ -124,6 +127,16 @@ export function BusinessProfile() {
     const socialChanged = JSON.stringify(socialLinks) !== JSON.stringify(initialSocialLinks);
     setHasChanges(formChanged || socialChanged);
   }, [formData, socialLinks, initialFormData, initialSocialLinks]);
+
+  // Auto-hide upload success message after 5 seconds
+  useEffect(() => {
+    if (uploadSuccess) {
+      const timer = setTimeout(() => {
+        setUploadSuccess(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [uploadSuccess]);
 
   // Fetch profile and documents from Supabase on mount
   useEffect(() => {
@@ -304,6 +317,14 @@ export function BusinessProfile() {
     }
 
     setUploading(true);
+    setUploadSuccess(false);
+
+    // Initialize progress for each file
+    const initialProgress: Record<string, number> = {};
+    for (let i = 0; i < files.length; i++) {
+      initialProgress[files[i].name] = 0;
+    }
+    setUploadProgress(initialProgress);
 
     try {
       // Get the business ID first
@@ -317,12 +338,16 @@ export function BusinessProfile() {
       if (!businessData) throw new Error("Business profile not found. Please save your profile first.");
 
       let uploadSuccess = false;
+      const uploadedFiles: string[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const fileExt = file.name.split('.').pop();
         const fileName = `${businessData.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `verification-docs/${fileName}`;
+
+        // Update progress for this file
+        setUploadProgress(prev => ({ ...prev, [file.name]: 30 }));
 
         // Upload file to storage
         const { error: uploadError } = await supabase.storage
@@ -335,8 +360,11 @@ export function BusinessProfile() {
         if (uploadError) {
           console.error("Upload error:", uploadError);
           toast.error(`Failed to upload ${file.name}: ${uploadError.message}`);
+          setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
           continue;
         }
+
+        setUploadProgress(prev => ({ ...prev, [file.name]: 70 }));
 
         // Get public URL
         const { data: urlData } = supabase.storage
@@ -359,9 +387,12 @@ export function BusinessProfile() {
         if (dbError) {
           console.error("Database error:", dbError);
           toast.error(`Failed to save ${file.name} record`);
+          setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
           continue;
         }
 
+        setUploadProgress(prev => ({ ...prev, [file.name]: 100 }));
+        uploadedFiles.push(file.name);
         uploadSuccess = true;
       }
 
@@ -376,7 +407,19 @@ export function BusinessProfile() {
           .eq("id", businessData.id);
 
         setVerificationStatus('pending');
-        toast.success(`${files.length} document(s) uploaded successfully`);
+        setUploadSuccess(true);
+        
+        // Show success message with file count
+        toast.success(
+          <div className="flex flex-col">
+            <span className="font-bold">{files.length} document(s) uploaded successfully!</span>
+            <span className="text-xs opacity-90">Pending admin review</span>
+          </div>, 
+          {
+            icon: <CheckCircle2 className="w-5 h-5 text-green-500" />,
+            duration: 5000
+          }
+        );
         
         // Refresh documents list
         const { data: docsData } = await supabase
@@ -401,8 +444,13 @@ export function BusinessProfile() {
     } catch (error: any) {
       console.error("Upload error:", error);
       toast.error(error.message || "Failed to upload documents");
+      setUploadSuccess(false);
     } finally {
       setUploading(false);
+      // Clear progress after a delay
+      setTimeout(() => {
+        setUploadProgress({});
+      }, 3000);
       // Clear the input
       event.target.value = '';
     }
@@ -436,6 +484,12 @@ export function BusinessProfile() {
       // Update local state
       setVerificationDocuments(prev => prev.filter(doc => doc.id !== documentId));
       
+      // Show deletion success
+      toast.success("Document deleted successfully", {
+        icon: <Trash2 className="w-4 h-4 text-red-500" />,
+        duration: 3000
+      });
+      
       // If no documents left, reset verification status
       if (verificationDocuments.length <= 1) {
         const { data: businessData } = await supabase
@@ -458,7 +512,6 @@ export function BusinessProfile() {
         }
       }
 
-      toast.success("Document deleted successfully");
     } catch (error: any) {
       console.error("Delete error:", error);
       toast.error(error.message || "Failed to delete document");
@@ -509,6 +562,13 @@ export function BusinessProfile() {
     });
   };
 
+  const getDocumentCount = () => {
+    const pending = verificationDocuments.filter(doc => doc.status === 'pending').length;
+    const approved = verificationDocuments.filter(doc => doc.status === 'approved').length;
+    const rejected = verificationDocuments.filter(doc => doc.status === 'rejected').length;
+    return { pending, approved, rejected, total: verificationDocuments.length };
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
@@ -522,6 +582,8 @@ export function BusinessProfile() {
       </div>
     );
   }
+
+  const docCount = getDocumentCount();
 
   return (
     <div className="flex flex-col min-h-screen bg-white pb-44 text-[#1D1D1D]">
@@ -576,8 +638,39 @@ export function BusinessProfile() {
         )}
       </AnimatePresence>
 
+      {/* Upload Success Banner */}
+      <AnimatePresence>
+        {uploadSuccess && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mx-8 mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-xl flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle2 className="w-4 h-4 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-green-800">Documents Uploaded Successfully!</p>
+                <p className="text-[10px] text-green-600 mt-0.5 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Pending admin review • {docCount.pending} document(s) waiting
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setUploadSuccess(false)}
+              className="p-1.5 hover:bg-green-200 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4 text-green-600" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Verification Status Banner */}
-      {verificationStatus !== 'verified' && verificationStatus !== 'unverified' && (
+      {verificationStatus !== 'verified' && verificationStatus !== 'unverified' && verificationStatus !== 'pending' && (
         <div className={`mx-8 mt-6 p-4 border-2 rounded-xl flex items-start gap-3 ${
           verificationStatus === 'rejected' 
             ? 'bg-red-50 border-red-200' 
@@ -590,16 +683,39 @@ export function BusinessProfile() {
             <p className={`text-sm font-black mb-1 ${
               verificationStatus === 'rejected' ? 'text-red-700' : 'text-amber-700'
             }`}>
-              {verificationStatus === 'rejected' ? 'Verification Rejected' : 'Verification Pending'}
+              {verificationStatus === 'rejected' ? 'Verification Rejected' : 'Verification Required'}
             </p>
             <p className={`text-xs ${
               verificationStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'
             }`}>
               {verificationStatus === 'rejected' 
                 ? `Your documents were rejected: ${rejectionReason || 'Please upload valid business documents'}`
-                : 'Your documents are under review. This usually takes 1-2 business days.'
+                : 'Complete your profile and upload verification documents to start creating campaigns.'
               }
             </p>
+          </div>
+        </div>
+      )}
+
+      {verificationStatus === 'pending' && (
+        <div className="mx-8 mt-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-start gap-3">
+          <Clock className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-black text-amber-700 mb-1">Verification in Progress</p>
+            <p className="text-xs text-amber-600">
+              Your documents are under review. This usually takes 1-2 business days.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="h-1.5 flex-1 bg-amber-200 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: "0%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: 2, repeat: Infinity, repeatType: "reverse" }}
+                  className="h-full bg-amber-500 rounded-full"
+                />
+              </div>
+              <span className="text-[8px] font-black text-amber-600">Reviewing</span>
+            </div>
           </div>
         </div>
       )}
@@ -923,11 +1039,34 @@ export function BusinessProfile() {
               {getOverallStatusBadge()}
             </div>
 
+            {/* Document Stats */}
+            {verificationDocuments.length > 0 && (
+              <div className="mb-4 grid grid-cols-3 gap-2">
+                <div className="bg-white p-3 rounded-xl border border-[#1D1D1D]/10 text-center">
+                  <p className="text-lg font-black text-[#389C9A]">{docCount.total}</p>
+                  <p className="text-[6px] font-black uppercase tracking-widest opacity-40">Total</p>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-[#1D1D1D]/10 text-center">
+                  <p className="text-lg font-black text-amber-500">{docCount.pending}</p>
+                  <p className="text-[6px] font-black uppercase tracking-widest opacity-40">Pending</p>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-[#1D1D1D]/10 text-center">
+                  <p className="text-lg font-black text-green-500">{docCount.approved}</p>
+                  <p className="text-[6px] font-black uppercase tracking-widest opacity-40">Approved</p>
+                </div>
+              </div>
+            )}
+
             {/* Document List */}
             {verificationDocuments.length > 0 && (
               <div className="mb-6 space-y-3">
                 {verificationDocuments.map((doc) => (
-                  <div key={doc.id} className="bg-white p-4 rounded-xl border border-[#1D1D1D]/10 flex items-start justify-between">
+                  <motion.div 
+                    key={doc.id} 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white p-4 rounded-xl border border-[#1D1D1D]/10 flex items-start justify-between"
+                  >
                     <div className="flex items-start gap-3">
                       <FileText className="w-5 h-5 text-[#389C9A] flex-shrink-0 mt-0.5" />
                       <div>
@@ -966,6 +1105,28 @@ export function BusinessProfile() {
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload Progress Indicators */}
+            {uploading && Object.keys(uploadProgress).length > 0 && (
+              <div className="mb-6 space-y-2">
+                <p className="text-[8px] font-black uppercase tracking-widest text-[#389C9A]">Uploading...</p>
+                {Object.entries(uploadProgress).map(([fileName, progress]) => (
+                  <div key={fileName} className="bg-white p-3 rounded-xl border border-[#1D1D1D]/10">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[8px] font-bold truncate max-w-[150px]">{fileName}</span>
+                      <span className="text-[8px] font-black text-[#389C9A]">{progress}%</span>
+                    </div>
+                    <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: "0%" }}
+                        animate={{ width: `${progress}%` }}
+                        className="h-full bg-[#389C9A] rounded-full"
+                      />
                     </div>
                   </div>
                 ))}
