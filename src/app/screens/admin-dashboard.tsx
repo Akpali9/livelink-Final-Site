@@ -126,36 +126,6 @@ interface MessageThread {
   last_message_sender: string;
 }
 
-interface Campaign {
-  id: string;
-  title: string;
-  description: string;
-  business_id: string;
-  business_name: string;
-  budget: number;
-  status: 'draft' | 'pending' | 'active' | 'paused' | 'completed' | 'cancelled';
-  start_date: string;
-  end_date: string;
-  created_at: string;
-  updated_at: string;
-  applications_count?: number;
-  approved_creators?: number;
-}
-
-interface Payout {
-  id: string;
-  campaign_id: string;
-  creator_id: string;
-  creator_name: string;
-  amount: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  payment_method?: string;
-  transaction_id?: string;
-  created_at: string;
-  processed_at?: string;
-  notes?: string;
-}
-
 // Custom Hooks
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -212,7 +182,6 @@ function AdminBusinessQueue() {
     if (!error) {
       toast.success('Business approved successfully');
       
-      // Log activity
       await supabase.from('admin_activity_log').insert({
         action: 'Approved business application',
         entity_type: 'business',
@@ -244,7 +213,6 @@ function AdminBusinessQueue() {
     if (!error) {
       toast.success('Business rejected');
       
-      // Send rejection notification
       await supabase.from('notifications').insert({
         user_id: businesses.find(b => b.id === id)?.user_id,
         type: 'application_rejected',
@@ -300,7 +268,7 @@ function AdminBusinessQueue() {
                   {business.company_name || 'Unnamed Business'}
                 </p>
                 <p className="text-[10px] text-white/40 font-mono mt-0.5">
-                  {business.contact_name} · {business.email}
+                  {business.contact_name || 'No contact'} · {business.email || 'No email'}
                 </p>
                 {business.industry && (
                   <span className="inline-block mt-2 px-2 py-0.5 bg-white/5 rounded text-[8px] text-white/40">
@@ -362,7 +330,7 @@ function AdminBusinessQueue() {
               </div>
 
               <p className="text-[11px] text-white/60 mb-3">
-                Rejecting <span className="text-white font-medium">{selectedBusiness.company_name}</span>
+                Rejecting <span className="text-white font-medium">{selectedBusiness.company_name || 'this business'}</span>
               </p>
 
               <textarea
@@ -417,15 +385,12 @@ function AdminMessages({ adminId }: { adminId: string }) {
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
   const typingChannel = useRef<any>(null);
 
-  // Debounced search
   const debouncedSearch = useDebounce(search, 300);
 
-  // Fetch threads
   useEffect(() => {
     fetchThreads();
   }, [debouncedSearch, filter]);
 
-  // Setup typing indicator channel
   useEffect(() => {
     typingChannel.current = supabase.channel('typing-indicators')
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -448,7 +413,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
     };
   }, [selectedThread]);
 
-  // Load messages when thread selected
   useEffect(() => {
     if (!selectedThread) return;
     
@@ -458,7 +422,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
     loadMessages(selectedThread.participant_id, 1);
     markThreadAsRead(selectedThread.participant_id);
 
-    // Subscribe to new messages
     const messageChannel = supabase.channel(`admin-msg-${selectedThread.participant_id}`)
       .on('postgres_changes', 
         { 
@@ -473,7 +436,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
             setMessages(prev => [...prev, msg]);
             markMessageAsRead(msg.id);
             
-            // Update thread last message
             setThreads(prev => prev.map(t => 
               t.participant_id === selectedThread.participant_id
                 ? { ...t, last_message: msg.content, last_message_time: msg.created_at, unread_count: 0 }
@@ -489,7 +451,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
     };
   }, [selectedThread, adminId]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -497,7 +458,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
   const fetchThreads = async () => {
     setLoading(true);
     try {
-      // Get all unique conversations
       const { data: messageData, error } = await supabase
         .from('messages')
         .select('*')
@@ -506,30 +466,27 @@ function AdminMessages({ adminId }: { adminId: string }) {
 
       if (error) throw error;
 
-      // Group by participant
       const threadMap = new Map<string, MessageThread>();
       
       for (const msg of messageData || []) {
         const participantId = msg.sender_id === adminId ? msg.receiver_id : msg.sender_id;
         
         if (!threadMap.has(participantId)) {
-          // Get participant details
           const { data: creator } = await supabase
             .from('creators')
             .select('id, name, email, avatar, username')
             .eq('user_id', participantId)
-            .single();
+            .maybeSingle();
 
           const { data: business } = await supabase
             .from('businesses')
             .select('id, company_name, contact_name, email')
             .eq('user_id', participantId)
-            .single();
+            .maybeSingle();
 
           const participant = creator || business;
           const participantType = creator ? 'creator' : 'business';
           
-          // Count unread
           const { count } = await supabase
             .from('messages')
             .select('*', { count: 'exact', head: true })
@@ -540,19 +497,18 @@ function AdminMessages({ adminId }: { adminId: string }) {
           threadMap.set(participantId, {
             id: `${participantId}-thread`,
             participant_id: participantId,
-            participant_name: creator?.name || business?.company_name || 'Unknown',
-            participant_email: creator?.email || business?.email || '',
+            participant_name: creator?.name || business?.company_name || 'Unknown User',
+            participant_email: creator?.email || business?.email || 'No email',
             participant_avatar: creator?.avatar,
             participant_type: participantType,
-            last_message: msg.content,
+            last_message: msg.content || 'No messages',
             last_message_time: msg.created_at,
             unread_count: count || 0,
-            last_message_sender: msg.sender_id === adminId ? 'You' : msg.sender_name || 'Them'
+            last_message_sender: msg.sender_id === adminId ? 'You' : (msg.sender_name || 'Them')
           });
         }
       }
 
-      // Apply filters
       let filtered = Array.from(threadMap.values());
       
       if (filter === 'unread') {
@@ -563,11 +519,10 @@ function AdminMessages({ adminId }: { adminId: string }) {
         filtered = filtered.filter(t => t.participant_type === 'business');
       }
 
-      // Apply search
       if (debouncedSearch) {
         filtered = filtered.filter(t =>
-          t.participant_name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-          t.participant_email.toLowerCase().includes(debouncedSearch.toLowerCase())
+          (t.participant_name?.toLowerCase() || '').includes(debouncedSearch.toLowerCase()) ||
+          (t.participant_email?.toLowerCase() || '').includes(debouncedSearch.toLowerCase())
         );
       }
 
@@ -621,7 +576,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
       .eq('receiver_id', adminId)
       .eq('is_read', false);
 
-    // Update thread unread count
     setThreads(prev => prev.map(t =>
       t.participant_id === participantId
         ? { ...t, unread_count: 0 }
@@ -673,7 +627,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
         .from('attachments')
         .getPublicUrl(filePath);
 
-      // Send message with attachment
       const now = new Date().toISOString();
       const messageData = {
         sender_id: adminId,
@@ -717,12 +670,10 @@ function AdminMessages({ adminId }: { adminId: string }) {
 
     setSending(true);
 
-    // Handle attachment first if exists
     if (attachment) {
       await handleAttachment();
     }
 
-    // Send text message
     if (newMessage.trim()) {
       const optimisticMessage: Message = {
         id: `opt-${Date.now()}`,
@@ -770,7 +721,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
         toast.error('Failed to send message');
         setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
       } else {
-        // Update thread
         setThreads(prev => prev.map(t =>
           t.participant_id === selectedThread.participant_id
             ? {
@@ -788,20 +738,29 @@ function AdminMessages({ adminId }: { adminId: string }) {
   };
 
   const formatMessageTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now.getTime() - date.getTime();
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-    if (days === 0) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (days === 1) {
-      return 'Yesterday';
-    } else if (days < 7) {
-      return date.toLocaleDateString([], { weekday: 'short' });
-    } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      if (days === 0) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else if (days === 1) {
+        return 'Yesterday';
+      } else if (days < 7) {
+        return date.toLocaleDateString([], { weekday: 'short' });
+      } else {
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      }
+    } catch {
+      return 'Invalid date';
     }
+  };
+
+  const getInitial = (name?: string) => {
+    if (!name) return '?';
+    return name.charAt(0).toUpperCase();
   };
 
   return (
@@ -819,7 +778,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
             </span>
           </div>
 
-          {/* Search */}
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
             <input
@@ -830,7 +788,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
             />
           </div>
 
-          {/* Filters */}
           <div className="flex gap-1">
             {(['all', 'unread', 'creators', 'businesses'] as const).map((f) => (
               <button
@@ -870,18 +827,17 @@ function AdminMessages({ adminId }: { adminId: string }) {
                     : ''
                 }`}
               >
-                {/* Avatar */}
                 <div className="relative flex-shrink-0">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00FF94]/30 to-[#00D4FF]/30 flex items-center justify-center overflow-hidden border border-white/10">
                     {thread.participant_avatar ? (
                       <img
                         src={thread.participant_avatar}
-                        alt={thread.participant_name}
+                        alt={thread.participant_name || 'User'}
                         className="w-full h-full object-cover"
                       />
                     ) : (
                       <span className="text-white text-[11px] font-bold">
-                        {thread.participant_name?.[0]?.toUpperCase() || '?'}
+                        {getInitial(thread.participant_name)}
                       </span>
                     )}
                   </div>
@@ -892,11 +848,10 @@ function AdminMessages({ adminId }: { adminId: string }) {
                   )}
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-[11px] font-semibold text-white truncate">
-                      {thread.participant_name}
+                      {thread.participant_name || 'Unknown User'}
                     </p>
                     <p className="text-[8px] text-white/30 font-mono flex-shrink-0 ml-2">
                       {formatMessageTime(thread.last_message_time)}
@@ -904,13 +859,13 @@ function AdminMessages({ adminId }: { adminId: string }) {
                   </div>
                   
                   <p className="text-[9px] text-white/50 truncate mb-1">
-                    <span className="text-white/30">{thread.last_message_sender}:</span>{' '}
-                    {thread.last_message}
+                    <span className="text-white/30">{thread.last_message_sender || 'Unknown'}:</span>{' '}
+                    {thread.last_message || 'No messages'}
                   </p>
 
                   <div className="flex items-center justify-between">
                     <p className="text-[8px] text-white/30 font-mono">
-                      {thread.participant_email}
+                      {thread.participant_email || 'No email'}
                     </p>
                     {thread.unread_count > 0 && (
                       <span className="px-1.5 py-0.5 bg-[#00FF94] rounded-full text-[7px] text-black font-bold">
@@ -952,12 +907,12 @@ function AdminMessages({ adminId }: { adminId: string }) {
                   {selectedThread.participant_avatar ? (
                     <img
                       src={selectedThread.participant_avatar}
-                      alt={selectedThread.participant_name}
+                      alt={selectedThread.participant_name || 'User'}
                       className="w-full h-full object-cover"
                     />
                   ) : (
                     <span className="text-white text-[12px] font-bold">
-                      {selectedThread.participant_name?.[0]?.toUpperCase()}
+                      {getInitial(selectedThread.participant_name)}
                     </span>
                   )}
                 </div>
@@ -967,7 +922,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-white">
-                    {selectedThread.participant_name}
+                    {selectedThread.participant_name || 'Unknown User'}
                   </p>
                   {selectedThread.participant_type === 'business' && (
                     <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[7px] font-bold rounded-full border border-amber-500/30">
@@ -976,11 +931,10 @@ function AdminMessages({ adminId }: { adminId: string }) {
                   )}
                 </div>
                 <p className="text-[9px] text-white/30 font-mono">
-                  {selectedThread.participant_email}
+                  {selectedThread.participant_email || 'No email'}
                 </p>
               </div>
 
-              {/* Actions */}
               <div className="flex items-center gap-1">
                 <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
                   <Phone className="w-3.5 h-3.5 text-white/40" />
@@ -1002,7 +956,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
                 </div>
               ) : (
                 <>
-                  {/* Load More */}
                   {hasMore && (
                     <div className="flex justify-center">
                       <button
@@ -1015,7 +968,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
                     </div>
                   )}
 
-                  {/* Messages */}
                   {messages.map((msg, index) => {
                     const isAdmin = msg.sender_id === adminId;
                     const showAvatar = index === 0 || messages[index - 1]?.sender_id !== msg.sender_id;
@@ -1039,7 +991,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
                                   <span className="text-[8px] font-bold">
-                                    {selectedThread.participant_name?.[0]?.toUpperCase()}
+                                    {getInitial(selectedThread.participant_name)}
                                   </span>
                                 </div>
                               )}
@@ -1047,7 +999,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
                           )}
 
                           <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
-                            {/* Attachment */}
                             {msg.attachment_url && (
                               <div className="mb-2">
                                 {msg.attachment_type === 'image' ? (
@@ -1072,7 +1023,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
                               </div>
                             )}
 
-                            {/* Message */}
                             <div
                               className={`px-4 py-2.5 rounded-2xl text-[12px] leading-relaxed break-words ${
                                 isAdmin
@@ -1080,16 +1030,15 @@ function AdminMessages({ adminId }: { adminId: string }) {
                                   : 'bg-white/8 text-white border border-white/10 rounded-tl-sm'
                               }`}
                             >
-                              {msg.content}
+                              {msg.content || 'No content'}
                             </div>
 
-                            {/* Metadata */}
                             <div className="flex items-center gap-1.5 mt-1">
                               <span className="text-[7px] text-white/20 font-mono">
-                                {new Date(msg.created_at).toLocaleTimeString([], {
+                                {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], {
                                   hour: '2-digit',
                                   minute: '2-digit'
-                                })}
+                                }) : 'Invalid time'}
                               </span>
                               {isAdmin && (
                                 <>
@@ -1118,7 +1067,6 @@ function AdminMessages({ adminId }: { adminId: string }) {
                     );
                   })}
 
-                  {/* Typing Indicator */}
                   {typingUsers.has(selectedThread.participant_id) && (
                     <div className="flex justify-start">
                       <div className="bg-white/8 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3">
@@ -1138,20 +1086,19 @@ function AdminMessages({ adminId }: { adminId: string }) {
 
             {/* Input */}
             <div className="p-4 border-t border-white/10">
-              {/* Attachment Preview */}
               {attachment && (
                 <div className="mb-3 p-2 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {attachment.type.startsWith('image/') ? (
+                    {attachment.type?.startsWith('image/') ? (
                       <Image className="w-4 h-4 text-[#00FF94]" />
                     ) : (
                       <Paperclip className="w-4 h-4 text-[#00FF94]" />
                     )}
                     <span className="text-[10px] text-white/80 truncate max-w-[200px]">
-                      {attachment.name}
+                      {attachment.name || 'Unknown file'}
                     </span>
                     <span className="text-[8px] text-white/40">
-                      ({(attachment.size / 1024).toFixed(1)} KB)
+                      ({(attachment.size ? (attachment.size / 1024).toFixed(1) : '0')} KB)
                     </span>
                   </div>
                   <button
@@ -1193,7 +1140,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
                         sendMessage();
                       }
                     }}
-                    placeholder={`Message ${selectedThread.participant_name}...`}
+                    placeholder={`Message ${selectedThread.participant_name || 'user'}...`}
                     className="flex-1 bg-transparent px-3 py-2 text-[12px] text-white placeholder-white/20 focus:outline-none"
                   />
                 </div>
@@ -1241,17 +1188,14 @@ function AdminCreatorManagement() {
         .from('creators')
         .select('*');
 
-      // Apply filter
       if (filter !== 'all') {
         query = query.eq('status', filter);
       }
 
-      // Apply search
       if (debouncedSearch) {
         query = query.or(`name.ilike.%${debouncedSearch}%,email.ilike.%${debouncedSearch}%,username.ilike.%${debouncedSearch}%`);
       }
 
-      // Apply sorting
       query = query.order(sortBy, { ascending: sortOrder === 'asc' });
 
       const { data, error } = await query;
@@ -1302,6 +1246,11 @@ function AdminCreatorManagement() {
       case 'suspended': return 'text-orange-400 bg-orange-400/10 border-orange-400/20';
       default: return 'text-white/40 bg-white/5 border-white/10';
     }
+  };
+
+  const getInitial = (name?: string) => {
+    if (!name) return '?';
+    return name.charAt(0).toUpperCase();
   };
 
   return (
@@ -1395,19 +1344,19 @@ function AdminCreatorManagement() {
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF94]/20 to-[#00D4FF]/20 flex items-center justify-center overflow-hidden">
                         {creator.avatar ? (
-                          <img src={creator.avatar} alt={creator.name} className="w-full h-full object-cover" />
+                          <img src={creator.avatar} alt={creator.name || 'Creator'} className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-white text-[10px] font-bold">{creator.name?.[0]?.toUpperCase()}</span>
+                          <span className="text-white text-[10px] font-bold">{getInitial(creator.name)}</span>
                         )}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="text-[11px] font-medium text-white">{creator.name}</p>
+                          <p className="text-[11px] font-medium text-white">{creator.name || 'Unnamed'}</p>
                           {creator.verified && (
                             <CheckCircle2 className="w-3 h-3 text-[#00FF94]" />
                           )}
                         </div>
-                        <p className="text-[8px] text-white/30 font-mono">{creator.email}</p>
+                        <p className="text-[8px] text-white/30 font-mono">{creator.email || 'No email'}</p>
                         {creator.username && (
                           <p className="text-[8px] text-[#00FF94]/50">@{creator.username}</p>
                         )}
@@ -1416,7 +1365,7 @@ function AdminCreatorManagement() {
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 text-[8px] font-bold rounded-full border ${getStatusColor(creator.status)}`}>
-                      {creator.status.toUpperCase()}
+                      {(creator.status || 'unknown').toUpperCase()}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -1436,7 +1385,7 @@ function AdminCreatorManagement() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-[9px] text-white/40 font-mono">
-                      {new Date(creator.created_at).toLocaleDateString()}
+                      {creator.created_at ? new Date(creator.created_at).toLocaleDateString() : '—'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -1513,26 +1462,26 @@ function AdminCreatorManagement() {
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00FF94]/30 to-[#00D4FF]/30 flex items-center justify-center overflow-hidden">
                     {selectedCreator.avatar ? (
-                      <img src={selectedCreator.avatar} alt={selectedCreator.name} className="w-full h-full object-cover" />
+                      <img src={selectedCreator.avatar} alt={selectedCreator.name || 'Creator'} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-2xl font-bold text-white">{selectedCreator.name?.[0]?.toUpperCase()}</span>
+                      <span className="text-2xl font-bold text-white">{getInitial(selectedCreator.name)}</span>
                     )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="text-lg font-bold text-white">{selectedCreator.name}</p>
+                      <p className="text-lg font-bold text-white">{selectedCreator.name || 'Unnamed'}</p>
                       {selectedCreator.verified && (
                         <CheckCircle2 className="w-4 h-4 text-[#00FF94]" />
                       )}
                     </div>
-                    <p className="text-[11px] text-white/40 font-mono">{selectedCreator.email}</p>
+                    <p className="text-[11px] text-white/40 font-mono">{selectedCreator.email || 'No email'}</p>
                     {selectedCreator.username && (
                       <p className="text-[10px] text-[#00FF94]">@{selectedCreator.username}</p>
                     )}
                   </div>
                   <div className="text-right">
                     <span className={`px-3 py-1 text-[9px] font-bold rounded-full border ${getStatusColor(selectedCreator.status)}`}>
-                      {selectedCreator.status.toUpperCase()}
+                      {(selectedCreator.status || 'unknown').toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -1711,7 +1660,6 @@ export function AdminDashboard() {
   }, [adminId]);
 
   useEffect(() => {
-    // Realtime revenue updates
     const revenueChannel = supabase.channel('admin-revenue')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'campaign_payout_cycles' }, 
@@ -1731,7 +1679,6 @@ export function AdminDashboard() {
       )
       .subscribe();
 
-    // Realtime application notifications
     const appsChannel = supabase.channel('admin-apps')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'creators' }, () => {
         setStats(s => ({ ...s, totalCreators: s.totalCreators + 1, pendingCreators: s.pendingCreators + 1 }));
@@ -1758,7 +1705,6 @@ export function AdminDashboard() {
     
     setAdminId(user.id);
 
-    // Check if user is admin
     const { data: adminProfile } = await supabase
       .from('admin_profiles')
       .select('id')
@@ -1770,7 +1716,6 @@ export function AdminDashboard() {
       return;
     }
 
-    // Get unread messages count
     const { count } = await supabase
       .from('messages')
       .select('*', { count: 'exact', head: true })
@@ -2190,10 +2135,10 @@ export function AdminDashboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-[11px] text-white font-medium truncate">
-                            {activity.action}
+                            {activity.action || 'Unknown action'}
                           </p>
                           <p className="text-[9px] text-white/30 font-mono">
-                            {activity.entity_type} · {new Date(activity.created_at).toLocaleString()}
+                            {activity.entity_type || 'Unknown'} · {activity.created_at ? new Date(activity.created_at).toLocaleString() : 'Invalid date'}
                           </p>
                         </div>
                       </motion.div>
@@ -2307,9 +2252,9 @@ export function AdminDashboard() {
                         <Activity className="w-3.5 h-3.5 text-[#00FF94]" />
                       </div>
                       <div className="flex-1">
-                        <p className="text-[11px] font-medium text-white">{activity.action}</p>
+                        <p className="text-[11px] font-medium text-white">{activity.action || 'Unknown action'}</p>
                         <p className="text-[9px] text-white/30 font-mono mt-1">
-                          {activity.entity_type} · {new Date(activity.created_at).toLocaleString()}
+                          {activity.entity_type || 'Unknown'} · {activity.created_at ? new Date(activity.created_at).toLocaleString() : 'Invalid date'}
                         </p>
                       </div>
                     </motion.div>
