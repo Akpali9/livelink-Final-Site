@@ -1147,7 +1147,7 @@ export function Settings() {
                         type="text"
                         value={fullNameInput}
                         onChange={(e) => setFullNameInput(e.target.value)}
-                        placeholder="John Doe"
+                        placeholder="Full Name"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
