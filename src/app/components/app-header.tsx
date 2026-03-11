@@ -457,9 +457,7 @@ export function AppHeader({
                       <Link to={profilePath} onClick={() => setShowProfileMenu(false)} className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white flex items-center gap-3 transition-colors rounded-none">
                         <User className="w-3.5 h-3.5 text-[#389C9A]" /> Profile
                       </Link>
-                      <Link to={settingsPath} onClick={() => setShowProfileMenu(false)} className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white flex items-center gap-3 transition-colors rounded-none">
-                        <Settings className="w-3.5 h-3.5 text-[#389C9A]" /> Settings
-                      </Link>
+                    
                       {isBusiness ? (
                         <Link to="/business/dashboard" onClick={() => setShowProfileMenu(false)} className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white flex items-center gap-3 transition-colors rounded-none">
                           <Briefcase className="w-3.5 h-3.5 text-[#389C9A]" /> Dashboard
