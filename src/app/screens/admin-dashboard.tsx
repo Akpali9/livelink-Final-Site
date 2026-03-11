@@ -16,7 +16,6 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
 import { supabase } from '../lib/supabase';
-import { AdminApplicationQueue } from './become-creator';
 
 // ============================================================================
 // TYPES
@@ -124,8 +123,7 @@ interface MessageParticipant {
   email: string;
   avatar?: string;
   type: 'creator' | 'business';
-  last_seen?: string;
-  online?: boolean;
+  username?: string;
 }
 
 interface MessageThread {
@@ -133,36 +131,6 @@ interface MessageThread {
   last_message: Message;
   unread_count: number;
   updated_at: string;
-}
-
-interface Campaign {
-  id: string;
-  title: string;
-  description: string;
-  business_id: string;
-  business_name: string;
-  budget: number;
-  status: 'draft' | 'pending' | 'active' | 'paused' | 'completed' | 'cancelled';
-  start_date: string;
-  end_date: string;
-  created_at: string;
-  updated_at: string;
-  applications_count?: number;
-  approved_creators?: number;
-}
-
-interface Payout {
-  id: string;
-  campaign_id: string;
-  creator_id: string;
-  creator_name: string;
-  amount: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  payment_method?: string;
-  transaction_id?: string;
-  created_at: string;
-  processed_at?: string;
-  notes?: string;
 }
 
 // ============================================================================
@@ -194,12 +162,13 @@ const formatMessageTime = (timestamp: string) => {
 };
 
 const getInitials = (name: string = '') => {
+  if (!name) return '?';
   return name
     .split(' ')
-    .map(word => word[0])
+    .map(word => word.charAt(0))
     .join('')
     .toUpperCase()
-    .slice(0, 2) || '?';
+    .slice(0, 2);
 };
 
 const formatFileSize = (bytes?: number) => {
@@ -742,62 +711,115 @@ function AdminMessages({ adminId }: { adminId: string }) {
   const fetchThreads = async () => {
     setLoading(true);
     try {
+      // First, get all approved creators
+      const { data: creators, error: creatorsError } = await supabase
+        .from('creators')
+        .select('id, user_id, name, email, avatar, username, status')
+        .eq('status', 'approved');
+
+      if (creatorsError) throw creatorsError;
+
+      // Then, get all approved businesses
+      const { data: businesses, error: businessesError } = await supabase
+        .from('businesses')
+        .select('id, user_id, company_name, contact_name, email, status')
+        .eq('status', 'approved');
+
+      if (businessesError) throw businessesError;
+
+      // Combine all participants
+      const allParticipants: MessageParticipant[] = [
+        ...(creators || []).map(c => ({
+          id: c.id,
+          user_id: c.user_id,
+          name: c.name || 'Unnamed Creator',
+          email: c.email || '',
+          avatar: c.avatar,
+          type: 'creator' as const,
+          username: c.username
+        })),
+        ...(businesses || []).map(b => ({
+          id: b.id,
+          user_id: b.user_id,
+          name: b.company_name || b.contact_name || 'Unnamed Business',
+          email: b.email || '',
+          avatar: null,
+          type: 'business' as const
+        }))
+      ];
+
       // Get all messages involving admin
-      const { data: messageData, error } = await supabase
+      const { data: messageData, error: messagesError } = await supabase
         .from('messages')
         .select('*')
         .or(`sender_id.eq.${adminId},receiver_id.eq.${adminId}`)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (messagesError) throw messagesError;
 
-      // Group by participant
+      // Create a map of participants who have conversations
+      const participantIdsWithMessages = new Set<string>();
+      messageData?.forEach(msg => {
+        const participantId = msg.sender_id === adminId ? msg.receiver_id : msg.sender_id;
+        participantIdsWithMessages.add(participantId);
+      });
+
+      // Build threads for all participants
       const threadMap = new Map<string, MessageThread>();
       
+      // First, add all participants with existing messages
       for (const msg of messageData || []) {
         const participantId = msg.sender_id === adminId ? msg.receiver_id : msg.sender_id;
         
         if (!threadMap.has(participantId)) {
-          // Get participant details
-          const [creatorResult, businessResult] = await Promise.all([
-            supabase
-              .from('creators')
-              .select('id, user_id, name, email, avatar')
-              .eq('user_id', participantId)
-              .maybeSingle(),
-            supabase
-              .from('businesses')
-              .select('id, user_id, company_name as name, contact_name, email')
-              .eq('user_id', participantId)
-              .maybeSingle()
-          ]);
-
-          const creator = creatorResult.data;
-          const business = businessResult.data;
-          const participantData = creator || business;
+          const participant = allParticipants.find(p => p.user_id === participantId);
           
-          if (!participantData) continue;
+          if (participant) {
+            // Get unread count
+            const { count } = await supabase
+              .from('messages')
+              .select('*', { count: 'exact', head: true })
+              .eq('receiver_id', adminId)
+              .eq('sender_id', participantId)
+              .eq('is_read', false);
 
-          // Get unread count
-          const { count } = await supabase
-            .from('messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('receiver_id', adminId)
-            .eq('sender_id', participantId)
-            .eq('is_read', false);
+            threadMap.set(participantId, {
+              participant,
+              last_message: msg,
+              unread_count: count || 0,
+              updated_at: msg.created_at
+            });
+          }
+        }
+      }
 
-          threadMap.set(participantId, {
-            participant: {
-              id: participantData.id,
-              user_id: participantData.user_id,
-              name: creator?.name || business?.name || participantData.name || 'Unknown User',
-              email: participantData.email || 'No email',
-              avatar: creator?.avatar,
-              type: creator ? 'creator' : 'business'
-            },
-            last_message: msg,
-            unread_count: count || 0,
-            updated_at: msg.created_at
+      // Then, add participants without messages (for starting new conversations)
+      for (const participant of allParticipants) {
+        if (!threadMap.has(participant.user_id)) {
+          // Create a placeholder last message
+          const placeholderMessage: Message = {
+            id: `placeholder-${participant.user_id}`,
+            sender_id: participant.user_id,
+            receiver_id: adminId,
+            recipient_id: adminId,
+            content: 'No messages yet',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            inserted_at: new Date().toISOString(),
+            is_read: true,
+            seen: true,
+            sender_name: participant.name,
+            sender_type: participant.type,
+            topic: 'direct',
+            extension: 'text',
+            private: true
+          };
+
+          threadMap.set(participant.user_id, {
+            participant,
+            last_message: placeholderMessage,
+            unread_count: 0,
+            updated_at: new Date().toISOString()
           });
         }
       }
@@ -805,6 +827,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
       // Convert to array and apply filters
       let filteredThreads = Array.from(threadMap.values());
 
+      // Apply status filter
       if (filter === 'unread') {
         filteredThreads = filteredThreads.filter(t => t.unread_count > 0);
       } else if (filter === 'creators') {
@@ -813,17 +836,26 @@ function AdminMessages({ adminId }: { adminId: string }) {
         filteredThreads = filteredThreads.filter(t => t.participant.type === 'business');
       }
 
+      // Apply search
       if (debouncedSearch) {
         filteredThreads = filteredThreads.filter(t =>
-          t.participant.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-          t.participant.email.toLowerCase().includes(debouncedSearch.toLowerCase())
+          (t.participant.name?.toLowerCase() || '').includes(debouncedSearch.toLowerCase()) ||
+          (t.participant.email?.toLowerCase() || '').includes(debouncedSearch.toLowerCase())
         );
       }
 
-      // Sort by most recent
-      filteredThreads.sort((a, b) => 
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      );
+      // Sort by most recent (placeholders go to the bottom)
+      filteredThreads.sort((a, b) => {
+        // If either is a placeholder, sort them to the bottom
+        const aIsPlaceholder = a.last_message.id.startsWith('placeholder-');
+        const bIsPlaceholder = b.last_message.id.startsWith('placeholder-');
+        
+        if (aIsPlaceholder && !bIsPlaceholder) return 1;
+        if (!aIsPlaceholder && bIsPlaceholder) return -1;
+        
+        // Both real messages or both placeholders, sort by date
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      });
 
       setThreads(filteredThreads);
     } catch (error) {
@@ -866,7 +898,12 @@ function AdminMessages({ adminId }: { adminId: string }) {
     setMessages([]);
     setPage(1);
     setHasMore(true);
-    await loadMessages(thread.participant.user_id, 1);
+    
+    // Only load messages if it's not a placeholder
+    if (!thread.last_message.id.startsWith('placeholder-')) {
+      await loadMessages(thread.participant.user_id, 1);
+    }
+    
     await markThreadAsRead(thread.participant.user_id);
   };
 
@@ -1071,6 +1108,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
     const isSelected = selectedThread?.participant.user_id === thread.participant.user_id;
     const isOnline = onlineUsers.has(thread.participant.user_id);
     const isTyping = typingUsers.has(thread.participant.user_id);
+    const isPlaceholder = thread.last_message.id.startsWith('placeholder-');
 
     return (
       <button
@@ -1114,15 +1152,19 @@ function AdminMessages({ adminId }: { adminId: string }) {
             <p className="text-[11px] font-semibold text-white truncate">
               {thread.participant.name}
             </p>
-            <p className="text-[8px] text-white/30 font-mono flex-shrink-0 ml-2">
-              {formatMessageTime(thread.last_message.created_at)}
-            </p>
+            {!isPlaceholder && (
+              <p className="text-[8px] text-white/30 font-mono flex-shrink-0 ml-2">
+                {formatMessageTime(thread.last_message.created_at)}
+              </p>
+            )}
           </div>
 
           {/* Last message preview */}
           <p className="text-[9px] text-white/50 truncate mb-1">
             {isTyping ? (
               <span className="text-[#00FF94]">Typing...</span>
+            ) : isPlaceholder ? (
+              <span className="text-white/30">Start a conversation</span>
             ) : (
               <>
                 {thread.last_message.sender_id === adminId && (
@@ -1225,7 +1267,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
               Conversations
             </h3>
             <span className="text-[9px] bg-[#00FF94]/10 text-[#00FF94] px-2 py-1 rounded-full">
-              {threads.length} threads
+              {threads.length} contacts
             </span>
           </div>
 
@@ -1236,7 +1278,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search conversations..."
+              placeholder="Search contacts..."
               className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-[#00FF94]/40 transition-colors"
             />
           </div>
@@ -1269,7 +1311,10 @@ function AdminMessages({ adminId }: { adminId: string }) {
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
               <MessageSquare className="w-8 h-8 text-white/10 mb-3" />
               <p className="text-[10px] text-white/20 font-mono">
-                No conversations found
+                No contacts found
+              </p>
+              <p className="text-[8px] text-white/10 mt-2">
+                Approved creators and businesses will appear here
               </p>
             </div>
           ) : (
@@ -1290,7 +1335,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
               <MessageSquare className="w-7 h-7 text-white/20" />
             </div>
             <p className="text-[11px] text-white/30 font-mono">
-              Select a conversation to start messaging
+              Select a contact to start messaging
             </p>
           </div>
         ) : (
@@ -1362,7 +1407,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
               className="flex-1 overflow-y-auto p-5 space-y-4"
             >
               {/* Load More */}
-              {hasMore && (
+              {hasMore && messages.length > 0 && (
                 <div className="flex justify-center">
                   <button
                     onClick={loadMoreMessages}
@@ -1375,6 +1420,19 @@ function AdminMessages({ adminId }: { adminId: string }) {
                       'Load More'
                     )}
                   </button>
+                </div>
+              )}
+
+              {/* Welcome message for new conversations */}
+              {messages.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <MessageSquare className="w-12 h-12 text-white/10 mb-3" />
+                  <p className="text-[11px] text-white/30 font-mono">
+                    No messages yet
+                  </p>
+                  <p className="text-[9px] text-white/20 mt-2">
+                    Send a message to start the conversation
+                  </p>
                 </div>
               )}
 
