@@ -40,9 +40,11 @@ export function LoginPortal() {
       .from("admin_profiles")
       .select("id")
       .eq("id", data.user.id)
-      .single();
+      .maybeSingle();
 
-    if (!adminProfile) {
+    const isAdmin = !!adminProfile || data.user.app_metadata?.role === "admin";
+
+    if (!isAdmin) {
       await supabase.auth.signOut();
       toast.error("Not authorised as admin");
       setLoading(false);
@@ -68,7 +70,6 @@ export function LoginPortal() {
         >
           <span className="w-1.5 h-1.5 bg-[#FEDB71] rounded-none animate-pulse" />
           LiveLink
-          {/* Subtle indicator after 3 taps */}
           {logoTaps >= 3 && logoTaps < 5 && (
             <span className="w-1.5 h-1.5 bg-[#389C9A] rounded-none animate-pulse ml-1" />
           )}
@@ -129,7 +130,7 @@ export function LoginPortal() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setShowAdminForm(false); setEmail(""); setPassword(""); }}
+                    onClick={() => { setShowAdminForm(false); setEmail(""); setPassword(""); setLogoTaps(0); }}
                     className="px-4 py-3 border border-white/20 text-[10px] font-black uppercase italic text-white/50 hover:text-white hover:border-white/50 transition-colors"
                   >
                     Cancel
@@ -218,7 +219,7 @@ export function LoginPortal() {
         </div>
 
         <div className="mt-12 text-center">
-                   <Link to="/" className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/30 hover:text-[#1D1D1D] transition-colors italic">
+          <Link to="/" className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/30 hover:text-[#1D1D1D] transition-colors italic">
             ← Back to Home
           </Link>
         </div>
