@@ -61,30 +61,33 @@ async function requireBusiness() {
   return null;
 }
 
-// ✅ NEW: Loader for campaign creation (accessible to both creators and businesses)
 async function requireCreatorOrBusiness() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return redirect("/login/portal");
-  
   const userType = session.user.user_metadata?.user_type;
-  if (userType !== 'creator' && userType !== 'business') {
-    return redirect("/login/portal");
-  }
+  if (userType !== 'creator' && userType !== 'business') return redirect("/login/portal");
   return null;
 }
 
 async function requireAdmin() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return redirect("/login/portal");
-  const { data: adminProfile } = await supabase.from('admin_profiles').select('id').eq('id', session.user.id).single();
+  const { data: adminProfile } = await supabase
+    .from('admin_profiles').select('id').eq('id', session.user.id).maybeSingle();
   const isAdmin = !!adminProfile || session.user.app_metadata?.role === 'admin';
-  if (!isAdmin) return redirect("/");
+  if (!isAdmin) return redirect("/login/portal");
   return null;
 }
 
 async function redirectIfAuthenticated() {
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
+    // Check admin first
+    const { data: adminProfile } = await supabase
+      .from('admin_profiles').select('id').eq('id', session.user.id).maybeSingle();
+    const isAdmin = !!adminProfile || session.user.app_metadata?.role === 'admin';
+    if (isAdmin) return redirect("/admin");
+
     const t = session.user.user_metadata?.user_type;
     if (t === 'creator') return redirect("/dashboard");
     if (t === 'business') return redirect("/business/dashboard");
@@ -97,11 +100,11 @@ async function loadUser() {
   if (!session) return { user: null, profile: null };
   const userType = session.user.user_metadata?.user_type;
   if (userType === 'creator') {
-    const { data: profile } = await supabase.from('creators').select('*').eq('user_id', session.user.id).single();
+    const { data: profile } = await supabase.from('creators').select('*').eq('user_id', session.user.id).maybeSingle();
     return { user: session.user, profile, userType };
   }
   if (userType === 'business') {
-    const { data: profile } = await supabase.from('businesses').select('*').eq('user_id', session.user.id).single();
+    const { data: profile } = await supabase.from('businesses').select('*').eq('user_id', session.user.id).maybeSingle();
     return { user: session.user, profile, userType };
   }
   return { user: session.user, profile: null, userType };
@@ -137,9 +140,8 @@ const routes: RouteObject[] = [
 
       // Creator routes
       { path: "dashboard",                      Component: Dashboard,             loader: requireCreator },
-      // ✅ profile/edit MUST come before profile/:id to avoid conflict
       { path: "profile/edit",                   Component: EditProfile,           loader: requireAuth },
-      { path: "profile/:id",                    Component: Profile,               loader: requireAuth},
+      { path: "profile/:id",                    Component: Profile,               loader: requireAuth },
       { path: "campaigns",                      Component: Campaigns,             loader: requireAuth },
       { path: "creator/campaign/:id",           Component: CreatorCampaignDetail, loader: requireCreator },
       { path: "creator/upcoming-gig/:id",       Component: UpcomingGigDetail,     loader: requireCreator },
@@ -154,20 +156,20 @@ const routes: RouteObject[] = [
       { path: "business/submission-success",    Component: BusinessSubmissionSuccess, loader: requireBusiness },
       { path: "business/campaign/overview/:id", Component: BusinessCampaignOverview,  loader: requireAuth },
       { path: "business/campaign/:id",          Component: BusinessCampaignCreators,  loader: requireAuth },
-      { path: "offers",                         Component: Offers,                    loader: requireCreatorOrBusiness  },
+      { path: "offers",                         Component: Offers,                    loader: requireCreatorOrBusiness },
       { path: "business/campaign/:campaignId/creator/:creatorId", Component: BusinessCampaignDetail, loader: requireBusiness },
       { path: "business/settings",              Component: BusinessSettings,          loader: requireBusiness },
 
-      // ✅ CAMPAIGN CREATION - Now accessible to both creators and businesses
+      // Campaign creation
       { path: "campaign/type",                  Component: CampaignTypeSelection,     loader: requireCreatorOrBusiness },
       { path: "campaign/setup/banner",          Component: CampaignSetupBanner,       loader: requireCreatorOrBusiness },
       { path: "campaign/setup/banner-promo",    Component: CampaignSetupBannerPromo,  loader: requireCreatorOrBusiness },
       { path: "campaign/setup/promo-only",      Component: CampaignSetupPromoOnly,    loader: requireCreatorOrBusiness },
       { path: "campaign/create",                Component: CampaignCreation,          loader: requireCreatorOrBusiness },
       { path: "campaign/confirm",               Component: CampaignConfirm,           loader: requireCreatorOrBusiness },
-      { path: "campaign/:id",                   Component: CampaignDetails,           loader: requireAuth }, // Anyone can view campaign details
-      
-      // ✅ PAYMENT & CONFIRMATION - Shared routes
+      { path: "campaign/:id",                   Component: CampaignDetails,           loader: requireAuth },
+
+      // Payment & confirmation
       { path: "payment/held",                   Component: PaymentHeld,               loader: requireCreatorOrBusiness },
       { path: "campaign/confirmed",             Component: CampaignAcceptedBusiness,  loader: requireCreatorOrBusiness },
       { path: "campaign/declined",              Component: CampaignDeclined,          loader: requireCreatorOrBusiness },
