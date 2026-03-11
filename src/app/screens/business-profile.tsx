@@ -91,6 +91,7 @@ export function BusinessProfile() {
   const [initialFormData, setInitialFormData] = useState<BusinessProfileData>(formData);
   const [initialSocialLinks, setInitialSocialLinks] = useState<{platform: string, url: string}[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   const industryOptions = [
     "E-commerce",
@@ -169,6 +170,7 @@ export function BusinessProfile() {
           
           setVerificationStatus(businessData.verification_status || 'unverified');
           setRejectionReason(businessData.rejection_reason || null);
+          setLastSaved(new Date(businessData.updated_at || Date.now()));
         }
 
         // Fetch verification documents
@@ -269,6 +271,7 @@ export function BusinessProfile() {
       
       setSaved(true);
       setHasChanges(false);
+      setLastSaved(new Date());
       
       // Show success toast with more detail
       toast.success("All changes saved successfully!", {
@@ -497,6 +500,15 @@ export function BusinessProfile() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  const formatLastSaved = () => {
+    if (!lastSaved) return '';
+    return lastSaved.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
@@ -523,25 +535,46 @@ export function BusinessProfile() {
         </h1>
       </div>
 
-      {/* Unsaved Changes Indicator */}
-      {hasChanges && (
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mx-8 mt-6 p-3 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-center justify-between"
-        >
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-500" />
-            <span className="text-xs font-bold text-amber-700">You have unsaved changes</span>
-          </div>
-          <button
-            onClick={handleSave}
-            className="text-[8px] font-black uppercase tracking-widest bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors"
+      {/* Unsaved Changes Banner */}
+      <AnimatePresence>
+        {hasChanges && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mx-8 mt-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-center justify-between"
           >
-            Save Now
-          </button>
-        </motion.div>
-      )}
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-amber-800">You have unsaved changes</p>
+                <p className="text-[10px] text-amber-600 mt-0.5">
+                  Your profile information hasn't been saved yet
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-3 h-3" />
+                  Save Now
+                </>
+              )}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Verification Status Banner */}
       {verificationStatus !== 'verified' && verificationStatus !== 'unverified' && (
@@ -1082,9 +1115,9 @@ export function BusinessProfile() {
           </button>
 
           {/* Last Saved Timestamp */}
-          {!hasChanges && !saving && initialFormData.businessName && (
+          {!hasChanges && !saving && lastSaved && (
             <p className="text-[8px] text-center mt-2 text-[#1D1D1D]/30">
-              Last saved {new Date().toLocaleTimeString()}
+              Last saved at {formatLastSaved()}
             </p>
           )}
         </div>
