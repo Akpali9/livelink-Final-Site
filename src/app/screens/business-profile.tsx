@@ -86,6 +86,11 @@ export function BusinessProfile() {
   const [verificationDocuments, setVerificationDocuments] = useState<VerificationDocument[]>([]);
   const [uploading, setUploading] = useState(false);
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+  
+  // Track unsaved changes
+  const [initialFormData, setInitialFormData] = useState<BusinessProfileData>(formData);
+  const [initialSocialLinks, setInitialSocialLinks] = useState<{platform: string, url: string}[]>([]);
+  const [hasChanges, setHasChanges] = useState(false);
 
   const industryOptions = [
     "E-commerce",
@@ -112,6 +117,13 @@ export function BusinessProfile() {
     other: Share2
   };
 
+  // Check for unsaved changes
+  useEffect(() => {
+    const formChanged = JSON.stringify(formData) !== JSON.stringify(initialFormData);
+    const socialChanged = JSON.stringify(socialLinks) !== JSON.stringify(initialSocialLinks);
+    setHasChanges(formChanged || socialChanged);
+  }, [formData, socialLinks, initialFormData, initialSocialLinks]);
+
   // Fetch profile and documents from Supabase on mount
   useEffect(() => {
     const fetchProfile = async () => {
@@ -133,7 +145,7 @@ export function BusinessProfile() {
         }
 
         if (businessData) {
-          setFormData({
+          const fetchedFormData = {
             businessName: businessData.business_name || "",
             yourName: businessData.contact_name || "",
             contactNumber: businessData.contact_phone || "",
@@ -146,8 +158,15 @@ export function BusinessProfile() {
             taxId: businessData.tax_id || "",
             yearFounded: businessData.year_founded || "",
             employeeCount: businessData.employee_count || ""
-          });
-          setSocialLinks(businessData.social_links || []);
+          };
+          
+          setFormData(fetchedFormData);
+          setInitialFormData(fetchedFormData);
+          
+          const fetchedSocialLinks = businessData.social_links || [];
+          setSocialLinks(fetchedSocialLinks);
+          setInitialSocialLinks(fetchedSocialLinks);
+          
           setVerificationStatus(businessData.verification_status || 'unverified');
           setRejectionReason(businessData.rejection_reason || null);
         }
@@ -244,9 +263,20 @@ export function BusinessProfile() {
 
       if (error) throw error;
 
-      setSaved(true);
-      toast.success("Profile saved successfully!");
+      // Update initial states to reflect saved data
+      setInitialFormData(formData);
+      setInitialSocialLinks(socialLinks);
       
+      setSaved(true);
+      setHasChanges(false);
+      
+      // Show success toast with more detail
+      toast.success("All changes saved successfully!", {
+        icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
+        duration: 3000
+      });
+      
+      // Visual indicator on button
       setTimeout(() => setSaved(false), 3000);
 
     } catch (error: any) {
@@ -492,6 +522,26 @@ export function BusinessProfile() {
           Account Settings
         </h1>
       </div>
+
+      {/* Unsaved Changes Indicator */}
+      {hasChanges && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-8 mt-6 p-3 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-center justify-between"
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-500" />
+            <span className="text-xs font-bold text-amber-700">You have unsaved changes</span>
+          </div>
+          <button
+            onClick={handleSave}
+            className="text-[8px] font-black uppercase tracking-widest bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors"
+          >
+            Save Now
+          </button>
+        </motion.div>
+      )}
 
       {/* Verification Status Banner */}
       {verificationStatus !== 'verified' && verificationStatus !== 'unverified' && (
@@ -965,23 +1015,79 @@ export function BusinessProfile() {
         </section>
       </div>
 
-      {/* Sticky Bottom Save Button */}
+      {/* Sticky Bottom Save Button with Enhanced Indicators */}
       <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-[#1D1D1D]/10 z-50 max-w-[480px] mx-auto">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full flex items-center justify-between bg-[#1D1D1D] text-white p-6 font-black uppercase tracking-tight active:scale-[0.98] transition-all rounded-xl border-2 border-[#1D1D1D] hover:bg-[#389C9A] disabled:opacity-50"
-        >
-          <span className="flex items-center gap-2">
-            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-            {saving ? "Saving..." : saved ? "Changes Saved!" : "Save All Changes"}
-          </span>
-          {saved ? (
-            <CheckCircle2 className="w-5 h-5 text-[#FEDB71]" />
-          ) : (
-            <ArrowRight className="w-5 h-5 text-[#FEDB71]" />
+        <div className="relative">
+          {/* Saving Progress Bar */}
+          {saving && (
+            <motion.div 
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 2, ease: "linear" }}
+              className="absolute bottom-full left-0 h-1 bg-[#389C9A] rounded-t-xl"
+            />
           )}
-        </button>
+          
+          <button
+            onClick={handleSave}
+            disabled={saving || !hasChanges}
+            className={`w-full flex items-center justify-between p-6 font-black uppercase tracking-tight active:scale-[0.98] transition-all rounded-xl border-2 ${
+              saved 
+                ? 'bg-green-500 border-green-500 text-white' 
+                : hasChanges 
+                  ? 'bg-[#1D1D1D] border-[#1D1D1D] text-white hover:bg-[#389C9A]' 
+                  : 'bg-gray-200 border-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              {saving ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Saving Changes...
+                </>
+              ) : saved ? (
+                <>
+                  <CheckCircle2 className="w-5 h-5" />
+                  All Changes Saved!
+                </>
+              ) : hasChanges ? (
+                <>
+                  <Save className="w-5 h-5" />
+                  Save All Changes
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-5 h-5" />
+                  No Changes to Save
+                </>
+              )}
+            </span>
+            
+            {/* Right side indicators */}
+            {saving && (
+              <span className="text-[8px] opacity-70">Please wait...</span>
+            )}
+            {saved && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="flex items-center gap-1"
+              >
+                <span className="text-[8px]">✓ Saved</span>
+              </motion.div>
+            )}
+            {!saving && !saved && hasChanges && (
+              <span className="text-[8px] text-[#FEDB71]">{Object.keys(formData).length} fields</span>
+            )}
+          </button>
+
+          {/* Last Saved Timestamp */}
+          {!hasChanges && !saving && initialFormData.businessName && (
+            <p className="text-[8px] text-center mt-2 text-[#1D1D1D]/30">
+              Last saved {new Date().toLocaleTimeString()}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
