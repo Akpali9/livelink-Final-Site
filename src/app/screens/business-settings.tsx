@@ -16,7 +16,17 @@ import {
   AlertCircle,
   Save,
   Loader2,
-  Plus
+  Plus,
+  Trash2,
+  Phone,
+  Building,
+  MapPin,
+  Link as LinkIcon,
+  Instagram,
+  Twitter,
+  Linkedin,
+  Youtube,
+  Facebook
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase } from "../lib/supabase";
@@ -33,6 +43,8 @@ interface BusinessProfileData {
   country: string;
   bio: string;
   city?: string;
+  address?: string;
+  postalCode?: string;
   registrationNumber?: string;
   taxId?: string;
   yearFounded?: string;
@@ -41,12 +53,13 @@ interface BusinessProfileData {
   logo?: string;
 }
 
-interface CreatorPreferences {
-  ageMin: number;
-  ageMax: number;
-  targetGenders: string[];
-  preferredNiches: string[];
-  defaultCampaignType: string;
+interface PaymentMethod {
+  id: string;
+  card_type: string;
+  last4: string;
+  expiry: string;
+  is_default: boolean;
+  cardholder_name?: string;
 }
 
 export function BusinessSettings() {
@@ -60,9 +73,10 @@ export function BusinessSettings() {
   // Account section state
   const [editingEmail, setEditingEmail] = useState(false);
   const [editingPassword, setEditingPassword] = useState(false);
+  const [editingPhone, setEditingPhone] = useState(false);
   const [editingOwner, setEditingOwner] = useState(false);
   
-  // Form states - initialize as empty strings
+  // Form states
   const [email, setEmail] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
@@ -71,6 +85,7 @@ export function BusinessSettings() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [ownerJobTitle, setOwnerJobTitle] = useState("");
   const [newOwnerName, setNewOwnerName] = useState("");
@@ -84,6 +99,11 @@ export function BusinessSettings() {
   const [editingIndustry, setEditingIndustry] = useState(false);
   const [editingWebsite, setEditingWebsite] = useState(false);
   const [editingLocation, setEditingLocation] = useState(false);
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [editingRegistration, setEditingRegistration] = useState(false);
+  const [editingTaxId, setEditingTaxId] = useState(false);
+  const [editingYearFounded, setEditingYearFounded] = useState(false);
+  const [editingEmployeeCount, setEditingEmployeeCount] = useState(false);
   const [editingSocial, setEditingSocial] = useState(false);
   
   const [businessName, setBusinessName] = useState("");
@@ -99,12 +119,30 @@ export function BusinessSettings() {
   const [country, setCountry] = useState("");
   const [cityInput, setCityInput] = useState("");
   const [countryInput, setCountryInput] = useState("");
+  const [address, setAddress] = useState("");
+  const [addressInput, setAddressInput] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [postalCodeInput, setPostalCodeInput] = useState("");
+  const [registrationNumber, setRegistrationNumber] = useState("");
+  const [registrationInput, setRegistrationInput] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [taxIdInput, setTaxIdInput] = useState("");
+  const [yearFounded, setYearFounded] = useState("");
+  const [yearFoundedInput, setYearFoundedInput] = useState("");
+  const [employeeCount, setEmployeeCount] = useState("");
+  const [employeeCountInput, setEmployeeCountInput] = useState("");
   const [socialPlatforms, setSocialPlatforms] = useState<{platform: string, url: string, id: string}[]>([]);
 
   // Payment section state
   const [editingPayment, setEditingPayment] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
-  const [savedCards, setSavedCards] = useState<any[]>([]);
+  const [savedCards, setSavedCards] = useState<PaymentMethod[]>([]);
+  const [newCard, setNewCard] = useState({
+    card_number: "",
+    cardholder_name: "",
+    expiry: "",
+    cvv: ""
+  });
 
   // Campaign Preferences state
   const [editingAgeRange, setEditingAgeRange] = useState(false);
@@ -112,8 +150,12 @@ export function BusinessSettings() {
   const [editingNiches, setEditingNiches] = useState(false);
   const [ageMin, setAgeMin] = useState(18);
   const [ageMax, setAgeMax] = useState(35);
+  const [ageMinInput, setAgeMinInput] = useState(18);
+  const [ageMaxInput, setAgeMaxInput] = useState(35);
   const [targetGenders, setTargetGenders] = useState(["All Genders"]);
+  const [targetGendersInput, setTargetGendersInput] = useState<string[]>(["All Genders"]);
   const [preferredNiches, setPreferredNiches] = useState<string[]>([]);
+  const [preferredNichesInput, setPreferredNichesInput] = useState<string[]>([]);
   const [defaultCampaignType, setDefaultCampaignType] = useState("BANNER");
 
   // Notifications state
@@ -126,6 +168,7 @@ export function BusinessSettings() {
   // Verification status
   const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'unverified' | 'rejected'>('unverified');
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+  const [businessId, setBusinessId] = useState<string | null>(null);
 
   // Modals state
   const [showPauseModal, setShowPauseModal] = useState(false);
@@ -149,6 +192,14 @@ export function BusinessSettings() {
     "Other"
   ];
 
+  const employeeCountOptions = [
+    "1-10",
+    "11-50",
+    "51-200",
+    "201-500",
+    "500+"
+  ];
+
   const nicheOptions = [
     "Gaming", "Tech Reviews", "Lifestyle", "Fashion", "Beauty",
     "Fitness", "Food & Cooking", "Travel", "Music", "Education",
@@ -156,6 +207,16 @@ export function BusinessSettings() {
   ];
 
   const genderOptions = ["Male", "Female", "Non-binary", "All Genders"];
+
+  const platformIcons: Record<string, any> = {
+    instagram: Instagram,
+    twitter: Twitter,
+    linkedin: Linkedin,
+    youtube: Youtube,
+    facebook: Facebook,
+    tiktok: () => <span className="text-[8px]">TikTok</span>,
+    other: LinkIcon
+  };
 
   // Fetch business data on mount
   useEffect(() => {
@@ -178,7 +239,9 @@ export function BusinessSettings() {
         }
 
         if (businessData) {
-          // Only set values that exist in the database
+          setBusinessId(businessData.id);
+          
+          // Set all business fields
           setBusinessName(businessData.business_name || "");
           setOwnerName(businessData.contact_name || "");
           setPhoneNumber(businessData.contact_phone || "");
@@ -188,6 +251,12 @@ export function BusinessSettings() {
           setCountry(businessData.country || "");
           setBusinessDescription(businessData.description || "");
           setCity(businessData.city || "");
+          setAddress(businessData.address || "");
+          setPostalCode(businessData.postal_code || "");
+          setRegistrationNumber(businessData.registration_number || "");
+          setTaxId(businessData.tax_id || "");
+          setYearFounded(businessData.year_founded || "");
+          setEmployeeCount(businessData.employee_count || "");
           setBusinessLogo(businessData.logo_url || "");
           
           // Parse social links
@@ -231,7 +300,7 @@ export function BusinessSettings() {
             setNotifAnnouncements(notifData.announcements ?? false);
           }
 
-          // Fetch saved cards (from payments table)
+          // Fetch saved cards
           const { data: cardsData } = await supabase
             .from("business_payment_methods")
             .select("*")
@@ -339,6 +408,13 @@ export function BusinessSettings() {
     }
   };
 
+  // Handle phone update
+  const handleUpdatePhone = async () => {
+    await saveBusinessProfile({ contactNumber: phoneInput });
+    setPhoneNumber(phoneInput);
+    setEditingPhone(false);
+  };
+
   // Handle owner update
   const handleUpdateOwner = async () => {
     await saveBusinessProfile({
@@ -381,6 +457,45 @@ export function BusinessSettings() {
     setCity(cityInput);
     setCountry(countryInput);
     setEditingLocation(false);
+  };
+
+  // Handle address update
+  const handleSaveAddress = async () => {
+    await saveBusinessProfile({ 
+      address: addressInput,
+      postal_code: postalCodeInput 
+    });
+    setAddress(addressInput);
+    setPostalCode(postalCodeInput);
+    setEditingAddress(false);
+  };
+
+  // Handle registration number update
+  const handleSaveRegistration = async () => {
+    await saveBusinessProfile({ registrationNumber: registrationInput });
+    setRegistrationNumber(registrationInput);
+    setEditingRegistration(false);
+  };
+
+  // Handle tax ID update
+  const handleSaveTaxId = async () => {
+    await saveBusinessProfile({ taxId: taxIdInput });
+    setTaxId(taxIdInput);
+    setEditingTaxId(false);
+  };
+
+  // Handle year founded update
+  const handleSaveYearFounded = async () => {
+    await saveBusinessProfile({ yearFounded: yearFoundedInput });
+    setYearFounded(yearFoundedInput);
+    setEditingYearFounded(false);
+  };
+
+  // Handle employee count update
+  const handleSaveEmployeeCount = async () => {
+    await saveBusinessProfile({ employeeCount: employeeCountInput });
+    setEmployeeCount(employeeCountInput);
+    setEditingEmployeeCount(false);
   };
 
   // Handle logo upload
@@ -431,34 +546,123 @@ export function BusinessSettings() {
     setEditingSocial(false);
   };
 
-  // Handle preferences update
-  const savePreferences = async () => {
-    if (!user) return;
+  // Handle add card
+  const handleAddCard = async () => {
+    if (!businessId) return;
+
+    if (!newCard.card_number || !newCard.cardholder_name || !newCard.expiry || !newCard.cvv) {
+      toast.error("Please fill in all card details");
+      return;
+    }
 
     setSaving(true);
     try {
-      const { data: businessData } = await supabase
-        .from("businesses")
-        .select("id")
-        .eq("user_id", user.id)
-        .single();
+      const last4 = newCard.card_number.slice(-4);
+      const cardType = newCard.card_number.startsWith('4') ? 'VISA' : 
+                      newCard.card_number.startsWith('5') ? 'MASTERCARD' : 
+                      newCard.card_number.startsWith('3') ? 'AMEX' : 'CARD';
 
-      if (businessData) {
-        const { error } = await supabase
-          .from("business_preferences")
-          .upsert({
-            business_id: businessData.id,
-            age_min: ageMin,
-            age_max: ageMax,
-            target_genders: targetGenders,
-            preferred_niches: preferredNiches,
-            default_campaign_type: defaultCampaignType,
-            updated_at: new Date().toISOString()
-          });
+      const { error } = await supabase
+        .from("business_payment_methods")
+        .insert({
+          business_id: businessId,
+          card_type: cardType,
+          last4: last4,
+          expiry: newCard.expiry,
+          cardholder_name: newCard.cardholder_name,
+          is_default: savedCards.length === 0
+        });
 
-        if (error) throw error;
-        toast.success("Preferences saved");
+      if (error) throw error;
+
+      // Refresh cards
+      const { data: cardsData } = await supabase
+        .from("business_payment_methods")
+        .select("*")
+        .eq("business_id", businessId);
+
+      if (cardsData) {
+        setSavedCards(cardsData);
       }
+
+      setShowAddCard(false);
+      setNewCard({ card_number: "", cardholder_name: "", expiry: "", cvv: "" });
+      toast.success("Card added successfully");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle remove card
+  const handleRemoveCard = async (cardId: string) => {
+    if (!confirm("Are you sure you want to remove this card?")) return;
+
+    try {
+      const { error } = await supabase
+        .from("business_payment_methods")
+        .delete()
+        .eq("id", cardId);
+
+      if (error) throw error;
+
+      setSavedCards(prev => prev.filter(c => c.id !== cardId));
+      toast.success("Card removed");
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  // Handle set default card
+  const handleSetDefaultCard = async (cardId: string) => {
+    if (!businessId) return;
+
+    try {
+      // Remove default from all
+      await supabase
+        .from("business_payment_methods")
+        .update({ is_default: false })
+        .eq("business_id", businessId);
+
+      // Set new default
+      await supabase
+        .from("business_payment_methods")
+        .update({ is_default: true })
+        .eq("id", cardId);
+
+      // Update local state
+      setSavedCards(prev => prev.map(c => ({
+        ...c,
+        is_default: c.id === cardId
+      })));
+
+      toast.success("Default card updated");
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  // Handle preferences update
+  const savePreferences = async () => {
+    if (!businessId) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("business_preferences")
+        .upsert({
+          business_id: businessId,
+          age_min: ageMin,
+          age_max: ageMax,
+          target_genders: targetGenders,
+          preferred_niches: preferredNiches,
+          default_campaign_type: defaultCampaignType,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+      toast.success("Preferences saved");
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -468,32 +672,24 @@ export function BusinessSettings() {
 
   // Handle notification settings update
   const saveNotifications = async () => {
-    if (!user) return;
+    if (!businessId) return;
 
     setSaving(true);
     try {
-      const { data: businessData } = await supabase
-        .from("businesses")
-        .select("id")
-        .eq("user_id", user.id)
-        .single();
+      const { error } = await supabase
+        .from("business_notifications")
+        .upsert({
+          business_id: businessId,
+          campaign_accepts: notifAccepts,
+          campaign_declines: notifDeclines,
+          payout_released: notifPayouts,
+          new_messages: notifMessages,
+          announcements: notifAnnouncements,
+          updated_at: new Date().toISOString()
+        });
 
-      if (businessData) {
-        const { error } = await supabase
-          .from("business_notifications")
-          .upsert({
-            business_id: businessData.id,
-            campaign_accepts: notifAccepts,
-            campaign_declines: notifDeclines,
-            payout_released: notifPayouts,
-            new_messages: notifMessages,
-            announcements: notifAnnouncements,
-            updated_at: new Date().toISOString()
-          });
-
-        if (error) throw error;
-        toast.success("Notification settings saved");
-      }
+      if (error) throw error;
+      toast.success("Notification settings saved");
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -505,6 +701,11 @@ export function BusinessSettings() {
     const words = text.split(" ");
     if (words.length <= 15) return text;
     return descriptionExpanded ? text : words.slice(0, 15).join(" ") + "...";
+  };
+
+  const getPlatformIcon = (platform: string) => {
+    const Icon = platformIcons[platform.toLowerCase()] || LinkIcon;
+    return <Icon className="w-3.5 h-3.5" />;
   };
 
   const getVerificationBadge = () => {
@@ -618,6 +819,7 @@ export function BusinessSettings() {
                         type="email"
                         value={newEmail}
                         onChange={(e) => setNewEmail(e.target.value)}
+                        placeholder="new@email.com"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -629,6 +831,7 @@ export function BusinessSettings() {
                         type="email"
                         value={confirmEmail}
                         onChange={(e) => setConfirmEmail(e.target.value)}
+                        placeholder="new@email.com"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -640,6 +843,7 @@ export function BusinessSettings() {
                         type="password"
                         value={currentPasswordEmail}
                         onChange={(e) => setCurrentPasswordEmail(e.target.value)}
+                        placeholder="••••••••"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -698,6 +902,7 @@ export function BusinessSettings() {
                         type="password"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="••••••••"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -709,6 +914,7 @@ export function BusinessSettings() {
                         type="password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                       {newPassword && (
@@ -727,6 +933,7 @@ export function BusinessSettings() {
                         type="password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -750,22 +957,62 @@ export function BusinessSettings() {
 
             {/* Phone Number */}
             <div className="border-b border-[#1D1D1D]/10 pb-4">
-              <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
-                PHONE NUMBER
-              </label>
-              <p className="text-sm text-[#1D1D1D]/60 mb-2">
-                {phoneNumber || "Not set"}
-              </p>
-              <div className="flex items-start gap-2">
-                <Mail className="w-3.5 h-3.5 text-[#389C9A] mt-0.5 flex-shrink-0" />
-                <p className="text-[9px] text-[#1D1D1D]/50 leading-relaxed">
-                  To change your phone number contact our team at{" "}
-                  <a href="mailto:support@livelink.com" className="text-[#389C9A] underline">
-                    support@livelink.com
-                  </a>
-                  {" "}— this requires identity verification.
-                </p>
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    PHONE NUMBER
+                  </label>
+                  <p className="text-sm text-[#1D1D1D]/60">
+                    {phoneNumber || "Not set"}
+                  </p>
+                </div>
+                {!editingPhone && (
+                  <button 
+                    onClick={() => {
+                      setPhoneInput(phoneNumber);
+                      setEditingPhone(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic"
+                  >
+                    {phoneNumber ? "CHANGE" : "ADD"}
+                  </button>
+                )}
               </div>
+
+              <AnimatePresence>
+                {editingPhone && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1D1D1D]/40" />
+                      <input
+                        type="tel"
+                        value={phoneInput}
+                        onChange={(e) => setPhoneInput(e.target.value)}
+                        placeholder="+234 801 234 5678"
+                        className="w-full pl-10 pr-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={handleUpdatePhone}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                    >
+                      {saving ? "UPDATING..." : "UPDATE PHONE"}
+                    </button>
+                    <button
+                      onClick={() => setEditingPhone(false)}
+                      className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
+                    >
+                      CANCEL
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Account Owner Name */}
@@ -812,6 +1059,7 @@ export function BusinessSettings() {
                         type="text"
                         value={newOwnerName}
                         onChange={(e) => setNewOwnerName(e.target.value)}
+                        placeholder="John Doe"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -823,6 +1071,7 @@ export function BusinessSettings() {
                         type="text"
                         value={newOwnerJobTitle}
                         onChange={(e) => setNewOwnerJobTitle(e.target.value)}
+                        placeholder="Marketing Director"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -834,6 +1083,7 @@ export function BusinessSettings() {
                         type="password"
                         value={currentPasswordOwner}
                         onChange={(e) => setCurrentPasswordOwner(e.target.value)}
+                        placeholder="••••••••"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -937,7 +1187,7 @@ export function BusinessSettings() {
                     <img src={businessLogo} alt="Business logo" className="w-10 h-10 border border-[#1D1D1D]/10 object-cover" />
                   ) : (
                     <div className="w-10 h-10 bg-[#1D1D1D]/5 border border-[#1D1D1D]/10 flex items-center justify-center">
-                      <span className="text-[10px] font-black text-[#1D1D1D]/30">LOGO</span>
+                      <Building className="w-5 h-5 text-[#1D1D1D]/30" />
                     </div>
                   )}
                   {!editingLogo && (
@@ -1222,22 +1472,17 @@ export function BusinessSettings() {
                     exit={{ height: 0, opacity: 0 }}
                     className="mt-4 space-y-3 overflow-hidden"
                   >
-                    <div>
-                      <label className="block text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/70 mb-1 italic">
-                        CITY
-                      </label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1D1D1D]/40" />
                       <input
                         type="text"
                         value={cityInput}
                         onChange={(e) => setCityInput(e.target.value)}
-                        placeholder="e.g. Lagos"
-                        className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                        placeholder="City"
+                        className="w-full pl-10 pr-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/70 mb-1 italic">
-                        COUNTRY
-                      </label>
                       <select
                         value={countryInput}
                         onChange={(e) => setCountryInput(e.target.value)}
@@ -1270,6 +1515,317 @@ export function BusinessSettings() {
               </AnimatePresence>
             </div>
 
+            {/* Full Address */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    FULL ADDRESS
+                  </label>
+                  <p className="text-sm text-[#1D1D1D]/60">
+                    {address || "Not set"}
+                  </p>
+                  {postalCode && (
+                    <p className="text-xs text-[#1D1D1D]/40 mt-1">
+                      Postal Code: {postalCode}
+                    </p>
+                  )}
+                </div>
+                {!editingAddress && (
+                  <button 
+                    onClick={() => {
+                      setAddressInput(address);
+                      setPostalCodeInput(postalCode);
+                      setEditingAddress(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic"
+                  >
+                    {address ? "EDIT" : "ADD"}
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {editingAddress && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/70 mb-1 italic">
+                        STREET ADDRESS
+                      </label>
+                      <input
+                        type="text"
+                        value={addressInput}
+                        onChange={(e) => setAddressInput(e.target.value)}
+                        placeholder="123 Business Street"
+                        className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/70 mb-1 italic">
+                        POSTAL CODE
+                      </label>
+                      <input
+                        type="text"
+                        value={postalCodeInput}
+                        onChange={(e) => setPostalCodeInput(e.target.value)}
+                        placeholder="100001"
+                        className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={handleSaveAddress}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                    >
+                      {saving ? "SAVING..." : "SAVE ADDRESS"}
+                    </button>
+                    <button
+                      onClick={() => setEditingAddress(false)}
+                      className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
+                    >
+                      CANCEL
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Registration Number */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    REGISTRATION NUMBER
+                  </label>
+                  <p className="text-sm text-[#1D1D1D]/60">
+                    {registrationNumber || "Not set"}
+                  </p>
+                </div>
+                {!editingRegistration && (
+                  <button 
+                    onClick={() => {
+                      setRegistrationInput(registrationNumber);
+                      setEditingRegistration(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic"
+                  >
+                    {registrationNumber ? "EDIT" : "ADD"}
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {editingRegistration && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <input
+                      type="text"
+                      value={registrationInput}
+                      onChange={(e) => setRegistrationInput(e.target.value)}
+                      placeholder="RC123456"
+                      className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                    />
+                    <button
+                      onClick={handleSaveRegistration}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                    >
+                      {saving ? "SAVING..." : "SAVE"}
+                    </button>
+                    <button
+                      onClick={() => setEditingRegistration(false)}
+                      className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
+                    >
+                      CANCEL
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Tax ID */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    TAX ID / VAT
+                  </label>
+                  <p className="text-sm text-[#1D1D1D]/60">
+                    {taxId || "Not set"}
+                  </p>
+                </div>
+                {!editingTaxId && (
+                  <button 
+                    onClick={() => {
+                      setTaxIdInput(taxId);
+                      setEditingTaxId(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic"
+                  >
+                    {taxId ? "EDIT" : "ADD"}
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {editingTaxId && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <input
+                      type="text"
+                      value={taxIdInput}
+                      onChange={(e) => setTaxIdInput(e.target.value)}
+                      placeholder="GB123456789"
+                      className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                    />
+                    <button
+                      onClick={handleSaveTaxId}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                    >
+                      {saving ? "SAVING..." : "SAVE"}
+                    </button>
+                    <button
+                      onClick={() => setEditingTaxId(false)}
+                      className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
+                    >
+                      CANCEL
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Year Founded */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    YEAR FOUNDED
+                  </label>
+                  <p className="text-sm text-[#1D1D1D]/60">
+                    {yearFounded || "Not set"}
+                  </p>
+                </div>
+                {!editingYearFounded && (
+                  <button 
+                    onClick={() => {
+                      setYearFoundedInput(yearFounded);
+                      setEditingYearFounded(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic"
+                  >
+                    {yearFounded ? "EDIT" : "ADD"}
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {editingYearFounded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <input
+                      type="text"
+                      value={yearFoundedInput}
+                      onChange={(e) => setYearFoundedInput(e.target.value)}
+                      placeholder="2020"
+                      className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                    />
+                    <button
+                      onClick={handleSaveYearFounded}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                    >
+                      {saving ? "SAVING..." : "SAVE"}
+                    </button>
+                    <button
+                      onClick={() => setEditingYearFounded(false)}
+                      className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
+                    >
+                      CANCEL
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Employee Count */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    EMPLOYEES
+                  </label>
+                  <p className="text-sm text-[#1D1D1D]/60">
+                    {employeeCount || "Not set"}
+                  </p>
+                </div>
+                {!editingEmployeeCount && (
+                  <button 
+                    onClick={() => {
+                      setEmployeeCountInput(employeeCount);
+                      setEditingEmployeeCount(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic"
+                  >
+                    {employeeCount ? "EDIT" : "ADD"}
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {editingEmployeeCount && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <select
+                      value={employeeCountInput}
+                      onChange={(e) => setEmployeeCountInput(e.target.value)}
+                      className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                    >
+                      <option value="">Select range</option>
+                      {employeeCountOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleSaveEmployeeCount}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                    >
+                      {saving ? "SAVING..." : "SAVE"}
+                    </button>
+                    <button
+                      onClick={() => setEditingEmployeeCount(false)}
+                      className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
+                    >
+                      CANCEL
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             {/* Social Media */}
             <div className="border-b border-[#1D1D1D]/10 pb-4">
               <div className="flex items-start justify-between mb-2">
@@ -1281,8 +1837,8 @@ export function BusinessSettings() {
                     <div className="space-y-2">
                       {socialPlatforms.map((platform) => (
                         <div key={platform.id} className="flex items-center gap-2">
-                          <div className="px-3 py-1 bg-[#1D1D1D] text-white text-[9px] font-black uppercase tracking-wider italic">
-                            {platform.platform}
+                          <div className="w-6 h-6 bg-[#1D1D1D] rounded flex items-center justify-center text-white">
+                            {getPlatformIcon(platform.platform)}
                           </div>
                           <span className="text-xs text-[#1D1D1D]/60 truncate">{platform.url}</span>
                         </div>
@@ -1312,33 +1868,38 @@ export function BusinessSettings() {
                   >
                     {socialPlatforms.map((platform) => (
                       <div key={platform.id} className="flex items-center justify-between p-3 border border-[#1D1D1D]/10">
-                        <div>
-                          <p className="text-xs font-bold text-[#1D1D1D] capitalize">{platform.platform}</p>
-                          <p className="text-[10px] text-[#1D1D1D]/60 truncate max-w-[150px]">{platform.url}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-[#1D1D1D] rounded flex items-center justify-center text-white">
+                            {getPlatformIcon(platform.platform)}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-[#1D1D1D] capitalize">{platform.platform}</p>
+                            <p className="text-[10px] text-[#1D1D1D]/60 truncate max-w-[150px]">{platform.url}</p>
+                          </div>
                         </div>
                         <button
                           onClick={() => setSocialPlatforms(prev => prev.filter(p => p.id !== platform.id))}
-                          className="text-[9px] font-black uppercase tracking-wider text-red-600 italic"
+                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
                         >
-                          REMOVE
+                          <Trash2 className="w-4 h-4 text-red-500" />
                         </button>
                       </div>
                     ))}
                     <button 
                       onClick={() => {
-                        const newPlatform = window.prompt("Enter platform name (e.g., Twitter, Instagram):");
-                        if (newPlatform) {
-                          const newUrl = window.prompt(`Enter ${newPlatform} URL:`);
-                          if (newUrl) {
+                        const platform = window.prompt("Enter platform name (e.g., Instagram, Twitter):");
+                        if (platform) {
+                          const url = window.prompt(`Enter ${platform} URL:`);
+                          if (url) {
                             setSocialPlatforms(prev => [...prev, {
-                              platform: newPlatform.toLowerCase(),
-                              url: newUrl,
+                              platform: platform.toLowerCase(),
+                              url: url,
                               id: `social-${Date.now()}-${Math.random()}`
                             }]);
                           }
                         }
                       }}
-                      className="w-full py-2.5 border-2 border-[#1D1D1D] text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic flex items-center justify-center gap-2"
+                      className="w-full py-2.5 border-2 border-dashed border-[#1D1D1D]/20 text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic flex items-center justify-center gap-2 hover:border-[#389C9A] transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                       ADD PLATFORM
@@ -1363,8 +1924,757 @@ export function BusinessSettings() {
           </div>
         </div>
 
-        {/* ... REST OF THE SECTIONS (PAYMENT, PREFERENCES, NOTIFICATIONS, ETC) ... */}
-        {/* They should follow the same pattern - showing "Not set" when no data exists */}
+        {/* SECTION 3: PAYMENT & BILLING */}
+        <div>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/50 mb-4 italic">
+            PAYMENT & BILLING
+          </h2>
+
+          <div className="space-y-6">
+            {/* Saved Payment Methods */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-3 italic">
+                PAYMENT METHODS
+              </label>
+              
+              {savedCards.length > 0 ? (
+                <div className="space-y-3 mb-4">
+                  {savedCards.map((card) => (
+                    <div key={card.id} className="flex items-center justify-between p-4 border border-[#1D1D1D]/10 hover:border-[#389C9A] transition-colors">
+                      <div className="flex items-center gap-3">
+                        <CreditCard className="w-5 h-5 text-[#389C9A]" />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-bold text-[#1D1D1D]">{card.card_type} •••• {card.last4}</p>
+                            {card.is_default && (
+                              <span className="px-2 py-0.5 bg-[#389C9A]/10 text-[#389C9A] text-[8px] font-black rounded-full">
+                                DEFAULT
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-[#1D1D1D]/60 mt-0.5">
+                            Expires {card.expiry} • {card.cardholder_name}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!card.is_default && (
+                          <button
+                            onClick={() => handleSetDefaultCard(card.id)}
+                            className="text-[9px] font-black uppercase tracking-wider text-[#389C9A] italic hover:underline"
+                          >
+                            Set Default
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleRemoveCard(card.id)}
+                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[#1D1D1D]/60 mb-4">No payment methods added</p>
+              )}
+
+              <button 
+                onClick={() => setShowAddCard(!showAddCard)}
+                className="w-full py-3 border-2 border-dashed border-[#1D1D1D]/20 text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic flex items-center justify-center gap-2 hover:border-[#389C9A] transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                ADD NEW CARD
+              </button>
+
+              <AnimatePresence>
+                {showAddCard && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <div className="border border-[#1D1D1D]/20 p-4 bg-[#F8F8F8]">
+                      <p className="text-xs font-bold text-[#1D1D1D] mb-3">Enter new card details</p>
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          placeholder="Card number"
+                          value={newCard.card_number}
+                          onChange={(e) => setNewCard({...newCard, card_number: e.target.value})}
+                          className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none bg-white"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Cardholder name"
+                          value={newCard.cardholder_name}
+                          onChange={(e) => setNewCard({...newCard, cardholder_name: e.target.value})}
+                          className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none bg-white"
+                        />
+                        <div className="flex gap-3">
+                          <input
+                            type="text"
+                            placeholder="MM/YY"
+                            value={newCard.expiry}
+                            onChange={(e) => setNewCard({...newCard, expiry: e.target.value})}
+                            className="w-1/2 px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none bg-white"
+                          />
+                          <input
+                            type="text"
+                            placeholder="CVV"
+                            value={newCard.cvv}
+                            onChange={(e) => setNewCard({...newCard, cvv: e.target.value})}
+                            className="w-1/2 px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleAddCard}
+                        disabled={saving}
+                        className="flex-1 py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                      >
+                        {saving ? "ADDING..." : "ADD CARD"}
+                      </button>
+                      <button
+                        onClick={() => setShowAddCard(false)}
+                        className="flex-1 py-2.5 border border-[#1D1D1D]/20 text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic"
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Billing History */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <button 
+                onClick={() => navigate('/business/billing-history')}
+                className="w-full flex items-center justify-between group"
+              >
+                <div className="text-left">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    BILLING HISTORY
+                  </label>
+                  <p className="text-[9px] text-[#1D1D1D]/60">
+                    View all past campaign payments and receipts.
+                  </p>
+                </div>
+                <ArrowLeft className="w-4 h-4 text-[#1D1D1D] rotate-180 group-hover:text-[#389C9A] transition-colors flex-shrink-0" />
+              </button>
+            </div>
+
+            {/* Pending Refunds */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <button 
+                onClick={() => navigate('/business/refunds')}
+                className="w-full flex items-center justify-between group"
+              >
+                <div className="text-left">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    PENDING REFUNDS
+                  </label>
+                  <p className="text-[9px] text-[#1D1D1D]/60">
+                    Track the status of your refund requests.
+                  </p>
+                </div>
+                <ArrowLeft className="w-4 h-4 text-[#1D1D1D] rotate-180 group-hover:text-[#389C9A] transition-colors flex-shrink-0" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 4: CAMPAIGN PREFERENCES */}
+        <div>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/50 mb-2 italic">
+            CAMPAIGN PREFERENCES
+          </h2>
+          <p className="text-[9px] text-[#1D1D1D]/60 mb-4 leading-relaxed">
+            These preferences help us match your campaigns with the right creators.
+          </p>
+
+          <div className="space-y-6">
+            {/* Target Audience Age Range */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                    TARGET AUDIENCE AGE
+                  </label>
+                  <p className="text-sm text-[#1D1D1D]/60">
+                    {ageMin} – {ageMax}
+                  </p>
+                </div>
+                {!editingAgeRange && (
+                  <button 
+                    onClick={() => {
+                      setAgeMinInput(ageMin);
+                      setAgeMaxInput(ageMax);
+                      setEditingAgeRange(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic"
+                  >
+                    EDIT
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {editingAgeRange && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className="block text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/70 mb-1 italic">
+                          MIN AGE
+                        </label>
+                        <input
+                          type="number"
+                          value={ageMinInput}
+                          onChange={(e) => setAgeMinInput(Number(e.target.value))}
+                          min={13}
+                          max={65}
+                          className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/70 mb-1 italic">
+                          MAX AGE
+                        </label>
+                        <input
+                          type="number"
+                          value={ageMaxInput}
+                          onChange={(e) => setAgeMaxInput(Number(e.target.value))}
+                          min={13}
+                          max={65}
+                          className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setAgeMin(ageMinInput);
+                          setAgeMax(ageMaxInput);
+                          savePreferences();
+                          setEditingAgeRange(false);
+                        }}
+                        disabled={saving}
+                        className="flex-1 py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                      >
+                        {saving ? "SAVING..." : "SAVE"}
+                      </button>
+                      <button
+                        onClick={() => setEditingAgeRange(false)}
+                        className="flex-1 py-2.5 border border-[#1D1D1D]/20 text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic"
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Target Audience Gender */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-2 italic">
+                    TARGET GENDER
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {targetGenders.map((gender, index) => (
+                      <span 
+                        key={index}
+                        className="px-3 py-1 bg-[#389C9A] text-white text-[9px] font-black uppercase tracking-wider italic"
+                      >
+                        {gender}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {!editingGender && (
+                  <button 
+                    onClick={() => {
+                      setTargetGendersInput(targetGenders);
+                      setEditingGender(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic ml-3"
+                  >
+                    EDIT
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {editingGender && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      {genderOptions.map((gender) => (
+                        <button
+                          key={gender}
+                          onClick={() => {
+                            if (gender === "All Genders") {
+                              setTargetGendersInput(["All Genders"]);
+                            } else {
+                              const filtered = targetGendersInput.filter(g => g !== "All Genders");
+                              if (targetGendersInput.includes(gender)) {
+                                setTargetGendersInput(filtered.filter(g => g !== gender));
+                              } else {
+                                setTargetGendersInput([...filtered, gender]);
+                              }
+                            }
+                          }}
+                          className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-wider italic border transition-colors ${
+                            targetGendersInput.includes(gender)
+                              ? "bg-[#389C9A] border-[#389C9A] text-white"
+                              : "bg-white border-[#1D1D1D]/20 text-[#1D1D1D]"
+                          }`}
+                        >
+                          {gender}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setTargetGenders(targetGendersInput);
+                          savePreferences();
+                          setEditingGender(false);
+                        }}
+                        disabled={saving}
+                        className="flex-1 py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                      >
+                        {saving ? "SAVING..." : "SAVE"}
+                      </button>
+                      <button
+                        onClick={() => setEditingGender(false)}
+                        className="flex-1 py-2.5 border border-[#1D1D1D]/20 text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic"
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Preferred Creator Niches */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-2 italic">
+                    PREFERRED CREATOR NICHES
+                  </label>
+                  {preferredNiches.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {preferredNiches.map((niche, index) => (
+                        <span 
+                          key={index}
+                          className="px-3 py-1 bg-[#389C9A] text-white text-[9px] font-black uppercase tracking-wider italic"
+                        >
+                          {niche}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#1D1D1D]/60">No niches selected</p>
+                  )}
+                </div>
+                {!editingNiches && (
+                  <button 
+                    onClick={() => {
+                      setPreferredNichesInput(preferredNiches);
+                      setEditingNiches(true);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-[#389C9A] italic ml-3"
+                  >
+                    {preferredNiches.length > 0 ? "EDIT" : "ADD"}
+                  </button>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {editingNiches && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="mt-4 space-y-3 overflow-hidden"
+                  >
+                    <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 border border-[#1D1D1D]/10">
+                      {nicheOptions.map((niche) => (
+                        <button
+                          key={niche}
+                          onClick={() => {
+                            if (preferredNichesInput.includes(niche)) {
+                              setPreferredNichesInput(preferredNichesInput.filter(n => n !== niche));
+                            } else {
+                              setPreferredNichesInput([...preferredNichesInput, niche]);
+                            }
+                          }}
+                          className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-wider italic border transition-colors ${
+                            preferredNichesInput.includes(niche)
+                              ? "bg-[#389C9A] border-[#389C9A] text-white"
+                              : "bg-white border-[#1D1D1D]/20 text-[#1D1D1D]"
+                          }`}
+                        >
+                          {niche}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setPreferredNiches(preferredNichesInput);
+                          savePreferences();
+                          setEditingNiches(false);
+                        }}
+                        disabled={saving}
+                        className="flex-1 py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                      >
+                        {saving ? "SAVING..." : "SAVE NICHES"}
+                      </button>
+                      <button
+                        onClick={() => setEditingNiches(false)}
+                        className="flex-1 py-2.5 border border-[#1D1D1D]/20 text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic"
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Default Campaign Type */}
+            <div className="border-b border-[#1D1D1D]/10 pb-4">
+              <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                DEFAULT CAMPAIGN TYPE
+              </label>
+              <p className="text-[9px] text-[#1D1D1D]/60 mb-3 leading-relaxed">
+                Pre-select your preferred campaign type when creating a new campaign.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setDefaultCampaignType("BANNER");
+                    savePreferences();
+                  }}
+                  className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider italic border-2 transition-colors ${
+                    defaultCampaignType === "BANNER"
+                      ? "bg-[#389C9A] border-[#389C9A] text-white"
+                      : "bg-white border-[#1D1D1D]/20 text-[#1D1D1D] hover:border-[#389C9A]"
+                  }`}
+                >
+                  BANNER
+                </button>
+                <button
+                  onClick={() => {
+                    setDefaultCampaignType("PROMO CODE");
+                    savePreferences();
+                  }}
+                  className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider italic border-2 transition-colors ${
+                    defaultCampaignType === "PROMO CODE"
+                      ? "bg-[#389C9A] border-[#389C9A] text-white"
+                      : "bg-white border-[#1D1D1D]/20 text-[#1D1D1D] hover:border-[#389C9A]"
+                  }`}
+                >
+                  PROMO CODE
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  setDefaultCampaignType("BANNER + CODE");
+                  savePreferences();
+                }}
+                className={`w-full mt-2 py-2.5 text-[10px] font-black uppercase tracking-wider italic border-2 transition-colors ${
+                  defaultCampaignType === "BANNER + CODE"
+                    ? "bg-[#389C9A] border-[#389C9A] text-white"
+                    : "bg-white border-[#1D1D1D]/20 text-[#1D1D1D] hover:border-[#389C9A]"
+                }`}
+              >
+                BANNER + CODE
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 5: NOTIFICATIONS */}
+        <div>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/50 mb-4 italic">
+            NOTIFICATIONS
+          </h2>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <span className="text-sm font-bold text-[#1D1D1D]">Creator accepts my campaign</span>
+                <p className="text-[9px] text-[#1D1D1D]/40 mt-0.5">Get notified when a creator accepts your campaign</p>
+              </div>
+              <button
+                onClick={() => {
+                  setNotifAccepts(!notifAccepts);
+                  saveNotifications();
+                }}
+                className="flex items-center gap-2"
+              >
+                <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
+                  notifAccepts ? 'bg-[#389C9A] justify-end' : 'bg-[#1D1D1D]/20 justify-start'
+                }`}>
+                  <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                </div>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <span className="text-sm font-bold text-[#1D1D1D]">Creator declines my campaign</span>
+                <p className="text-[9px] text-[#1D1D1D]/40 mt-0.5">Get notified when a creator declines your campaign</p>
+              </div>
+              <button
+                onClick={() => {
+                  setNotifDeclines(!notifDeclines);
+                  saveNotifications();
+                }}
+                className="flex items-center gap-2"
+              >
+                <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
+                  notifDeclines ? 'bg-[#389C9A] justify-end' : 'bg-[#1D1D1D]/20 justify-start'
+                }`}>
+                  <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                </div>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <span className="text-sm font-bold text-[#1D1D1D]">Stream verified and payout released</span>
+                <p className="text-[9px] text-[#1D1D1D]/40 mt-0.5">Get notified when a campaign is verified and paid out</p>
+              </div>
+              <button
+                onClick={() => {
+                  setNotifPayouts(!notifPayouts);
+                  saveNotifications();
+                }}
+                className="flex items-center gap-2"
+              >
+                <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
+                  notifPayouts ? 'bg-[#389C9A] justify-end' : 'bg-[#1D1D1D]/20 justify-start'
+                }`}>
+                  <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                </div>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <span className="text-sm font-bold text-[#1D1D1D]">New message from a creator</span>
+                <p className="text-[9px] text-[#1D1D1D]/40 mt-0.5">Get notified when you receive a new message</p>
+              </div>
+              <button
+                onClick={() => {
+                  setNotifMessages(!notifMessages);
+                  saveNotifications();
+                }}
+                className="flex items-center gap-2"
+              >
+                <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
+                  notifMessages ? 'bg-[#389C9A] justify-end' : 'bg-[#1D1D1D]/20 justify-start'
+                }`}>
+                  <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                </div>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <span className="text-sm font-bold text-[#1D1D1D]">Platform announcements</span>
+                <p className="text-[9px] text-[#1D1D1D]/40 mt-0.5">Receive news and updates from LiveLink</p>
+              </div>
+              <button
+                onClick={() => {
+                  setNotifAnnouncements(!notifAnnouncements);
+                  saveNotifications();
+                }}
+                className="flex items-center gap-2"
+              >
+                <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
+                  notifAnnouncements ? 'bg-[#389C9A] justify-end' : 'bg-[#1D1D1D]/20 justify-start'
+                }`}>
+                  <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 6: COMPLIANCE & LEGAL */}
+        <div>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/50 mb-4 italic">
+            COMPLIANCE & LEGAL
+          </h2>
+
+          <div className="space-y-3">
+            <button 
+              onClick={() => window.open('/policies/advertiser', '_blank')}
+              className="w-full flex items-center justify-between p-4 border border-[#1D1D1D]/10 hover:border-[#389C9A] transition-colors group"
+            >
+              <div className="text-left">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                  ADVERTISER POLICY
+                </label>
+                <p className="text-[9px] text-[#1D1D1D]/60">
+                  Last agreed on {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+              </div>
+              <ArrowLeft className="w-4 h-4 text-[#1D1D1D] rotate-180 group-hover:text-[#389C9A] transition-colors flex-shrink-0" />
+            </button>
+
+            <button 
+              onClick={() => window.open('/terms', '_blank')}
+              className="w-full flex items-center justify-between p-4 border border-[#1D1D1D]/10 hover:border-[#389C9A] transition-colors group"
+            >
+              <div className="text-left">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
+                  TERMS OF SERVICE
+                </label>
+                <p className="text-[9px] text-[#1D1D1D]/60">
+                  Last agreed on {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+              </div>
+              <ArrowLeft className="w-4 h-4 text-[#1D1D1D] rotate-180 group-hover:text-[#389C9A] transition-colors flex-shrink-0" />
+            </button>
+
+            <div className="p-4 border border-[#1D1D1D]/10">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] italic">
+                  VERIFICATION STATUS
+                </label>
+                {getVerificationBadge()}
+              </div>
+              <p className="text-[9px] text-[#1D1D1D]/60 leading-relaxed">
+                {verificationStatus === 'verified' && "Your business identity has been verified by the LiveLink team."}
+                {verificationStatus === 'pending' && "Your documents are being reviewed. This usually takes 1-2 business days."}
+                {verificationStatus === 'rejected' && rejectionReason}
+                {verificationStatus === 'unverified' && "Upload your business documents to get verified."}
+              </p>
+              {verificationStatus !== 'verified' && (
+                <button
+                  onClick={() => navigate('/business/verification')}
+                  className="mt-3 w-full py-2 border-2 border-[#389C9A] text-[#389C9A] text-[9px] font-black uppercase tracking-wider italic hover:bg-[#389C9A] hover:text-white transition-colors"
+                >
+                  {verificationStatus === 'pending' ? 'VIEW STATUS' : 'START VERIFICATION'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 7: ACCOUNT STATUS */}
+        <div>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/50 mb-4 italic">
+            ACCOUNT STATUS
+          </h2>
+
+          <div className="space-y-6">
+            {/* Pause Account */}
+            <div>
+              <h3 className="text-sm font-black text-[#1D1D1D] mb-2">PAUSE YOUR ACCOUNT</h3>
+              <p className="text-[9px] text-[#1D1D1D]/60 mb-3 leading-relaxed">
+                Pausing hides your business profile and all active campaign listings. Ongoing campaigns with accepted creators are not affected.
+              </p>
+              <button
+                onClick={() => setShowPauseModal(true)}
+                className="w-full py-2.5 border-2 border-[#D2691E] text-[#D2691E] text-[10px] font-black uppercase tracking-wider italic hover:bg-[#D2691E] hover:text-white transition-colors"
+              >
+                PAUSE MY ACCOUNT
+              </button>
+            </div>
+
+            {/* Delete Account */}
+            <div>
+              <h3 className="text-sm font-black text-[#1D1D1D] mb-2">DELETE ACCOUNT</h3>
+              <p className="text-[9px] text-[#1D1D1D]/60 mb-3 leading-relaxed">
+                Permanently deletes your business account and all data. Any active campaigns will be terminated and held funds refunded. This cannot be undone.
+              </p>
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="w-full py-2.5 border-2 border-red-600 text-red-600 text-[10px] font-black uppercase tracking-wider italic hover:bg-red-600 hover:text-white transition-colors"
+              >
+                REQUEST ACCOUNT DELETION
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 8: SUPPORT */}
+        <div>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/50 mb-4 italic">
+            SUPPORT
+          </h2>
+
+          <div className="space-y-3">
+            <button 
+              onClick={() => window.open('/help', '_blank')}
+              className="w-full flex items-center justify-between p-4 border border-[#1D1D1D]/10 hover:border-[#389C9A] transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <HelpCircle className="w-4.5 h-4.5 text-[#1D1D1D] group-hover:text-[#389C9A] transition-colors" />
+                <span className="text-sm font-bold text-[#1D1D1D]">Help Centre</span>
+              </div>
+              <ArrowLeft className="w-4 h-4 text-[#1D1D1D] rotate-180 group-hover:text-[#389C9A] transition-colors" />
+            </button>
+
+            <button 
+              onClick={() => window.location.href = 'mailto:support@livelink.com'}
+              className="w-full flex items-center justify-between p-4 border border-[#1D1D1D]/10 hover:border-[#389C9A] transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <MessageCircle className="w-4.5 h-4.5 text-[#1D1D1D] group-hover:text-[#389C9A] transition-colors" />
+                <span className="text-sm font-bold text-[#1D1D1D]">Contact Support</span>
+              </div>
+              <ArrowLeft className="w-4 h-4 text-[#1D1D1D] rotate-180 group-hover:text-[#389C9A] transition-colors" />
+            </button>
+
+            <button 
+              onClick={() => window.open('/terms', '_blank')}
+              className="w-full flex items-center justify-between p-4 border border-[#1D1D1D]/10 hover:border-[#389C9A] transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <FileText className="w-4.5 h-4.5 text-[#1D1D1D] group-hover:text-[#389C9A] transition-colors" />
+                <span className="text-sm font-bold text-[#1D1D1D]">Terms of Service</span>
+              </div>
+              <ArrowLeft className="w-4 h-4 text-[#1D1D1D] rotate-180 group-hover:text-[#389C9A] transition-colors" />
+            </button>
+
+            <button 
+              onClick={() => window.open('/privacy', '_blank')}
+              className="w-full flex items-center justify-between p-4 border border-[#1D1D1D]/10 hover:border-[#389C9A] transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <Shield className="w-4.5 h-4.5 text-[#1D1D1D] group-hover:text-[#389C9A] transition-colors" />
+                <span className="text-sm font-bold text-[#1D1D1D]">Privacy Policy</span>
+              </div>
+              <ArrowLeft className="w-4 h-4 text-[#1D1D1D] rotate-180 group-hover:text-[#389C9A] transition-colors" />
+            </button>
+          </div>
+        </div>
 
         {/* BOTTOM INFO */}
         <div className="text-center space-y-2 pt-6">
@@ -1372,13 +2682,13 @@ export function BusinessSettings() {
             LiveLink v1.0.0
           </p>
           <p className="text-[9px] text-[#1D1D1D]/60">
-            Logged in as {email || businessName || "Business Account"} ·{" "}
+            Logged in as {businessName || email || "Business Account"} ·{" "}
             <button 
               onClick={async () => {
                 await supabase.auth.signOut();
                 navigate('/login/portal');
               }}
-              className="text-[#389C9A] font-bold"
+              className="text-[#389C9A] font-bold hover:underline"
             >
               Log out
             </button>
@@ -1386,7 +2696,110 @@ export function BusinessSettings() {
         </div>
       </div>
 
-      {/* Modals... */}
+      {/* PAUSE ACCOUNT MODAL */}
+      <AnimatePresence>
+        {showPauseModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-50"
+              onClick={() => setShowPauseModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-sm bg-white p-6 z-50"
+            >
+              <h3 className="text-lg font-black uppercase tracking-tighter italic text-[#1D1D1D] mb-3">
+                Pause Your Account?
+              </h3>
+              <p className="text-sm text-[#1D1D1D]/70 mb-6 leading-relaxed">
+                Your profile and campaign listings will be hidden. You can reactivate at any time from Settings. Active campaigns already matched with creators will continue.
+              </p>
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    if (businessId) {
+                      await supabase
+                        .from("businesses")
+                        .update({ status: 'paused' })
+                        .eq("id", businessId);
+                      toast.success("Account paused");
+                      setShowPauseModal(false);
+                    }
+                  }}
+                  className="w-full py-2.5 bg-[#D2691E] text-white text-[10px] font-black uppercase tracking-wider italic hover:bg-[#D2691E]/80 transition-colors"
+                >
+                  YES, PAUSE ACCOUNT
+                </button>
+                <button
+                  onClick={() => setShowPauseModal(false)}
+                  className="w-full py-2.5 border-2 border-[#1D1D1D] text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                >
+                  CANCEL
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* DELETE ACCOUNT MODAL */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-50"
+              onClick={() => setShowDeleteModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-sm bg-white p-6 z-50"
+            >
+              <h3 className="text-lg font-black uppercase tracking-tighter italic text-[#1D1D1D] mb-3">
+                Delete Your Account?
+              </h3>
+              <p className="text-sm text-[#1D1D1D]/70 mb-6 leading-relaxed">
+                This is permanent. All campaigns, data and payment history will be removed. Any held funds will be refunded to your payment method within 5 business days. Active campaigns will be terminated and creators will be notified.
+              </p>
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    if (businessId) {
+                      await supabase
+                        .from("businesses")
+                        .update({ 
+                          status: 'deleted', 
+                          deleted_at: new Date().toISOString() 
+                        })
+                        .eq("id", businessId);
+                      toast.success("Account deletion requested");
+                      setShowDeleteModal(false);
+                    }
+                  }}
+                  className="w-full py-2.5 bg-red-600 text-white text-[10px] font-black uppercase tracking-wider italic hover:bg-red-700 transition-colors"
+                >
+                  YES, DELETE MY ACCOUNT
+                </button>
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="w-full py-2.5 border-2 border-[#1D1D1D] text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                >
+                  CANCEL
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
