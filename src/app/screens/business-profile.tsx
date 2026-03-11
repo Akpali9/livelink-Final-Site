@@ -597,9 +597,9 @@ export function BusinessProfile() {
         </h1>
       </div>
 
-      {/* Unsaved Changes Banner */}
+      {/* Unsaved Changes Banner - Only shows when there are unsaved changes and not saving and not just saved */}
       <AnimatePresence>
-        {hasChanges && (
+        {hasChanges && !saving && !saved && (
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
