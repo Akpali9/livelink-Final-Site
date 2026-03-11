@@ -85,7 +85,6 @@ export function BusinessProfile() {
   const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'unverified' | 'rejected'>('unverified');
   const [verificationDocuments, setVerificationDocuments] = useState<VerificationDocument[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
 
   const industryOptions = [
@@ -263,6 +262,14 @@ export function BusinessProfile() {
     const files = event.target.files;
     if (!files || files.length === 0 || !user) return;
 
+    // Check file sizes (max 10MB per file)
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].size > 10 * 1024 * 1024) {
+        toast.error(`File "${files[i].name}" exceeds 10MB limit`);
+        return;
+      }
+    }
+
     setUploading(true);
 
     try {
@@ -274,20 +281,29 @@ export function BusinessProfile() {
         .single();
 
       if (businessError) throw businessError;
-      if (!businessData) throw new Error("Business profile not found");
+      if (!businessData) throw new Error("Business profile not found. Please save your profile first.");
+
+      let uploadSuccess = false;
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const fileExt = file.name.split('.').pop();
-        const fileName = `${businessData.id}/${Date.now()}-${file.name}`;
+        const fileName = `${businessData.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `verification-docs/${fileName}`;
 
         // Upload file to storage
         const { error: uploadError } = await supabase.storage
           .from('verification-documents')
-          .upload(filePath, file);
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          toast.error(`Failed to upload ${file.name}: ${uploadError.message}`);
+          continue;
+        }
 
         // Get public URL
         const { data: urlData } = supabase.storage
@@ -307,38 +323,46 @@ export function BusinessProfile() {
             uploaded_at: new Date().toISOString()
           });
 
-        if (dbError) throw dbError;
+        if (dbError) {
+          console.error("Database error:", dbError);
+          toast.error(`Failed to save ${file.name} record`);
+          continue;
+        }
+
+        uploadSuccess = true;
       }
 
-      // Update business verification status to pending
-      await supabase
-        .from("businesses")
-        .update({ 
-          verification_status: 'pending',
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", businessData.id);
+      if (uploadSuccess) {
+        // Update business verification status to pending
+        await supabase
+          .from("businesses")
+          .update({ 
+            verification_status: 'pending',
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", businessData.id);
 
-      setVerificationStatus('pending');
-      toast.success(`${files.length} document(s) uploaded successfully`);
-      
-      // Refresh documents list
-      const { data: docsData } = await supabase
-        .from("verification_documents")
-        .select("*")
-        .eq("business_id", businessData.id)
-        .order("uploaded_at", { ascending: false });
+        setVerificationStatus('pending');
+        toast.success(`${files.length} document(s) uploaded successfully`);
+        
+        // Refresh documents list
+        const { data: docsData } = await supabase
+          .from("verification_documents")
+          .select("*")
+          .eq("business_id", businessData.id)
+          .order("uploaded_at", { ascending: false });
 
-      if (docsData) {
-        setVerificationDocuments(docsData.map(doc => ({
-          id: doc.id,
-          name: doc.file_name,
-          type: doc.document_type,
-          url: doc.file_url,
-          status: doc.status,
-          uploadedAt: doc.uploaded_at,
-          size: doc.file_size
-        })));
+        if (docsData) {
+          setVerificationDocuments(docsData.map(doc => ({
+            id: doc.id,
+            name: doc.file_name,
+            type: doc.document_type,
+            url: doc.file_url,
+            status: doc.status,
+            uploadedAt: doc.uploaded_at,
+            size: doc.file_size
+          })));
+        }
       }
 
     } catch (error: any) {
@@ -346,6 +370,8 @@ export function BusinessProfile() {
       toast.error(error.message || "Failed to upload documents");
     } finally {
       setUploading(false);
+      // Clear the input
+      event.target.value = '';
     }
   };
 
@@ -353,6 +379,9 @@ export function BusinessProfile() {
     if (!confirm("Are you sure you want to delete this document?")) return;
 
     try {
+      // Get document details first
+      const docToDelete = verificationDocuments.find(doc => doc.id === documentId);
+      
       // Delete from database
       const { error: dbError } = await supabase
         .from("verification_documents")
@@ -360,6 +389,16 @@ export function BusinessProfile() {
         .eq("id", documentId);
 
       if (dbError) throw dbError;
+
+      // Try to delete from storage (optional - don't throw if fails)
+      if (docToDelete) {
+        const filePath = docToDelete.url.split('/').pop();
+        if (filePath) {
+          await supabase.storage
+            .from('verification-documents')
+            .remove([`verification-docs/${filePath}`]);
+        }
+      }
 
       // Update local state
       setVerificationDocuments(prev => prev.filter(doc => doc.id !== documentId));
@@ -375,10 +414,14 @@ export function BusinessProfile() {
         if (businessData) {
           await supabase
             .from("businesses")
-            .update({ verification_status: 'unverified' })
+            .update({ 
+              verification_status: 'unverified',
+              rejection_reason: null 
+            })
             .eq("id", businessData.id);
           
           setVerificationStatus('unverified');
+          setRejectionReason(null);
         }
       }
 
@@ -392,11 +435,28 @@ export function BusinessProfile() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <span className="px-2 py-1 bg-green-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Approved</span>;
+        return <span className="px-2 py-1 bg-green-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3" /> Approved
+        </span>;
       case 'rejected':
         return <span className="px-2 py-1 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Rejected</span>;
       default:
         return <span className="px-2 py-1 bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Pending Review</span>;
+    }
+  };
+
+  const getOverallStatusBadge = () => {
+    switch (verificationStatus) {
+      case 'verified':
+        return <span className="px-3 py-1 bg-green-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3" /> Verified
+        </span>;
+      case 'rejected':
+        return <span className="px-3 py-1 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Rejected</span>;
+      case 'pending':
+        return <span className="px-3 py-1 bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Pending Review</span>;
+      default:
+        return <span className="px-3 py-1 bg-gray-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Not Verified</span>;
     }
   };
 
@@ -434,7 +494,7 @@ export function BusinessProfile() {
       </div>
 
       {/* Verification Status Banner */}
-      {verificationStatus !== 'verified' && (
+      {verificationStatus !== 'verified' && verificationStatus !== 'unverified' && (
         <div className={`mx-8 mt-6 p-4 border-2 rounded-xl flex items-start gap-3 ${
           verificationStatus === 'rejected' 
             ? 'bg-red-50 border-red-200' 
@@ -447,15 +507,27 @@ export function BusinessProfile() {
             <p className={`text-sm font-black mb-1 ${
               verificationStatus === 'rejected' ? 'text-red-700' : 'text-amber-700'
             }`}>
-              {verificationStatus === 'rejected' ? 'Verification Rejected' : 'Verification Required'}
+              {verificationStatus === 'rejected' ? 'Verification Rejected' : 'Verification Pending'}
             </p>
             <p className={`text-xs ${
               verificationStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'
             }`}>
               {verificationStatus === 'rejected' 
                 ? `Your documents were rejected: ${rejectionReason || 'Please upload valid business documents'}`
-                : 'Complete your profile and upload verification documents to start creating campaigns.'
+                : 'Your documents are under review. This usually takes 1-2 business days.'
               }
+            </p>
+          </div>
+        </div>
+      )}
+
+      {verificationStatus === 'unverified' && (
+        <div className="mx-8 mt-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-black text-blue-700 mb-1">Verification Required</p>
+            <p className="text-xs text-blue-600">
+              Complete your profile and upload verification documents to start creating campaigns and receiving payments.
             </p>
           </div>
         </div>
@@ -468,7 +540,68 @@ export function BusinessProfile() {
             Profile Details
           </h2>
           <div className="flex flex-col gap-4">
-            {/* ... (keep existing profile details fields) ... */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                Your Full Name <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                <input
+                  type="text"
+                  value={formData.yourName}
+                  onChange={(e) => setFormData({ ...formData, yourName: e.target.value })}
+                  className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all ${
+                    errors.yourName ? 'border-red-500' : 'border-[#1D1D1D]/10'
+                  }`}
+                  placeholder="John Doe"
+                />
+                {errors.yourName && (
+                  <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.yourName}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                Email Address <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all ${
+                    errors.email ? 'border-red-500' : 'border-[#1D1D1D]/10'
+                  }`}
+                  placeholder="contact@business.com"
+                />
+                {errors.email && (
+                  <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.email}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                Contact Number <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                <input
+                  type="tel"
+                  value={formData.contactNumber}
+                  onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
+                  className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all ${
+                    errors.contactNumber ? 'border-red-500' : 'border-[#1D1D1D]/10'
+                  }`}
+                  placeholder="+44 123 456 7890"
+                />
+                {errors.contactNumber && (
+                  <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.contactNumber}</p>
+                )}
+              </div>
+            </div>
           </div>
         </section>
 
@@ -478,7 +611,217 @@ export function BusinessProfile() {
             Business Details
           </h2>
           <div className="flex flex-col gap-4">
-            {/* ... (keep existing business details fields) ... */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                Business Name <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                <input
+                  type="text"
+                  value={formData.businessName}
+                  onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
+                  className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all ${
+                    errors.businessName ? 'border-red-500' : 'border-[#1D1D1D]/10'
+                  }`}
+                  placeholder="Acme Inc."
+                />
+                {errors.businessName && (
+                  <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.businessName}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                Country <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                <input
+                  type="text"
+                  value={formData.country}
+                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                  placeholder="e.g. United Kingdom"
+                  className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all ${
+                    errors.country ? 'border-red-500' : 'border-[#1D1D1D]/10'
+                  }`}
+                />
+                {errors.country && (
+                  <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.country}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                Website
+              </label>
+              <div className="relative">
+                <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                <input
+                  type="text"
+                  value={formData.website}
+                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                  placeholder="https://www.example.com"
+                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                Industry
+              </label>
+              <div className="relative">
+                <select
+                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none appearance-none cursor-pointer rounded-xl pr-12"
+                  value={formData.industry}
+                  onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                >
+                  {industryOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none opacity-40 text-[#389C9A]" />
+              </div>
+            </div>
+
+            {/* Additional Business Info */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
+                  Registration Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.registrationNumber}
+                  onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
+                  placeholder="12345678"
+                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
+                  Tax ID / VAT
+                </label>
+                <input
+                  type="text"
+                  value={formData.taxId}
+                  onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
+                  placeholder="GB123456789"
+                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
+                  Year Founded
+                </label>
+                <input
+                  type="text"
+                  value={formData.yearFounded}
+                  onChange={(e) => setFormData({ ...formData, yearFounded: e.target.value })}
+                  placeholder="2020"
+                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
+                  Employees
+                </label>
+                <select
+                  value={formData.employeeCount}
+                  onChange={(e) => setFormData({ ...formData, employeeCount: e.target.value })}
+                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
+                >
+                  <option value="">Select</option>
+                  <option value="1-10">1-10</option>
+                  <option value="11-50">11-50</option>
+                  <option value="51-200">51-200</option>
+                  <option value="201-500">201-500</option>
+                  <option value="500+">500+</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Social Media Links */}
+            <div className="flex flex-col gap-3 mt-4">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                Social Media Links
+              </label>
+              <div className="flex flex-col gap-2">
+                <AnimatePresence>
+                  {socialLinks.map((link, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: -10 }}
+                      className="relative group"
+                    >
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                        {getPlatformIcon(link.platform)}
+                      </div>
+                      <select
+                        value={link.platform}
+                        onChange={(e) => updateSocialLink(i, 'platform', e.target.value)}
+                        className="absolute left-12 top-1/2 -translate-y-1/2 bg-transparent text-[8px] font-black uppercase tracking-widest outline-none"
+                      >
+                        <option value="instagram">Instagram</option>
+                        <option value="twitter">Twitter</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <input
+                        type="url"
+                        value={link.url}
+                        onChange={(e) => updateSocialLink(i, 'url', e.target.value)}
+                        placeholder="https://"
+                        className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 pl-32 pr-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
+                      />
+                      {socialLinks.length > 1 && (
+                        <button
+                          onClick={() => removeSocialLink(i)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+              <button
+                onClick={addSocialLink}
+                className="flex items-center justify-center gap-2 border-2 border-[#1D1D1D] p-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl italic"
+              >
+                <Plus className="w-4 h-4 text-[#389C9A]" /> Add Social Link
+              </button>
+            </div>
+
+            {/* About Section */}
+            <div className="flex flex-col gap-1.5 mt-4">
+              <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
+                About your brand
+              </label>
+              <textarea
+                rows={5}
+                value={formData.bio}
+                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                placeholder="Tell creators about your brand, mission, and what makes you unique..."
+                className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl resize-none transition-all"
+                maxLength={500}
+              />
+              <div className="text-right text-[8px] font-bold text-[#1D1D1D]/30">
+                {formData.bio.length}/500
+              </div>
+            </div>
           </div>
         </section>
 
@@ -494,13 +837,7 @@ export function BusinessProfile() {
                 <p className="text-sm font-black mb-1">Business Verification</p>
                 <p className="text-[9px] opacity-40">Upload your business registration documents for admin approval</p>
               </div>
-              {verificationStatus === 'verified' ? (
-                <span className="px-3 py-1 bg-green-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Verified
-                </span>
-              ) : (
-                getStatusBadge(verificationStatus)
-              )}
+              {getOverallStatusBadge()}
             </div>
 
             {/* Document List */}
@@ -578,7 +915,7 @@ export function BusinessProfile() {
                   ) : (
                     <>
                       <Upload className="w-4 h-4" />
-                      Upload Documents
+                      {verificationDocuments.length > 0 ? 'Upload Additional Documents' : 'Upload Documents'}
                     </>
                   )}
                 </label>
@@ -596,6 +933,19 @@ export function BusinessProfile() {
               <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
                 <p className="text-[10px] font-black text-red-700 mb-1">Rejection Reason:</p>
                 <p className="text-xs text-red-600">{rejectionReason}</p>
+                <p className="text-[8px] text-red-500 mt-2">
+                  Please upload new documents addressing the issues above.
+                </p>
+              </div>
+            )}
+
+            {/* Info message for verified status */}
+            {verificationStatus === 'verified' && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
+                <p className="text-xs text-green-700 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Your business is verified. You can now create campaigns and receive payments.
+                </p>
               </div>
             )}
           </div>
@@ -635,4 +985,24 @@ export function BusinessProfile() {
       </div>
     </div>
   );
+
+  // Helper functions for social links
+  function addSocialLink() {
+    setSocialLinks([...socialLinks, { platform: "other", url: "" }]);
+  }
+
+  function updateSocialLink(index: number, field: 'platform' | 'url', value: string) {
+    const newLinks = [...socialLinks];
+    newLinks[index][field] = value;
+    setSocialLinks(newLinks);
+  }
+
+  function removeSocialLink(index: number) {
+    setSocialLinks(socialLinks.filter((_, i) => i !== index));
+  }
+
+  function getPlatformIcon(platform: string) {
+    const Icon = platformIcons[platform.toLowerCase()] || Share2;
+    return typeof Icon === 'function' ? Icon() : <Icon className="w-4 h-4" />;
+  }
 }
