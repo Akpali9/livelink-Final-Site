@@ -752,7 +752,7 @@ export function BusinessProfile() {
                   className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all ${
                     errors.yourName ? 'border-red-500' : 'border-[#1D1D1D]/10'
                   }`}
-                  placeholder="John Doe"
+                  placeholder="Your Full Name"
                 />
                 {errors.yourName && (
                   <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.yourName}</p>
