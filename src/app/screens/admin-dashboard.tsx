@@ -10,14 +10,18 @@ import {
   Globe, Instagram, Twitter, Youtube, Linkedin,
   AlertCircle, Loader2, Eye, EyeOff, Lock, Unlock,
   UserCheck, UserX, Ban, Crown, Award, Gift,
-  CreditCard, Wallet, Calendar, Clock3
+  CreditCard, Wallet, Calendar, Clock3, Smile,
+  Archive, Flag, Download as DownloadIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { AdminApplicationQueue } from './become-creator';
 
-// Types
+// ============================================================================
+// TYPES
+// ============================================================================
+
 interface DashboardStats {
   totalCreators: number;
   pendingCreators: number;
@@ -113,37 +117,286 @@ interface Message {
   attachment_size?: number;
 }
 
-interface MessageThread {
+interface MessageParticipant {
   id: string;
-  participant_id: string;
-  participant_name: string;
-  participant_email: string;
-  participant_avatar?: string;
-  participant_type: 'creator' | 'business';
-  last_message: string;
-  last_message_time: string;
-  unread_count: number;
-  last_message_sender: string;
+  user_id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  type: 'creator' | 'business';
+  last_seen?: string;
+  online?: boolean;
 }
 
-// Custom Hooks
+interface MessageThread {
+  participant: MessageParticipant;
+  last_message: Message;
+  unread_count: number;
+  updated_at: string;
+}
+
+interface Campaign {
+  id: string;
+  title: string;
+  description: string;
+  business_id: string;
+  business_name: string;
+  budget: number;
+  status: 'draft' | 'pending' | 'active' | 'paused' | 'completed' | 'cancelled';
+  start_date: string;
+  end_date: string;
+  created_at: string;
+  updated_at: string;
+  applications_count?: number;
+  approved_creators?: number;
+}
+
+interface Payout {
+  id: string;
+  campaign_id: string;
+  creator_id: string;
+  creator_name: string;
+  amount: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  payment_method?: string;
+  transaction_id?: string;
+  created_at: string;
+  processed_at?: string;
+  notes?: string;
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+const formatMessageTime = (timestamp: string) => {
+  try {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
+  } catch {
+    return 'Invalid date';
+  }
+};
+
+const getInitials = (name: string = '') => {
+  return name
+    .split(' ')
+    .map(word => word[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || '?';
+};
+
+const formatFileSize = (bytes?: number) => {
+  if (!bytes) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+};
+
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount);
+};
+
+const formatDate = (dateString: string) => {
+  try {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch {
+    return 'Invalid date';
+  }
+};
+
+// ============================================================================
+// CUSTOM HOOKS
+// ============================================================================
+
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
   }, [value, delay]);
 
   return debouncedValue;
 }
 
-// ── Business Queue Component ───────────────────────────────
+function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  return isOnline;
+}
+
+// ============================================================================
+// COMPONENTS
+// ============================================================================
+
+// ── Emoji Picker Component ─────────────────────────────────────────────────
+const EmojiPicker = ({ onSelect }: { onSelect: (emoji: string) => void }) => {
+  const [showPicker, setShowPicker] = useState(false);
+  const emojis = ['😊', '👍', '❤️', '😂', '🎉', '👏', '🙏', '🔥', '✨', '⭐'];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowPicker(!showPicker)}
+        className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
+        title="Add emoji"
+      >
+        <Smile className="w-4 h-4 text-white/40" />
+      </button>
+      
+      <AnimatePresence>
+        {showPicker && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="absolute bottom-full mb-2 left-0 bg-[#1A1A1A] border border-white/10 rounded-xl p-2 grid grid-cols-5 gap-1 z-50"
+          >
+            {emojis.map(emoji => (
+              <button
+                key={emoji}
+                onClick={() => {
+                  onSelect(emoji);
+                  setShowPicker(false);
+                }}
+                className="w-8 h-8 hover:bg-white/10 rounded-lg text-lg flex items-center justify-center transition-colors"
+              >
+                {emoji}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ── Attachment Preview Component ───────────────────────────────────────────
+const AttachmentPreview = ({ file, onClear }: { file: File; onClear: () => void }) => {
+  const isImage = file.type.startsWith('image/');
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isImage) {
+      const url = URL.createObjectURL(file);
+      setPreview(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [file, isImage]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 10 }}
+      className="mb-3 p-3 bg-white/5 border border-white/10 rounded-xl"
+    >
+      <div className="flex items-center gap-3">
+        {isImage && preview ? (
+          <img 
+            src={preview} 
+            alt="Preview" 
+            className="w-12 h-12 rounded-lg object-cover border border-white/10"
+          />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-[#00FF94]/10 border border-[#00FF94]/20 flex items-center justify-center">
+            <Paperclip className="w-5 h-5 text-[#00FF94]" />
+          </div>
+        )}
+        
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-medium text-white truncate">{file.name}</p>
+          <p className="text-[9px] text-white/40 mt-1">{formatFileSize(file.size)}</p>
+        </div>
+
+        <button
+          onClick={onClear}
+          className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+        >
+          <X className="w-4 h-4 text-white/40" />
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
+// ── Message Status Component ───────────────────────────────────────────────
+const MessageStatus = ({ message, isAdmin }: { message: Message; isAdmin: boolean }) => {
+  if (!isAdmin) return null;
+
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      {message.is_read ? (
+        <>
+          <CheckCircle2 className="w-3 h-3 text-[#00FF94]" />
+          <span className="text-[8px] text-[#00FF94]">Read</span>
+        </>
+      ) : message.seen ? (
+        <>
+          <CheckCircle2 className="w-3 h-3 text-blue-400" />
+          <span className="text-[8px] text-blue-400">Delivered</span>
+        </>
+      ) : (
+        <>
+          <Clock className="w-3 h-3 text-white/30" />
+          <span className="text-[8px] text-white/30">Sent</span>
+        </>
+      )}
+      <span className="text-[8px] text-white/20 ml-1">
+        {new Date(message.created_at).toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })}
+      </span>
+    </div>
+  );
+};
+
+// ── Business Queue Component ───────────────────────────────────────────────
 function AdminBusinessQueue() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
@@ -363,42 +616,68 @@ function AdminBusinessQueue() {
   );
 }
 
-// ── Enhanced Messages Component ─────────────────────────────
+// ── Enhanced Messages Component ────────────────────────────────────────────
 function AdminMessages({ adminId }: { adminId: string }) {
+  // State
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [selectedThread, setSelectedThread] = useState<MessageThread | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
-  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-  const [attachment, setAttachment] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread' | 'creators' | 'businesses'>('all');
-  
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+
+  // Refs
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const messageContainerRef = useRef<HTMLDivElement>(null);
   const typingChannel = useRef<any>(null);
+  const presenceChannel = useRef<any>(null);
 
-  const debouncedSearch = useDebounce(search, 300);
+  const debouncedSearch = useDebounce(searchTerm, 300);
 
+  // Scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  // Fetch threads
   useEffect(() => {
     fetchThreads();
   }, [debouncedSearch, filter]);
 
+  // Setup realtime channels
   useEffect(() => {
+    if (!adminId) return;
+
+    // Typing indicators
     typingChannel.current = supabase.channel('typing-indicators')
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        if (payload.userId === selectedThread?.participant_id) {
+        if (payload.userId !== adminId) {
           setTypingUsers(prev => {
             const newSet = new Set(prev);
             if (payload.isTyping) {
               newSet.add(payload.userId);
+              // Auto-remove after 3 seconds
+              setTimeout(() => {
+                setTypingUsers(prev => {
+                  const updated = new Set(prev);
+                  updated.delete(payload.userId);
+                  return updated;
+                });
+              }, 3000);
             } else {
               newSet.delete(payload.userId);
             }
@@ -408,21 +687,36 @@ function AdminMessages({ adminId }: { adminId: string }) {
       })
       .subscribe();
 
+    // Online presence
+    presenceChannel.current = supabase.channel('online-users')
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.current.presenceState();
+        const online = new Set<string>();
+        Object.values(state).forEach((presence: any) => {
+          presence.forEach((p: any) => online.add(p.user_id));
+        });
+        setOnlineUsers(online);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.current.track({ 
+            user_id: adminId, 
+            online_at: new Date().toISOString() 
+          });
+        }
+      });
+
     return () => {
       supabase.removeChannel(typingChannel.current);
+      supabase.removeChannel(presenceChannel.current);
     };
-  }, [selectedThread]);
+  }, [adminId]);
 
+  // Subscribe to new messages
   useEffect(() => {
     if (!selectedThread) return;
-    
-    setMessages([]);
-    setPage(1);
-    setHasMore(true);
-    loadMessages(selectedThread.participant_id, 1);
-    markThreadAsRead(selectedThread.participant_id);
 
-    const messageChannel = supabase.channel(`admin-msg-${selectedThread.participant_id}`)
+    const channel = supabase.channel(`messages-${selectedThread.participant.user_id}`)
       .on('postgres_changes', 
         { 
           event: 'INSERT', 
@@ -430,34 +724,25 @@ function AdminMessages({ adminId }: { adminId: string }) {
           table: 'messages',
           filter: `receiver_id=eq.${adminId}` 
         }, 
-        (payload) => {
-          const msg = payload.new as Message;
-          if (msg.sender_id === selectedThread.participant_id) {
-            setMessages(prev => [...prev, msg]);
-            markMessageAsRead(msg.id);
-            
-            setThreads(prev => prev.map(t => 
-              t.participant_id === selectedThread.participant_id
-                ? { ...t, last_message: msg.content, last_message_time: msg.created_at, unread_count: 0 }
-                : t
-            ));
+        async (payload) => {
+          const newMsg = payload.new as Message;
+          if (newMsg.sender_id === selectedThread.participant.user_id) {
+            setMessages(prev => [...prev, newMsg]);
+            await markMessageAsRead(newMsg.id);
           }
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(messageChannel);
+      supabase.removeChannel(channel);
     };
   }, [selectedThread, adminId]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   const fetchThreads = async () => {
     setLoading(true);
     try {
+      // Get all messages involving admin
       const { data: messageData, error } = await supabase
         .from('messages')
         .select('*')
@@ -466,27 +751,34 @@ function AdminMessages({ adminId }: { adminId: string }) {
 
       if (error) throw error;
 
+      // Group by participant
       const threadMap = new Map<string, MessageThread>();
       
       for (const msg of messageData || []) {
         const participantId = msg.sender_id === adminId ? msg.receiver_id : msg.sender_id;
         
         if (!threadMap.has(participantId)) {
-          const { data: creator } = await supabase
-            .from('creators')
-            .select('id, name, email, avatar, username')
-            .eq('user_id', participantId)
-            .maybeSingle();
+          // Get participant details
+          const [creatorResult, businessResult] = await Promise.all([
+            supabase
+              .from('creators')
+              .select('id, user_id, name, email, avatar')
+              .eq('user_id', participantId)
+              .maybeSingle(),
+            supabase
+              .from('businesses')
+              .select('id, user_id, company_name as name, contact_name, email')
+              .eq('user_id', participantId)
+              .maybeSingle()
+          ]);
 
-          const { data: business } = await supabase
-            .from('businesses')
-            .select('id, company_name, contact_name, email')
-            .eq('user_id', participantId)
-            .maybeSingle();
-
-          const participant = creator || business;
-          const participantType = creator ? 'creator' : 'business';
+          const creator = creatorResult.data;
+          const business = businessResult.data;
+          const participantData = creator || business;
           
+          if (!participantData) continue;
+
+          // Get unread count
           const { count } = await supabase
             .from('messages')
             .select('*', { count: 'exact', head: true })
@@ -495,38 +787,45 @@ function AdminMessages({ adminId }: { adminId: string }) {
             .eq('is_read', false);
 
           threadMap.set(participantId, {
-            id: `${participantId}-thread`,
-            participant_id: participantId,
-            participant_name: creator?.name || business?.company_name || 'Unknown User',
-            participant_email: creator?.email || business?.email || 'No email',
-            participant_avatar: creator?.avatar,
-            participant_type: participantType,
-            last_message: msg.content || 'No messages',
-            last_message_time: msg.created_at,
+            participant: {
+              id: participantData.id,
+              user_id: participantData.user_id,
+              name: creator?.name || business?.name || participantData.name || 'Unknown User',
+              email: participantData.email || 'No email',
+              avatar: creator?.avatar,
+              type: creator ? 'creator' : 'business'
+            },
+            last_message: msg,
             unread_count: count || 0,
-            last_message_sender: msg.sender_id === adminId ? 'You' : (msg.sender_name || 'Them')
+            updated_at: msg.created_at
           });
         }
       }
 
-      let filtered = Array.from(threadMap.values());
-      
+      // Convert to array and apply filters
+      let filteredThreads = Array.from(threadMap.values());
+
       if (filter === 'unread') {
-        filtered = filtered.filter(t => t.unread_count > 0);
+        filteredThreads = filteredThreads.filter(t => t.unread_count > 0);
       } else if (filter === 'creators') {
-        filtered = filtered.filter(t => t.participant_type === 'creator');
+        filteredThreads = filteredThreads.filter(t => t.participant.type === 'creator');
       } else if (filter === 'businesses') {
-        filtered = filtered.filter(t => t.participant_type === 'business');
+        filteredThreads = filteredThreads.filter(t => t.participant.type === 'business');
       }
 
       if (debouncedSearch) {
-        filtered = filtered.filter(t =>
-          (t.participant_name?.toLowerCase() || '').includes(debouncedSearch.toLowerCase()) ||
-          (t.participant_email?.toLowerCase() || '').includes(debouncedSearch.toLowerCase())
+        filteredThreads = filteredThreads.filter(t =>
+          t.participant.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          t.participant.email.toLowerCase().includes(debouncedSearch.toLowerCase())
         );
       }
 
-      setThreads(filtered);
+      // Sort by most recent
+      filteredThreads.sort((a, b) => 
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+
+      setThreads(filteredThreads);
     } catch (error) {
       console.error('Error fetching threads:', error);
       toast.error('Failed to load conversations');
@@ -535,7 +834,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
     }
   };
 
-  const loadMessages = async (participantId: string, pageNum: number) => {
+  const loadMessages = async (participantId: string, pageNum: number = 1) => {
     setLoadingMessages(true);
     try {
       const from = (pageNum - 1) * 50;
@@ -562,10 +861,20 @@ function AdminMessages({ adminId }: { adminId: string }) {
     }
   };
 
+  const selectThread = async (thread: MessageThread) => {
+    setSelectedThread(thread);
+    setMessages([]);
+    setPage(1);
+    setHasMore(true);
+    await loadMessages(thread.participant.user_id, 1);
+    await markThreadAsRead(thread.participant.user_id);
+  };
+
   const loadMoreMessages = () => {
     if (!hasMore || loadingMessages || !selectedThread) return;
-    setPage(p => p + 1);
-    loadMessages(selectedThread.participant_id, page + 1);
+    const nextPage = page + 1;
+    setPage(nextPage);
+    loadMessages(selectedThread.participant.user_id, nextPage);
   };
 
   const markThreadAsRead = async (participantId: string) => {
@@ -576,8 +885,9 @@ function AdminMessages({ adminId }: { adminId: string }) {
       .eq('receiver_id', adminId)
       .eq('is_read', false);
 
+    // Update thread unread count
     setThreads(prev => prev.map(t =>
-      t.participant_id === participantId
+      t.participant.user_id === participantId
         ? { ...t, unread_count: 0 }
         : t
     ));
@@ -591,6 +901,8 @@ function AdminMessages({ adminId }: { adminId: string }) {
   };
 
   const handleTyping = (isTyping: boolean) => {
+    if (!selectedThread) return;
+
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
@@ -608,18 +920,28 @@ function AdminMessages({ adminId }: { adminId: string }) {
     }
   };
 
-  const handleAttachment = async () => {
-    if (!attachment || !selectedThread) return;
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    setUploading(true);
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be less than 10MB');
+      return;
+    }
+
+    setAttachment(file);
+  };
+
+  const uploadAttachment = async (file: File): Promise<string | null> => {
     try {
-      const fileExt = attachment.name.split('.').pop();
+      const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `message-attachments/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('attachments')
-        .upload(filePath, attachment);
+        .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
@@ -627,12 +949,47 @@ function AdminMessages({ adminId }: { adminId: string }) {
         .from('attachments')
         .getPublicUrl(filePath);
 
+      return publicUrl;
+    } catch (error) {
+      console.error('Error uploading attachment:', error);
+      throw error;
+    }
+  };
+
+  const sendMessage = async () => {
+    if ((!newMessage.trim() && !attachment) || !selectedThread || sending) return;
+
+    setSending(true);
+
+    try {
+      let attachmentUrl = null;
+      let attachmentType = null;
+      let attachmentName = null;
+      let attachmentSize = null;
+
+      // Upload attachment if exists
+      if (attachment) {
+        attachmentUrl = await uploadAttachment(attachment);
+        attachmentType = attachment.type.startsWith('image/') ? 'image' : 'file';
+        attachmentName = attachment.name;
+        attachmentSize = attachment.size;
+      }
+
       const now = new Date().toISOString();
-      const messageData = {
+
+      // Create message content
+      let content = newMessage.trim();
+      if (attachment && !content) {
+        content = attachmentType === 'image' ? '📸 Sent an image' : `📎 Sent a file: ${attachment.name}`;
+      }
+
+      // Optimistic update
+      const optimisticMessage: Message = {
+        id: `temp-${Date.now()}`,
         sender_id: adminId,
-        receiver_id: selectedThread.participant_id,
-        recipient_id: selectedThread.participant_id,
-        content: attachment.type.startsWith('image/') ? '📸 Sent an image' : `📎 Sent a file: ${attachment.name}`,
+        receiver_id: selectedThread.participant.user_id,
+        recipient_id: selectedThread.participant.user_id,
+        content,
         sender_name: 'Admin',
         sender_type: 'admin',
         topic: 'direct',
@@ -643,68 +1000,25 @@ function AdminMessages({ adminId }: { adminId: string }) {
         created_at: now,
         updated_at: now,
         inserted_at: now,
-        attachment_url: publicUrl,
-        attachment_type: attachment.type.startsWith('image/') ? 'image' : 'file',
-        attachment_name: attachment.name,
-        attachment_size: attachment.size
-      };
-
-      const { error: messageError } = await supabase
-        .from('messages')
-        .insert(messageData);
-
-      if (messageError) throw messageError;
-
-      toast.success('Attachment sent');
-      setAttachment(null);
-    } catch (error) {
-      console.error('Error uploading attachment:', error);
-      toast.error('Failed to upload attachment');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const sendMessage = async () => {
-    if ((!newMessage.trim() && !attachment) || !selectedThread || sending || uploading) return;
-
-    setSending(true);
-
-    if (attachment) {
-      await handleAttachment();
-    }
-
-    if (newMessage.trim()) {
-      const optimisticMessage: Message = {
-        id: `opt-${Date.now()}`,
-        sender_id: adminId,
-        receiver_id: selectedThread.participant_id,
-        recipient_id: selectedThread.participant_id,
-        content: newMessage.trim(),
-        sender_name: 'Admin',
-        sender_type: 'admin',
-        topic: 'direct',
-        extension: 'text',
-        is_read: false,
-        seen: false,
-        private: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        inserted_at: new Date().toISOString()
+        attachment_url: attachmentUrl || undefined,
+        attachment_type: attachmentType as any,
+        attachment_name: attachmentName || undefined,
+        attachment_size: attachmentSize || undefined
       };
 
       setMessages(prev => [...prev, optimisticMessage]);
       setNewMessage('');
+      setAttachment(null);
       handleTyping(false);
 
-      const now = new Date().toISOString();
+      // Insert into database
       const { error } = await supabase
         .from('messages')
         .insert({
           sender_id: adminId,
-          receiver_id: selectedThread.participant_id,
-          recipient_id: selectedThread.participant_id,
-          content: optimisticMessage.content,
+          receiver_id: selectedThread.participant.user_id,
+          recipient_id: selectedThread.participant.user_id,
+          content,
           sender_name: 'Admin',
           sender_type: 'admin',
           topic: 'direct',
@@ -714,80 +1028,220 @@ function AdminMessages({ adminId }: { adminId: string }) {
           private: true,
           created_at: now,
           updated_at: now,
-          inserted_at: now
+          inserted_at: now,
+          attachment_url: attachmentUrl,
+          attachment_type: attachmentType,
+          attachment_name: attachmentName,
+          attachment_size: attachmentSize
         });
 
-      if (error) {
-        toast.error('Failed to send message');
-        setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
-      } else {
-        setThreads(prev => prev.map(t =>
-          t.participant_id === selectedThread.participant_id
-            ? {
-                ...t,
-                last_message: optimisticMessage.content,
-                last_message_time: now,
-                last_message_sender: 'You'
-              }
-            : t
-        ));
-      }
-    }
+      if (error) throw error;
 
-    setSending(false);
-  };
+      // Update thread
+      setThreads(prev => prev.map(t =>
+        t.participant.user_id === selectedThread.participant.user_id
+          ? { ...t, last_message: optimisticMessage, updated_at: now }
+          : t
+      ));
 
-  const formatMessageTime = (timestamp: string) => {
-    try {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diff = now.getTime() - date.getTime();
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-      if (days === 0) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else if (days === 1) {
-        return 'Yesterday';
-      } else if (days < 7) {
-        return date.toLocaleDateString([], { weekday: 'short' });
-      } else {
-        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      }
-    } catch {
-      return 'Invalid date';
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Failed to send message');
+      
+      // Remove optimistic message
+      setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')));
+    } finally {
+      setSending(false);
     }
   };
 
-  const getInitial = (name?: string) => {
-    if (!name) return '?';
-    return name.charAt(0).toUpperCase();
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
+
+  const handleEmojiSelect = (emoji: string) => {
+    setNewMessage(prev => prev + emoji);
+  };
+
+  // Thread Item Component
+  const ThreadItem = ({ thread }: { thread: MessageThread }) => {
+    const isSelected = selectedThread?.participant.user_id === thread.participant.user_id;
+    const isOnline = onlineUsers.has(thread.participant.user_id);
+    const isTyping = typingUsers.has(thread.participant.user_id);
+
+    return (
+      <button
+        onClick={() => selectThread(thread)}
+        className={`w-full flex items-start gap-3 px-4 py-3 border-b border-white/5 text-left transition-all hover:bg-white/5 ${
+          isSelected ? 'bg-[#00FF94]/5 border-l-2 border-l-[#00FF94]' : ''
+        }`}
+      >
+        {/* Avatar */}
+        <div className="relative flex-shrink-0">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00FF94]/30 to-[#00D4FF]/30 flex items-center justify-center overflow-hidden border border-white/10">
+            {thread.participant.avatar ? (
+              <img
+                src={thread.participant.avatar}
+                alt={thread.participant.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-white text-[11px] font-bold">
+                {getInitials(thread.participant.name)}
+              </span>
+            )}
+          </div>
+          
+          {/* Online indicator */}
+          {isOnline && (
+            <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#00FF94] rounded-full border-2 border-[#0D0D0D]" />
+          )}
+
+          {/* Type indicator */}
+          {thread.participant.type === 'business' && (
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full border-2 border-[#0D0D0D] flex items-center justify-center">
+              <Building2 className="w-2 h-2 text-white" />
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[11px] font-semibold text-white truncate">
+              {thread.participant.name}
+            </p>
+            <p className="text-[8px] text-white/30 font-mono flex-shrink-0 ml-2">
+              {formatMessageTime(thread.last_message.created_at)}
+            </p>
+          </div>
+
+          {/* Last message preview */}
+          <p className="text-[9px] text-white/50 truncate mb-1">
+            {isTyping ? (
+              <span className="text-[#00FF94]">Typing...</span>
+            ) : (
+              <>
+                {thread.last_message.sender_id === adminId && (
+                  <span className="text-white/30">You: </span>
+                )}
+                {thread.last_message.content || 'No message'}
+              </>
+            )}
+          </p>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between">
+            <p className="text-[8px] text-white/30 font-mono">
+              {thread.participant.email}
+            </p>
+            {thread.unread_count > 0 && (
+              <span className="px-1.5 py-0.5 bg-[#00FF94] rounded-full text-[7px] text-black font-bold">
+                {thread.unread_count}
+              </span>
+            )}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
+  // Message Bubble Component
+  const MessageBubble = ({ message, isAdmin }: { message: Message; isAdmin: boolean }) => (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}
+    >
+      <div className={`max-w-[70%] ${isAdmin ? 'items-end' : 'items-start'}`}>
+        {/* Attachment */}
+        {message.attachment_url && (
+          <div className="mb-2">
+            {message.attachment_type === 'image' ? (
+              <img
+                src={message.attachment_url}
+                alt="Attachment"
+                className="max-w-[300px] max-h-[300px] rounded-lg border border-white/10 cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => window.open(message.attachment_url, '_blank')}
+              />
+            ) : (
+              <a
+                href={message.attachment_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 px-4 py-3 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors group"
+              >
+                <div className="p-2 bg-[#00FF94]/10 rounded-lg">
+                  <DownloadIcon className="w-4 h-4 text-[#00FF94]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium text-white truncate">
+                    {message.attachment_name || 'Attachment'}
+                  </p>
+                  {message.attachment_size && (
+                    <p className="text-[8px] text-white/40 mt-0.5">
+                      {formatFileSize(message.attachment_size)}
+                    </p>
+                  )}
+                </div>
+                <DownloadIcon className="w-4 h-4 text-white/30 group-hover:text-white/50 transition-colors" />
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Message content */}
+        {message.content && (
+          <div
+            className={`px-4 py-2.5 rounded-2xl text-[12px] leading-relaxed break-words ${
+              isAdmin
+                ? 'bg-[#00FF94] text-[#0A0A0A] font-medium rounded-tr-sm'
+                : 'bg-white/8 text-white border border-white/10 rounded-tl-sm'
+            }`}
+          >
+            {message.content}
+          </div>
+        )}
+
+        {/* Status */}
+        <MessageStatus message={message} isAdmin={isAdmin} />
+      </div>
+    </motion.div>
+  );
 
   return (
-    <div className="flex h-[620px] bg-[#0D0D0D] border border-white/10 rounded-2xl overflow-hidden">
-      {/* Sidebar */}
-      <div className={`w-80 border-r border-white/10 flex flex-col flex-shrink-0 ${selectedThread ? 'hidden md:flex' : 'flex'}`}>
+    <div className="flex h-[700px] bg-[#0D0D0D] border border-white/10 rounded-2xl overflow-hidden">
+      {/* Threads Sidebar */}
+      <div className={`w-80 border-r border-white/10 flex flex-col flex-shrink-0 ${
+        selectedThread ? 'hidden md:flex' : 'flex'
+      }`}>
         {/* Header */}
         <div className="p-4 border-b border-white/10">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[11px] font-bold text-white/50 uppercase tracking-widest">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[11px] font-bold text-white/50 uppercase tracking-widest">
               Conversations
-            </p>
-            <span className="text-[9px] bg-[#00FF94]/10 text-[#00FF94] px-2 py-0.5 rounded-full">
+            </h3>
+            <span className="text-[9px] bg-[#00FF94]/10 text-[#00FF94] px-2 py-1 rounded-full">
               {threads.length} threads
             </span>
           </div>
 
+          {/* Search */}
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search conversations..."
               className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-[#00FF94]/40 transition-colors"
             />
           </div>
 
+          {/* Filters */}
           <div className="flex gap-1">
             {(['all', 'unread', 'creators', 'businesses'] as const).map((f) => (
               <button
@@ -812,76 +1266,24 @@ function AdminMessages({ adminId }: { adminId: string }) {
               <Loader2 className="w-5 h-5 text-[#00FF94] animate-spin" />
             </div>
           ) : threads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-2">
-              <MessageSquare className="w-6 h-6 text-white/10" />
-              <p className="text-[9px] text-white/20 font-mono">No conversations found</p>
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <MessageSquare className="w-8 h-8 text-white/10 mb-3" />
+              <p className="text-[10px] text-white/20 font-mono">
+                No conversations found
+              </p>
             </div>
           ) : (
-            threads.map((thread) => (
-              <button
-                key={thread.id}
-                onClick={() => setSelectedThread(thread)}
-                className={`w-full flex items-start gap-3 px-4 py-3 border-b border-white/5 text-left transition-all hover:bg-white/5 ${
-                  selectedThread?.participant_id === thread.participant_id
-                    ? 'bg-[#00FF94]/5 border-l-2 border-l-[#00FF94]'
-                    : ''
-                }`}
-              >
-                <div className="relative flex-shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00FF94]/30 to-[#00D4FF]/30 flex items-center justify-center overflow-hidden border border-white/10">
-                    {thread.participant_avatar ? (
-                      <img
-                        src={thread.participant_avatar}
-                        alt={thread.participant_name || 'User'}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-white text-[11px] font-bold">
-                        {getInitial(thread.participant_name)}
-                      </span>
-                    )}
-                  </div>
-                  {thread.participant_type === 'business' && (
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-500 rounded-full border-2 border-[#0D0D0D] flex items-center justify-center">
-                      <Building2 className="w-2 h-2 text-white" />
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] font-semibold text-white truncate">
-                      {thread.participant_name || 'Unknown User'}
-                    </p>
-                    <p className="text-[8px] text-white/30 font-mono flex-shrink-0 ml-2">
-                      {formatMessageTime(thread.last_message_time)}
-                    </p>
-                  </div>
-                  
-                  <p className="text-[9px] text-white/50 truncate mb-1">
-                    <span className="text-white/30">{thread.last_message_sender || 'Unknown'}:</span>{' '}
-                    {thread.last_message || 'No messages'}
-                  </p>
-
-                  <div className="flex items-center justify-between">
-                    <p className="text-[8px] text-white/30 font-mono">
-                      {thread.participant_email || 'No email'}
-                    </p>
-                    {thread.unread_count > 0 && (
-                      <span className="px-1.5 py-0.5 bg-[#00FF94] rounded-full text-[7px] text-black font-bold">
-                        {thread.unread_count}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </button>
+            threads.map(thread => (
+              <ThreadItem key={thread.participant.user_id} thread={thread} />
             ))
           )}
         </div>
       </div>
 
       {/* Chat Area */}
-      <div className={`flex-1 flex flex-col ${!selectedThread ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col ${
+        !selectedThread ? 'hidden md:flex' : 'flex'
+      }`}>
         {!selectedThread ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
@@ -893,267 +1295,177 @@ function AdminMessages({ adminId }: { adminId: string }) {
           </div>
         ) : (
           <>
-            {/* Header */}
+            {/* Chat Header */}
             <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 bg-white/3">
               <button
                 onClick={() => setSelectedThread(null)}
-                className="md:hidden p-1 rounded-lg hover:bg-white/10"
+                className="md:hidden p-1.5 rounded-lg hover:bg-white/10"
               >
-                <X className="w-4 h-4 text-white/50" />
+                <ChevronRight className="w-4 h-4 text-white/50" />
               </button>
 
               <div className="relative">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00FF94]/20 to-[#00D4FF]/20 border border-white/10 flex items-center justify-center overflow-hidden">
-                  {selectedThread.participant_avatar ? (
+                  {selectedThread.participant.avatar ? (
                     <img
-                      src={selectedThread.participant_avatar}
-                      alt={selectedThread.participant_name || 'User'}
+                      src={selectedThread.participant.avatar}
+                      alt={selectedThread.participant.name}
                       className="w-full h-full object-cover"
                     />
                   ) : (
                     <span className="text-white text-[12px] font-bold">
-                      {getInitial(selectedThread.participant_name)}
+                      {getInitials(selectedThread.participant.name)}
                     </span>
                   )}
                 </div>
-                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00FF94] rounded-full border-2 border-[#0D0D0D]" />
+                {onlineUsers.has(selectedThread.participant.user_id) && (
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#00FF94] rounded-full border-2 border-[#0D0D0D]" />
+                )}
               </div>
 
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-white">
-                    {selectedThread.participant_name || 'Unknown User'}
+                    {selectedThread.participant.name}
                   </p>
-                  {selectedThread.participant_type === 'business' && (
+                  {selectedThread.participant.type === 'business' && (
                     <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[7px] font-bold rounded-full border border-amber-500/30">
                       BUSINESS
                     </span>
                   )}
                 </div>
-                <p className="text-[9px] text-white/30 font-mono">
-                  {selectedThread.participant_email || 'No email'}
+                <p className="text-[9px] text-white/40 font-mono">
+                  {selectedThread.participant.email}
                 </p>
+                {typingUsers.has(selectedThread.participant.user_id) && (
+                  <p className="text-[8px] text-[#00FF94] mt-0.5">Typing...</p>
+                )}
               </div>
 
+              {/* Actions */}
               <div className="flex items-center gap-1">
                 <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                  <Phone className="w-3.5 h-3.5 text-white/40" />
+                  <Phone className="w-4 h-4 text-white/40" />
                 </button>
                 <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                  <Mail className="w-3.5 h-3.5 text-white/40" />
+                  <Mail className="w-4 h-4 text-white/40" />
                 </button>
                 <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                  <MoreVertical className="w-3.5 h-3.5 text-white/40" />
+                  <MoreVertical className="w-4 h-4 text-white/40" />
                 </button>
               </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {loadingMessages && page === 1 ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="w-5 h-5 text-[#00FF94] animate-spin" />
-                </div>
-              ) : (
-                <>
-                  {hasMore && (
-                    <div className="flex justify-center">
-                      <button
-                        onClick={loadMoreMessages}
-                        disabled={loadingMessages}
-                        className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors disabled:opacity-50"
-                      >
-                        {loadingMessages ? 'Loading...' : 'Load More'}
-                      </button>
-                    </div>
-                  )}
-
-                  {messages.map((msg, index) => {
-                    const isAdmin = msg.sender_id === adminId;
-                    const showAvatar = index === 0 || messages[index - 1]?.sender_id !== msg.sender_id;
-
-                    return (
-                      <motion.div
-                        key={msg.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div className={`flex gap-2 max-w-[70%] ${isAdmin ? 'flex-row-reverse' : 'flex-row'}`}>
-                          {!isAdmin && showAvatar && (
-                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00FF94]/20 to-[#00D4FF]/20 flex-shrink-0 overflow-hidden mt-1">
-                              {selectedThread.participant_avatar ? (
-                                <img
-                                  src={selectedThread.participant_avatar}
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <span className="text-[8px] font-bold">
-                                    {getInitial(selectedThread.participant_name)}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
-                            {msg.attachment_url && (
-                              <div className="mb-2">
-                                {msg.attachment_type === 'image' ? (
-                                  <img
-                                    src={msg.attachment_url}
-                                    alt="Attachment"
-                                    className="max-w-[200px] max-h-[200px] rounded-lg border border-white/10"
-                                  />
-                                ) : (
-                                  <a
-                                    href={msg.attachment_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
-                                  >
-                                    <Paperclip className="w-3 h-3 text-white/40" />
-                                    <span className="text-[10px] text-white/80">
-                                      {msg.attachment_name || 'Attachment'}
-                                    </span>
-                                  </a>
-                                )}
-                              </div>
-                            )}
-
-                            <div
-                              className={`px-4 py-2.5 rounded-2xl text-[12px] leading-relaxed break-words ${
-                                isAdmin
-                                  ? 'bg-[#00FF94] text-[#0A0A0A] font-medium rounded-tr-sm'
-                                  : 'bg-white/8 text-white border border-white/10 rounded-tl-sm'
-                              }`}
-                            >
-                              {msg.content || 'No content'}
-                            </div>
-
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <span className="text-[7px] text-white/20 font-mono">
-                                {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                }) : 'Invalid time'}
-                              </span>
-                              {isAdmin && (
-                                <>
-                                  {msg.is_read ? (
-                                    <>
-                                      <CheckCircle2 className="w-2.5 h-2.5 text-[#00FF94]/60" />
-                                      <span className="text-[7px] text-[#00FF94]/60">Read</span>
-                                    </>
-                                  ) : msg.seen ? (
-                                    <>
-                                      <CheckCircle2 className="w-2.5 h-2.5 text-blue-400/60" />
-                                      <span className="text-[7px] text-blue-400/60">Delivered</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Clock className="w-2.5 h-2.5 text-white/20" />
-                                      <span className="text-[7px] text-white/20">Sent</span>
-                                    </>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-
-                  {typingUsers.has(selectedThread.participant_id) && (
-                    <div className="flex justify-start">
-                      <div className="bg-white/8 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3">
-                        <div className="flex gap-1">
-                          <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={bottomRef} />
-                </>
-              )}
-            </div>
-
-            {/* Input */}
-            <div className="p-4 border-t border-white/10">
-              {attachment && (
-                <div className="mb-3 p-2 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {attachment.type?.startsWith('image/') ? (
-                      <Image className="w-4 h-4 text-[#00FF94]" />
-                    ) : (
-                      <Paperclip className="w-4 h-4 text-[#00FF94]" />
-                    )}
-                    <span className="text-[10px] text-white/80 truncate max-w-[200px]">
-                      {attachment.name || 'Unknown file'}
-                    </span>
-                    <span className="text-[8px] text-white/40">
-                      ({(attachment.size ? (attachment.size / 1024).toFixed(1) : '0')} KB)
-                    </span>
-                  </div>
+            {/* Messages Container */}
+            <div 
+              ref={messageContainerRef}
+              className="flex-1 overflow-y-auto p-5 space-y-4"
+            >
+              {/* Load More */}
+              {hasMore && (
+                <div className="flex justify-center">
                   <button
-                    onClick={() => setAttachment(null)}
-                    className="p-1 rounded hover:bg-white/10"
+                    onClick={loadMoreMessages}
+                    disabled={loadingMessages}
+                    className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors disabled:opacity-50"
                   >
-                    <X className="w-3 h-3 text-white/40" />
+                    {loadingMessages ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      'Load More'
+                    )}
                   </button>
                 </div>
               )}
 
-              <div className="flex gap-2">
+              {/* Messages */}
+              {messages.map((message) => (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  isAdmin={message.sender_id === adminId}
+                />
+              ))}
+
+              {/* Typing Indicator */}
+              {typingUsers.has(selectedThread.participant.user_id) && (
+                <div className="flex justify-start">
+                  <div className="bg-white/8 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="p-4 border-t border-white/10">
+              {/* Attachment Preview */}
+              <AnimatePresence>
+                {attachment && (
+                  <AttachmentPreview
+                    file={attachment}
+                    onClear={() => setAttachment(null)}
+                  />
+                )}
+              </AnimatePresence>
+
+              <div className="flex items-end gap-2">
+                {/* Attachment Button */}
                 <input
                   type="file"
                   ref={fileInputRef}
-                  onChange={(e) => setAttachment(e.target.files?.[0] || null)}
+                  onChange={handleFileSelect}
                   className="hidden"
-                  accept="image/*,.pdf,.doc,.docx,.txt"
+                  accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx"
                 />
 
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="w-9 h-9 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors disabled:opacity-50 flex-shrink-0"
+                  disabled={sending}
+                  className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50 flex-shrink-0"
+                  title="Attach file"
                 >
-                  <Paperclip className="w-3.5 h-3.5 text-white/40" />
+                  <Paperclip className="w-4 h-4 text-white/40" />
                 </button>
 
-                <div className="flex-1 bg-white/5 border border-white/10 rounded-lg flex items-center">
-                  <input
+                {/* Emoji Picker */}
+                <EmojiPicker onSelect={handleEmojiSelect} />
+
+                {/* Text Input */}
+                <div className="flex-1 bg-white/5 border border-white/10 rounded-lg overflow-hidden">
+                  <textarea
                     value={newMessage}
                     onChange={(e) => {
                       setNewMessage(e.target.value);
                       handleTyping(true);
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                      }
-                    }}
-                    placeholder={`Message ${selectedThread.participant_name || 'user'}...`}
-                    className="flex-1 bg-transparent px-3 py-2 text-[12px] text-white placeholder-white/20 focus:outline-none"
+                    onKeyDown={handleKeyPress}
+                    placeholder={`Message ${selectedThread.participant.name}...`}
+                    className="w-full bg-transparent px-4 py-2.5 text-[12px] text-white placeholder-white/20 resize-none focus:outline-none"
+                    rows={1}
+                    style={{ minHeight: '40px', maxHeight: '120px' }}
                   />
                 </div>
 
+                {/* Send Button */}
                 <button
                   onClick={sendMessage}
-                  disabled={(!newMessage.trim() && !attachment) || sending || uploading}
-                  className="w-9 h-9 bg-[#00FF94] rounded-lg flex items-center justify-center hover:bg-[#00FF94]/80 transition-colors disabled:opacity-30 flex-shrink-0"
+                  disabled={(!newMessage.trim() && !attachment) || sending}
+                  className="px-4 py-2 bg-[#00FF94] rounded-lg flex items-center gap-2 hover:bg-[#00FF94]/80 transition-colors disabled:opacity-30 flex-shrink-0"
                 >
-                  {sending || uploading ? (
-                    <Loader2 className="w-3.5 h-3.5 text-[#0A0A0A] animate-spin" />
+                  {sending ? (
+                    <Loader2 className="w-4 h-4 text-black animate-spin" />
                   ) : (
-                    <Send className="w-3.5 h-3.5 text-[#0A0A0A]" />
+                    <>
+                      <Send className="w-4 h-4 text-black" />
+                      <span className="text-[10px] font-bold text-black hidden sm:inline">Send</span>
+                    </>
                   )}
                 </button>
               </div>
@@ -1165,7 +1477,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
   );
 }
 
-// ── Creator Management Component ────────────────────────────
+// ── Creator Management Component ───────────────────────────────────────────
 function AdminCreatorManagement() {
   const [creators, setCreators] = useState<Creator[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1246,11 +1558,6 @@ function AdminCreatorManagement() {
       case 'suspended': return 'text-orange-400 bg-orange-400/10 border-orange-400/20';
       default: return 'text-white/40 bg-white/5 border-white/10';
     }
-  };
-
-  const getInitial = (name?: string) => {
-    if (!name) return '?';
-    return name.charAt(0).toUpperCase();
   };
 
   return (
@@ -1346,7 +1653,7 @@ function AdminCreatorManagement() {
                         {creator.avatar ? (
                           <img src={creator.avatar} alt={creator.name || 'Creator'} className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-white text-[10px] font-bold">{getInitial(creator.name)}</span>
+                          <span className="text-white text-[10px] font-bold">{getInitials(creator.name)}</span>
                         )}
                       </div>
                       <div>
@@ -1385,7 +1692,7 @@ function AdminCreatorManagement() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-[9px] text-white/40 font-mono">
-                      {creator.created_at ? new Date(creator.created_at).toLocaleDateString() : '—'}
+                      {formatDate(creator.created_at)}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -1464,7 +1771,7 @@ function AdminCreatorManagement() {
                     {selectedCreator.avatar ? (
                       <img src={selectedCreator.avatar} alt={selectedCreator.name || 'Creator'} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-2xl font-bold text-white">{getInitial(selectedCreator.name)}</span>
+                      <span className="text-2xl font-bold text-white">{getInitials(selectedCreator.name)}</span>
                     )}
                   </div>
                   <div className="flex-1">
@@ -1609,7 +1916,10 @@ function AdminCreatorManagement() {
   );
 }
 
-// ── Main Dashboard ──────────────────────────────────────────
+// ============================================================================
+// MAIN DASHBOARD COMPONENT
+// ============================================================================
+
 export function AdminDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -1637,6 +1947,8 @@ export function AdminDashboard() {
     totalMessages: 0,
     unreadMessages: 0
   });
+
+  const isOnline = useOnlineStatus();
 
   useEffect(() => { init(); }, []);
 
@@ -1823,6 +2135,13 @@ export function AdminDashboard() {
     <div className="min-h-screen bg-[#080808] text-white">
       <Toaster position="top-right" theme="dark" />
 
+      {/* Offline Indicator */}
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 bg-red-500/90 text-white text-[10px] py-1 text-center z-50">
+          You are offline. Some features may be unavailable.
+        </div>
+      )}
+
       {/* Mobile Header */}
       <div className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-white/10 bg-[#0D0D0D] sticky top-0 z-30">
         <button
@@ -1963,12 +2282,7 @@ export function AdminDashboard() {
                 {activeTab === 'overview' ? 'Dashboard' : activeTab}
               </h1>
               <p className="text-[11px] text-white/30 font-mono mt-0.5">
-                {new Date().toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
+                {formatDate(new Date().toISOString())}
               </p>
             </div>
             <button
@@ -2053,7 +2367,7 @@ export function AdminDashboard() {
                     </span>
                   </div>
                   <p className="text-3xl font-bold text-white">
-                    ₦{stats.totalRevenue.toLocaleString()}
+                    {formatCurrency(stats.totalRevenue)}
                   </p>
                   <p className="text-[10px] text-white/30 font-mono mt-2">
                     All time earnings
@@ -2073,7 +2387,7 @@ export function AdminDashboard() {
                     </span>
                   </div>
                   <p className="text-3xl font-bold text-white">
-                    ₦{stats.pendingPayouts.toLocaleString()}
+                    {formatCurrency(stats.pendingPayouts)}
                   </p>
                   <p className="text-[10px] text-white/30 font-mono mt-2">
                     Awaiting payment
@@ -2093,7 +2407,7 @@ export function AdminDashboard() {
                     </span>
                   </div>
                   <p className="text-3xl font-bold text-white">
-                    ₦{stats.completedPayouts.toLocaleString()}
+                    {formatCurrency(stats.completedPayouts)}
                   </p>
                   <p className="text-[10px] text-white/30 font-mono mt-2">
                     Successfully paid
@@ -2138,7 +2452,7 @@ export function AdminDashboard() {
                             {activity.action || 'Unknown action'}
                           </p>
                           <p className="text-[9px] text-white/30 font-mono">
-                            {activity.entity_type || 'Unknown'} · {activity.created_at ? new Date(activity.created_at).toLocaleString() : 'Invalid date'}
+                            {activity.entity_type || 'Unknown'} · {formatDate(activity.created_at)}
                           </p>
                         </div>
                       </motion.div>
@@ -2150,9 +2464,7 @@ export function AdminDashboard() {
           )}
 
           {/* Creators Tab */}
-          {activeTab === 'creators' && (
-            <AdminCreatorManagement />
-          )}
+          {activeTab === 'creators' && <AdminCreatorManagement />}
 
           {/* Businesses Tab */}
           {activeTab === 'businesses' && (
@@ -2254,7 +2566,7 @@ export function AdminDashboard() {
                       <div className="flex-1">
                         <p className="text-[11px] font-medium text-white">{activity.action || 'Unknown action'}</p>
                         <p className="text-[9px] text-white/30 font-mono mt-1">
-                          {activity.entity_type || 'Unknown'} · {activity.created_at ? new Date(activity.created_at).toLocaleString() : 'Invalid date'}
+                          {activity.entity_type || 'Unknown'} · {formatDate(activity.created_at)}
                         </p>
                       </div>
                     </motion.div>
