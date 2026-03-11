@@ -35,7 +35,8 @@ import {
   Trash2,
   Save,
   Upload,
-  CreditCard
+  CreditCard,
+  ChevronRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../lib/contexts/AuthContext";
@@ -96,6 +97,7 @@ interface PaymentMethod {
 }
 
 interface BankDetails {
+  id?: string;
   account_name: string;
   account_number: string;
   bank_name: string;
@@ -346,6 +348,7 @@ export function Settings() {
 
           if (profile.bank_details && profile.bank_details.length > 0) {
             setBankDetails(profile.bank_details[0]);
+            setBankInput(profile.bank_details[0]);
           }
 
           if (profile.notification_preferences) {
@@ -673,6 +676,27 @@ export function Settings() {
 
     setSaving(true);
     try {
+      // Delete existing platforms not in the list
+      const existingIds = platforms.filter(p => p.id).map(p => p.id);
+      const { data: currentPlatforms } = await supabase
+        .from("creator_platforms")
+        .select("id")
+        .eq("creator_id", creatorId);
+
+      if (currentPlatforms) {
+        const toDelete = currentPlatforms
+          .filter(p => !existingIds.includes(p.id))
+          .map(p => p.id);
+        
+        if (toDelete.length > 0) {
+          await supabase
+            .from("creator_platforms")
+            .delete()
+            .in("id", toDelete);
+        }
+      }
+
+      // Upsert platforms
       for (const platform of platforms) {
         if (platform.id) {
           await supabase
@@ -898,12 +922,14 @@ export function Settings() {
           .update(bankInput)
           .eq("id", bankDetails.id);
       } else {
-        await supabase
+        const { error } = await supabase
           .from("creator_bank_details")
           .insert({
             ...bankInput,
             creator_id: creatorId
           });
+
+        if (error) throw error;
       }
 
       setBankDetails(bankInput);
