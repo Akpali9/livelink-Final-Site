@@ -1,24 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Users,
-  Building2,
-  Megaphone,
-  DollarSign,
-  Clock,
-  CheckCircle2,
-  X,
-  Search,
-  Filter,
-  Download,
-  LogOut,
-  Bell,
-  Menu,
-  BarChart3,
-  TrendingUp,
-  Activity,
-  Shield,
-  Settings,
+  Users, Building2, Megaphone, DollarSign, Clock, CheckCircle2,
+  X, Search, Filter, Download, LogOut, Bell, Menu, BarChart3,
+  TrendingUp, Activity, Shield, Settings,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast, Toaster } from 'sonner';
@@ -54,7 +39,7 @@ function AdminBusinessQueue() {
 
   const fetchBusinesses = async () => {
     const { data } = await supabase
-      .from('business_profiles')
+      .from('businesses')
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
@@ -64,18 +49,20 @@ function AdminBusinessQueue() {
 
   const handleApprove = async (id: string) => {
     const { error } = await supabase
-      .from('business_profiles')
+      .from('businesses')
       .update({ status: 'approved', reviewed_at: new Date().toISOString() })
       .eq('id', id);
     if (!error) { toast.success('Business approved'); fetchBusinesses(); }
+    else toast.error('Failed to approve');
   };
 
   const handleReject = async (id: string) => {
     const { error } = await supabase
-      .from('business_profiles')
+      .from('businesses')
       .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
       .eq('id', id);
     if (!error) { toast.error('Business rejected'); fetchBusinesses(); }
+    else toast.error('Failed to reject');
   };
 
   if (loading) return <div className="text-center py-8 text-[10px] font-black uppercase italic">Loading...</div>;
@@ -86,8 +73,8 @@ function AdminBusinessQueue() {
         <div key={b.id} className="border border-[#1D1D1D]/10 p-4">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h4 className="font-black uppercase italic">{b.business_name}</h4>
-              <p className="text-[9px] opacity-40 uppercase">{b.full_name} · {b.industry}</p>
+              <h4 className="font-black uppercase italic">{b.company_name || b.business_name || 'Unnamed'}</h4>
+              <p className="text-[9px] opacity-40 uppercase">{b.contact_name} · {b.email}</p>
             </div>
             <span className="px-2 py-1 bg-[#FEDB71] text-[#1D1D1D] text-[8px] font-black uppercase border border-[#1D1D1D]/10">Pending</span>
           </div>
@@ -109,7 +96,7 @@ export function AdminDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'creators' | 'businesses' | 'reviews'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'creators' | 'businesses' | 'reviews' | 'activity'>('overview');
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     totalCreators: 0, pendingCreators: 0, approvedCreators: 0,
@@ -127,8 +114,9 @@ export function AdminDashboard() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { navigate('/login/portal'); return; }
     const { data: adminProfile } = await supabase
-      .from('admin_profiles').select('*').eq('id', user.id).single();
-    if (!adminProfile) { navigate('/'); toast.error('Unauthorized access'); }
+      .from('admin_profiles').select('*').eq('id', user.id).maybeSingle();
+    const isAdmin = !!adminProfile || user.app_metadata?.role === 'admin';
+    if (!isAdmin) { navigate('/'); toast.error('Unauthorized access'); }
   };
 
   const fetchDashboardData = async () => {
@@ -170,7 +158,6 @@ export function AdminDashboard() {
       setRecentActivity(activity || []);
     } catch (err) {
       console.error('Dashboard fetch error:', err);
-      toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
@@ -182,13 +169,11 @@ export function AdminDashboard() {
   };
 
   const navItems = [
-    { icon: BarChart3, label: 'Overview',   tab: 'overview',   badge: 0 },
-    { icon: Users,     label: 'Creators',   tab: 'creators',   badge: stats.pendingCreators },
-    { icon: Building2, label: 'Businesses', tab: 'businesses', badge: stats.pendingBusinesses },
-    { icon: Megaphone, label: 'Campaigns',  tab: 'campaigns',  badge: 0 },
-    { icon: Shield,    label: 'Reviews',    tab: 'reviews',    badge: 0 },
-    { icon: Activity,  label: 'Activity',   tab: 'activity',   badge: 0 },
-    { icon: Settings,  label: 'Settings',   tab: 'settings',   badge: 0 },
+    { icon: BarChart3,  label: 'Overview',   tab: 'overview',   badge: 0 },
+    { icon: Users,      label: 'Creators',   tab: 'creators',   badge: stats.pendingCreators },
+    { icon: Building2,  label: 'Businesses', tab: 'businesses', badge: stats.pendingBusinesses },
+    { icon: Shield,     label: 'Reviews',    tab: 'reviews',    badge: stats.pendingCreators + stats.pendingBusinesses },
+    { icon: Activity,   label: 'Activity',   tab: 'activity',   badge: 0 },
   ];
 
   if (loading) {
@@ -214,7 +199,9 @@ export function AdminDashboard() {
         <div className="flex items-center gap-3">
           <button className="p-2 relative">
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-[#389C9A] rounded-full" />
+            {(stats.pendingCreators + stats.pendingBusinesses) > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-[#389C9A] rounded-full" />
+            )}
           </button>
           <div className="w-8 h-8 bg-[#1D1D1D] text-white flex items-center justify-center font-black text-sm">A</div>
         </div>
@@ -252,9 +239,7 @@ export function AdminDashboard() {
               key={item.tab}
               onClick={() => { setActiveTab(item.tab as any); setSidebarOpen(false); }}
               className={`w-full flex items-center justify-between px-4 py-3 text-[10px] font-black uppercase tracking-widest italic transition-all mb-1 ${
-                activeTab === item.tab
-                  ? 'bg-[#1D1D1D] text-white'
-                  : 'hover:bg-[#F8F8F8] text-[#1D1D1D]/60'
+                activeTab === item.tab ? 'bg-[#1D1D1D] text-white' : 'hover:bg-[#F8F8F8] text-[#1D1D1D]/60'
               }`}
             >
               <div className="flex items-center gap-3">
@@ -408,6 +393,32 @@ export function AdminDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── Activity ── */}
+        {activeTab === 'activity' && (
+          <div className="bg-white border-2 border-[#1D1D1D] p-6">
+            <h3 className="font-black uppercase tracking-tight italic mb-6">Activity Log</h3>
+            {recentActivity.length === 0 ? (
+              <p className="text-[10px] text-[#1D1D1D]/40 uppercase italic font-black text-center py-8">No activity recorded</p>
+            ) : (
+              <div className="space-y-3">
+                {recentActivity.map((a) => (
+                  <div key={a.id} className="flex items-start gap-4 border border-[#1D1D1D]/10 p-4">
+                    <div className="w-8 h-8 bg-[#389C9A]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Activity className="w-4 h-4 text-[#389C9A]" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[10px] font-black uppercase tracking-widest italic">{a.action}</p>
+                      <p className="text-[9px] opacity-40 uppercase tracking-widest mt-1">
+                        {a.entity_type} · {new Date(a.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
