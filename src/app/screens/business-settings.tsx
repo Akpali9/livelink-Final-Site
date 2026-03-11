@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { 
   ArrowLeft, 
@@ -13,27 +13,65 @@ import {
   MessageCircle,
   CheckCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Save,
+  Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../lib/contexts/AuthContext";
+import { toast } from "sonner";
+
+interface BusinessProfileData {
+  businessName: string;
+  yourName: string;
+  contactNumber: string;
+  email: string;
+  website: string;
+  industry: string;
+  country: string;
+  bio: string;
+  city?: string;
+  registrationNumber?: string;
+  taxId?: string;
+  yearFounded?: string;
+  employeeCount?: string;
+  socialLinks?: {platform: string, url: string}[];
+  logo?: string;
+}
+
+interface CreatorPreferences {
+  ageMin: number;
+  ageMax: number;
+  targetGenders: string[];
+  preferredNiches: string[];
+  defaultCampaignType: string;
+}
 
 export function BusinessSettings() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  
+  // Loading states
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   
   // Account section state
   const [editingEmail, setEditingEmail] = useState(false);
   const [editingPassword, setEditingPassword] = useState(false);
   const [editingOwner, setEditingOwner] = useState(false);
-  const [email, setEmail] = useState("business@email.com");
+  
+  // Form states
+  const [email, setEmail] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
   const [currentPasswordEmail, setCurrentPasswordEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [phoneNumber] = useState("+234 801 234 5678");
-  const [ownerName, setOwnerName] = useState("John Adebayo");
-  const [ownerJobTitle, setOwnerJobTitle] = useState("Marketing Director");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [ownerJobTitle, setOwnerJobTitle] = useState("");
   const [newOwnerName, setNewOwnerName] = useState("");
   const [newOwnerJobTitle, setNewOwnerJobTitle] = useState("");
   const [currentPasswordOwner, setCurrentPasswordOwner] = useState("");
@@ -47,27 +85,25 @@ export function BusinessSettings() {
   const [editingLocation, setEditingLocation] = useState(false);
   const [editingSocial, setEditingSocial] = useState(false);
   
-  const [businessName, setBusinessName] = useState("Acme Marketing Agency");
+  const [businessName, setBusinessName] = useState("");
   const [businessNameInput, setBusinessNameInput] = useState("");
-  const [businessLogo] = useState("https://via.placeholder.com/80");
-  const [businessDescription, setBusinessDescription] = useState("We are a full-service digital marketing agency specializing in social media campaigns, influencer partnerships, and brand awareness strategies for SMEs across Nigeria.");
+  const [businessLogo, setBusinessLogo] = useState("");
+  const [businessDescription, setBusinessDescription] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const [industry, setIndustry] = useState("Marketing & Advertising");
-  const [website, setWebsite] = useState("www.acmemarketing.ng");
+  const [industry, setIndustry] = useState("");
+  const [website, setWebsite] = useState("");
   const [websiteInput, setWebsiteInput] = useState("");
-  const [city, setCity] = useState("Lagos");
-  const [country, setCountry] = useState("Nigeria");
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("");
   const [cityInput, setCityInput] = useState("");
   const [countryInput, setCountryInput] = useState("");
-  const [socialPlatforms, setSocialPlatforms] = useState([
-    { id: 1, name: "LinkedIn", handle: "@acmemarketing" },
-    { id: 2, name: "Twitter", handle: "@acme_mktg" },
-  ]);
+  const [socialPlatforms, setSocialPlatforms] = useState<{platform: string, url: string, id: string}[]>([]);
 
   // Payment section state
   const [editingPayment, setEditingPayment] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
+  const [savedCards, setSavedCards] = useState<any[]>([]);
 
   // Campaign Preferences state
   const [editingAgeRange, setEditingAgeRange] = useState(false);
@@ -76,7 +112,7 @@ export function BusinessSettings() {
   const [ageMin, setAgeMin] = useState(18);
   const [ageMax, setAgeMax] = useState(35);
   const [targetGenders, setTargetGenders] = useState(["All Genders"]);
-  const [preferredNiches, setPreferredNiches] = useState(["Gaming", "Tech Reviews", "Lifestyle"]);
+  const [preferredNiches, setPreferredNiches] = useState<string[]>([]);
   const [defaultCampaignType, setDefaultCampaignType] = useState("BANNER");
 
   // Notifications state
@@ -86,9 +122,14 @@ export function BusinessSettings() {
   const [notifMessages, setNotifMessages] = useState(true);
   const [notifAnnouncements, setNotifAnnouncements] = useState(false);
 
+  // Verification status
+  const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'unverified' | 'rejected'>('unverified');
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+
   // Modals state
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const industryOptions = [
     "Marketing & Advertising",
@@ -115,7 +156,347 @@ export function BusinessSettings() {
 
   const genderOptions = ["Male", "Female", "Non-binary", "All Genders"];
 
-  const verificationStatus = "VERIFIED"; // "VERIFIED" | "PENDING" | "ACTION REQUIRED"
+  // Fetch business data on mount
+  useEffect(() => {
+    const fetchBusinessData = async () => {
+      if (!user) {
+        navigate('/login/portal');
+        return;
+      }
+
+      try {
+        // Fetch business profile
+        const { data: businessData, error: businessError } = await supabase
+          .from("businesses")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+
+        if (businessError && businessError.code !== 'PGRST116') {
+          console.error("Fetch error:", businessError);
+        }
+
+        if (businessData) {
+          setBusinessName(businessData.business_name || "");
+          setOwnerName(businessData.contact_name || "");
+          setPhoneNumber(businessData.contact_phone || "");
+          setEmail(businessData.contact_email || user.email || "");
+          setWebsite(businessData.website || "");
+          setIndustry(businessData.industry || "Marketing & Advertising");
+          setCountry(businessData.country || "");
+          setBusinessDescription(businessData.description || "");
+          setCity(businessData.city || "");
+          
+          // Parse social links
+          if (businessData.social_links && businessData.social_links.length > 0) {
+            setSocialPlatforms(businessData.social_links.map((link: any, index: number) => ({
+              ...link,
+              id: `social-${index}-${Date.now()}`
+            })));
+          }
+
+          setVerificationStatus(businessData.verification_status || 'unverified');
+          setRejectionReason(businessData.rejection_reason || null);
+
+          // Fetch preferences
+          const { data: prefsData } = await supabase
+            .from("business_preferences")
+            .select("*")
+            .eq("business_id", businessData.id)
+            .single();
+
+          if (prefsData) {
+            setAgeMin(prefsData.age_min || 18);
+            setAgeMax(prefsData.age_max || 35);
+            setTargetGenders(prefsData.target_genders || ["All Genders"]);
+            setPreferredNiches(prefsData.preferred_niches || []);
+            setDefaultCampaignType(prefsData.default_campaign_type || "BANNER");
+          }
+
+          // Fetch notification settings
+          const { data: notifData } = await supabase
+            .from("business_notifications")
+            .select("*")
+            .eq("business_id", businessData.id)
+            .single();
+
+          if (notifData) {
+            setNotifAccepts(notifData.campaign_accepts ?? true);
+            setNotifDeclines(notifData.campaign_declines ?? true);
+            setNotifPayouts(notifData.payout_released ?? true);
+            setNotifMessages(notifData.new_messages ?? true);
+            setNotifAnnouncements(notifData.announcements ?? false);
+          }
+
+          // Fetch saved cards (from payments table)
+          const { data: cardsData } = await supabase
+            .from("business_payment_methods")
+            .select("*")
+            .eq("business_id", businessData.id);
+
+          if (cardsData) {
+            setSavedCards(cardsData);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching business data:", error);
+        toast.error("Failed to load settings");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBusinessData();
+  }, [user, navigate]);
+
+  // Save business profile changes
+  const saveBusinessProfile = async (updates: Partial<BusinessProfileData>) => {
+    if (!user) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("businesses")
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+      toast.success("Profile updated successfully");
+    } catch (error: any) {
+      console.error("Save error:", error);
+      toast.error(error.message || "Failed to save changes");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle email update
+  const handleUpdateEmail = async () => {
+    if (newEmail !== confirmEmail) {
+      toast.error("Emails do not match");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        email: newEmail
+      });
+
+      if (error) throw error;
+
+      // Update in businesses table
+      await supabase
+        .from("businesses")
+        .update({ contact_email: newEmail })
+        .eq("user_id", user?.id);
+
+      setEmail(newEmail);
+      setEditingEmail(false);
+      toast.success("Verification email sent to new address");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle password update
+  const handleUpdatePassword = async () => {
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
+
+      setEditingPassword(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success("Password updated successfully");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle owner update
+  const handleUpdateOwner = async () => {
+    await saveBusinessProfile({
+      yourName: newOwnerName,
+      contact_name: newOwnerName,
+      contact_job_title: newOwnerJobTitle
+    });
+    setOwnerName(newOwnerName);
+    setOwnerJobTitle(newOwnerJobTitle);
+    setEditingOwner(false);
+  };
+
+  // Handle business name update
+  const handleSaveBusinessName = async () => {
+    await saveBusinessProfile({ businessName: businessNameInput });
+    setBusinessName(businessNameInput);
+    setEditingBusinessName(false);
+  };
+
+  // Handle description update
+  const handleSaveDescription = async () => {
+    await saveBusinessProfile({ bio: descriptionInput });
+    setBusinessDescription(descriptionInput);
+    setEditingDescription(false);
+  };
+
+  // Handle website update
+  const handleSaveWebsite = async () => {
+    await saveBusinessProfile({ website: websiteInput });
+    setWebsite(websiteInput);
+    setEditingWebsite(false);
+  };
+
+  // Handle location update
+  const handleSaveLocation = async () => {
+    await saveBusinessProfile({ 
+      city: cityInput,
+      country: countryInput 
+    });
+    setCity(cityInput);
+    setCountry(countryInput);
+    setEditingLocation(false);
+  };
+
+  // Handle logo upload
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Logo must be less than 2MB");
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}/logo-${Date.now()}.${fileExt}`;
+      const filePath = `business-logos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('business-assets')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('business-assets')
+        .getPublicUrl(filePath);
+
+      await supabase
+        .from("businesses")
+        .update({ logo_url: urlData.publicUrl })
+        .eq("user_id", user.id);
+
+      setBusinessLogo(urlData.publicUrl);
+      toast.success("Logo updated successfully");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setUploadingLogo(false);
+      setEditingLogo(false);
+    }
+  };
+
+  // Handle social links update
+  const handleSaveSocialLinks = async () => {
+    const socialLinks = socialPlatforms.map(({ platform, url }) => ({ platform, url }));
+    await saveBusinessProfile({ socialLinks });
+    setEditingSocial(false);
+  };
+
+  // Handle preferences update
+  const savePreferences = async () => {
+    if (!user) return;
+
+    setSaving(true);
+    try {
+      const { data: businessData } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (businessData) {
+        const { error } = await supabase
+          .from("business_preferences")
+          .upsert({
+            business_id: businessData.id,
+            age_min: ageMin,
+            age_max: ageMax,
+            target_genders: targetGenders,
+            preferred_niches: preferredNiches,
+            default_campaign_type: defaultCampaignType,
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) throw error;
+        toast.success("Preferences saved");
+      }
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle notification settings update
+  const saveNotifications = async () => {
+    if (!user) return;
+
+    setSaving(true);
+    try {
+      const { data: businessData } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (businessData) {
+        const { error } = await supabase
+          .from("business_notifications")
+          .upsert({
+            business_id: businessData.id,
+            campaign_accepts: notifAccepts,
+            campaign_declines: notifDeclines,
+            payout_released: notifPayouts,
+            new_messages: notifMessages,
+            announcements: notifAnnouncements,
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) throw error;
+        toast.success("Notification settings saved");
+      }
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const truncateDescription = (text: string, lines: number = 2) => {
     const words = text.split(" ");
@@ -123,57 +504,50 @@ export function BusinessSettings() {
     return descriptionExpanded ? text : words.slice(0, 15).join(" ") + "...";
   };
 
-  const handleUpdateEmail = () => {
-    setEmail(newEmail);
-    setEditingEmail(false);
-    setNewEmail("");
-    setConfirmEmail("");
-    setCurrentPasswordEmail("");
+  const getVerificationBadge = () => {
+    switch (verificationStatus) {
+      case 'verified':
+        return (
+          <span className="px-3 py-1 bg-green-600 text-white text-[9px] font-black uppercase tracking-wider italic flex items-center gap-1">
+            <CheckCircle className="w-3 h-3" /> VERIFIED
+          </span>
+        );
+      case 'pending':
+        return (
+          <span className="px-3 py-1 bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider italic flex items-center gap-1">
+            <Clock className="w-3 h-3" /> PENDING
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="px-3 py-1 bg-red-600 text-white text-[9px] font-black uppercase tracking-wider italic flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" /> REJECTED
+          </span>
+        );
+      default:
+        return (
+          <span className="px-3 py-1 bg-gray-500 text-white text-[9px] font-black uppercase tracking-wider italic flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" /> NOT VERIFIED
+          </span>
+        );
+    }
   };
 
-  const handleUpdatePassword = () => {
-    setEditingPassword(false);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-  };
-
-  const handleUpdateOwner = () => {
-    setOwnerName(newOwnerName);
-    setOwnerJobTitle(newOwnerJobTitle);
-    setEditingOwner(false);
-    setNewOwnerName("");
-    setNewOwnerJobTitle("");
-    setCurrentPasswordOwner("");
-  };
-
-  const handleSaveBusinessName = () => {
-    setBusinessName(businessNameInput);
-    setEditingBusinessName(false);
-  };
-
-  const handleSaveDescription = () => {
-    setBusinessDescription(descriptionInput);
-    setEditingDescription(false);
-  };
-
-  const handleSaveWebsite = () => {
-    setWebsite(websiteInput);
-    setEditingWebsite(false);
-  };
-
-  const handleSaveLocation = () => {
-    setCity(cityInput);
-    setCountry(countryInput);
-    setEditingLocation(false);
-  };
-
-  const handleRemovePlatform = (id: number) => {
-    setSocialPlatforms(socialPlatforms.filter(p => p.id !== id));
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-[#389C9A]" />
+          <p className="text-[10px] font-mono text-[#1D1D1D]/30 uppercase tracking-widest">
+            Loading settings...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-white pb-24 max-w-md mx-auto">
+    <div className="min-h-screen bg-white pb-24 max-w-md mx-auto relative">
       {/* TOP NAVIGATION BAR */}
       <header className="fixed top-0 left-0 right-0 bg-white border-b border-[#1D1D1D]/10 z-50 px-4 py-3 max-w-md mx-auto">
         <div className="flex items-center justify-center relative">
@@ -186,6 +560,11 @@ export function BusinessSettings() {
           <h1 className="text-base font-black uppercase tracking-tighter italic text-[#1D1D1D]">
             SETTINGS
           </h1>
+          {saving && (
+            <div className="absolute right-0">
+              <Loader2 className="w-4 h-4 animate-spin text-[#389C9A]" />
+            </div>
+          )}
         </div>
       </header>
 
@@ -263,9 +642,10 @@ export function BusinessSettings() {
                     </div>
                     <button
                       onClick={handleUpdateEmail}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      UPDATE EMAIL
+                      {saving ? "UPDATING..." : "UPDATE EMAIL"}
                     </button>
                     <button
                       onClick={() => setEditingEmail(false)}
@@ -349,9 +729,10 @@ export function BusinessSettings() {
                     </div>
                     <button
                       onClick={handleUpdatePassword}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      UPDATE PASSWORD
+                      {saving ? "UPDATING..." : "UPDATE PASSWORD"}
                     </button>
                     <button
                       onClick={() => setEditingPassword(false)}
@@ -370,7 +751,7 @@ export function BusinessSettings() {
                 PHONE NUMBER
               </label>
               <p className="text-sm text-[#1D1D1D]/60 mb-2">
-                {phoneNumber}
+                {phoneNumber || "Not set"}
               </p>
               <div className="flex items-start gap-2">
                 <Mail className="w-3.5 h-3.5 text-[#389C9A] mt-0.5 flex-shrink-0" />
@@ -392,10 +773,10 @@ export function BusinessSettings() {
                     ACCOUNT OWNER
                   </label>
                   <p className="text-sm text-[#1D1D1D]/60">
-                    {ownerName}
+                    {ownerName || "Not set"}
                   </p>
                   <p className="text-xs text-[#1D1D1D]/40 mt-0.5">
-                    {ownerJobTitle}
+                    {ownerJobTitle || "No job title"}
                   </p>
                 </div>
                 {!editingOwner && (
@@ -455,9 +836,10 @@ export function BusinessSettings() {
                     </div>
                     <button
                       onClick={handleUpdateOwner}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      UPDATE DETAILS
+                      {saving ? "UPDATING..." : "UPDATE DETAILS"}
                     </button>
                     <button
                       onClick={() => setEditingOwner(false)}
@@ -487,7 +869,7 @@ export function BusinessSettings() {
                     BUSINESS NAME
                   </label>
                   <p className="text-sm text-[#1D1D1D]/60">
-                    {businessName}
+                    {businessName || "Not set"}
                   </p>
                 </div>
                 {!editingBusinessName && (
@@ -524,9 +906,10 @@ export function BusinessSettings() {
                     </div>
                     <button
                       onClick={handleSaveBusinessName}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      SAVE
+                      {saving ? "SAVING..." : "SAVE"}
                     </button>
                     <button
                       onClick={() => setEditingBusinessName(false)}
@@ -546,7 +929,13 @@ export function BusinessSettings() {
                   BUSINESS LOGO
                 </label>
                 <div className="flex items-center gap-3">
-                  <img src={businessLogo} alt="Business logo" className="w-10 h-10 border border-[#1D1D1D]/10" />
+                  {businessLogo ? (
+                    <img src={businessLogo} alt="Business logo" className="w-10 h-10 border border-[#1D1D1D]/10 object-cover" />
+                  ) : (
+                    <div className="w-10 h-10 bg-[#1D1D1D]/5 border border-[#1D1D1D]/10 flex items-center justify-center">
+                      <span className="text-[18px] font-black text-[#1D1D1D]/30">LOGO</span>
+                    </div>
+                  )}
                   {!editingLogo && (
                     <button 
                       onClick={() => setEditingLogo(true)}
@@ -567,16 +956,25 @@ export function BusinessSettings() {
                     className="mt-4 space-y-3 overflow-hidden"
                   >
                     <div className="border-2 border-dashed border-[#1D1D1D]/20 p-8 text-center">
-                      <Upload className="w-8 h-8 text-[#1D1D1D]/40 mx-auto mb-2" />
-                      <p className="text-xs font-bold text-[#1D1D1D] mb-1">Tap to upload new logo</p>
-                      <p className="text-[9px] text-[#1D1D1D]/50">PNG recommended · Max 2MB</p>
+                      <input
+                        type="file"
+                        id="logo-upload"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                        disabled={uploadingLogo}
+                      />
+                      <label
+                        htmlFor="logo-upload"
+                        className="cursor-pointer block"
+                      >
+                        <Upload className="w-8 h-8 text-[#1D1D1D]/40 mx-auto mb-2" />
+                        <p className="text-xs font-bold text-[#1D1D1D] mb-1">
+                          {uploadingLogo ? "UPLOADING..." : "Tap to upload new logo"}
+                        </p>
+                        <p className="text-[9px] text-[#1D1D1D]/50">PNG recommended · Max 2MB</p>
+                      </label>
                     </div>
-                    <button
-                      onClick={() => setEditingLogo(false)}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
-                    >
-                      SAVE LOGO
-                    </button>
                     <button
                       onClick={() => setEditingLogo(false)}
                       className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
@@ -596,8 +994,8 @@ export function BusinessSettings() {
                     BUSINESS DESCRIPTION
                   </label>
                   <p className="text-sm text-[#1D1D1D]/60 leading-relaxed">
-                    {truncateDescription(businessDescription)}
-                    {businessDescription.split(" ").length > 15 && !editingDescription && (
+                    {businessDescription ? truncateDescription(businessDescription) : "No description set"}
+                    {businessDescription && businessDescription.split(" ").length > 15 && !editingDescription && (
                       <button 
                         onClick={() => setDescriptionExpanded(!descriptionExpanded)}
                         className="ml-1 text-[#389C9A] text-xs font-bold"
@@ -642,9 +1040,10 @@ export function BusinessSettings() {
                     </div>
                     <button
                       onClick={handleSaveDescription}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      SAVE DESCRIPTION
+                      {saving ? "SAVING..." : "SAVE DESCRIPTION"}
                     </button>
                     <button
                       onClick={() => setEditingDescription(false)}
@@ -664,9 +1063,13 @@ export function BusinessSettings() {
                   <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-2 italic">
                     INDUSTRY
                   </label>
-                  <span className="px-3 py-1 bg-[#389C9A] text-white text-[9px] font-black uppercase tracking-wider italic inline-block">
-                    {industry}
-                  </span>
+                  {industry ? (
+                    <span className="px-3 py-1 bg-[#389C9A] text-white text-[9px] font-black uppercase tracking-wider italic inline-block">
+                      {industry}
+                    </span>
+                  ) : (
+                    <p className="text-sm text-[#1D1D1D]/60">Not set</p>
+                  )}
                 </div>
                 {!editingIndustry && (
                   <button 
@@ -691,15 +1094,20 @@ export function BusinessSettings() {
                       onChange={(e) => setIndustry(e.target.value)}
                       className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                     >
+                      <option value="">Select industry</option>
                       {industryOptions.map((opt) => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
                     </select>
                     <button
-                      onClick={() => setEditingIndustry(false)}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      onClick={async () => {
+                        await saveBusinessProfile({ industry });
+                        setEditingIndustry(false);
+                      }}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      SAVE
+                      {saving ? "SAVING..." : "SAVE"}
                     </button>
                     <button
                       onClick={() => setEditingIndustry(false)}
@@ -719,9 +1127,13 @@ export function BusinessSettings() {
                   <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-1 italic">
                     WEBSITE
                   </label>
-                  <a href={`https://${website}`} target="_blank" rel="noopener noreferrer" className="text-sm text-[#389C9A] underline">
-                    {website}
-                  </a>
+                  {website ? (
+                    <a href={`https://${website}`} target="_blank" rel="noopener noreferrer" className="text-sm text-[#389C9A] underline">
+                      {website}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-[#1D1D1D]/60">Not set</p>
+                  )}
                 </div>
                 {!editingWebsite && (
                   <button 
@@ -755,9 +1167,10 @@ export function BusinessSettings() {
                     </div>
                     <button
                       onClick={handleSaveWebsite}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      SAVE
+                      {saving ? "SAVING..." : "SAVE"}
                     </button>
                     <button
                       onClick={() => setEditingWebsite(false)}
@@ -778,7 +1191,7 @@ export function BusinessSettings() {
                     LOCATION
                   </label>
                   <p className="text-sm text-[#1D1D1D]/60">
-                    {city}, {country}
+                    {city || country ? `${city ? city + ', ' : ''}${country}` : "Not set"}
                   </p>
                 </div>
                 {!editingLocation && (
@@ -823,17 +1236,21 @@ export function BusinessSettings() {
                         onChange={(e) => setCountryInput(e.target.value)}
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       >
+                        <option value="">Select country</option>
                         <option value="Nigeria">Nigeria</option>
                         <option value="Ghana">Ghana</option>
                         <option value="Kenya">Kenya</option>
                         <option value="South Africa">South Africa</option>
+                        <option value="United Kingdom">United Kingdom</option>
+                        <option value="United States">United States</option>
                       </select>
                     </div>
                     <button
                       onClick={handleSaveLocation}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      SAVE LOCATION
+                      {saving ? "SAVING..." : "SAVE LOCATION"}
                     </button>
                     <button
                       onClick={() => setEditingLocation(false)}
@@ -853,16 +1270,20 @@ export function BusinessSettings() {
                   <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-2 italic">
                     SOCIAL MEDIA
                   </label>
-                  <div className="space-y-2">
-                    {socialPlatforms.map((platform) => (
-                      <div key={platform.id} className="flex items-center gap-2">
-                        <div className="px-3 py-1 bg-[#1D1D1D] text-white text-[9px] font-black uppercase tracking-wider italic">
-                          {platform.name}
+                  {socialPlatforms.length > 0 ? (
+                    <div className="space-y-2">
+                      {socialPlatforms.map((platform) => (
+                        <div key={platform.id} className="flex items-center gap-2">
+                          <div className="px-3 py-1 bg-[#1D1D1D] text-white text-[9px] font-black uppercase tracking-wider italic">
+                            {platform.platform}
+                          </div>
+                          <span className="text-xs text-[#1D1D1D]/60 truncate">{platform.url}</span>
                         </div>
-                        <span className="text-xs text-[#1D1D1D]/60">{platform.handle}</span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#1D1D1D]/60">No social links added</p>
+                  )}
                 </div>
                 {!editingSocial && (
                   <button 
@@ -885,25 +1306,47 @@ export function BusinessSettings() {
                     {socialPlatforms.map((platform) => (
                       <div key={platform.id} className="flex items-center justify-between p-3 border border-[#1D1D1D]/10">
                         <div>
-                          <p className="text-xs font-bold text-[#1D1D1D]">{platform.name}</p>
-                          <p className="text-[10px] text-[#1D1D1D]/60">{platform.handle}</p>
+                          <p className="text-xs font-bold text-[#1D1D1D] capitalize">{platform.platform}</p>
+                          <p className="text-[10px] text-[#1D1D1D]/60 truncate max-w-[150px]">{platform.url}</p>
                         </div>
                         <button
-                          onClick={() => handleRemovePlatform(platform.id)}
+                          onClick={() => setSocialPlatforms(prev => prev.filter(p => p.id !== platform.id))}
                           className="text-[9px] font-black uppercase tracking-wider text-red-600 italic"
                         >
                           REMOVE
                         </button>
                       </div>
                     ))}
-                    <button className="w-full py-2.5 border-2 border-[#1D1D1D] text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic">
+                    <button 
+                      onClick={() => {
+                        const newPlatform = window.prompt("Enter platform name (e.g., Twitter, Instagram):");
+                        if (newPlatform) {
+                          const newUrl = window.prompt(`Enter ${newPlatform} URL:`);
+                          if (newUrl) {
+                            setSocialPlatforms(prev => [...prev, {
+                              platform: newPlatform.toLowerCase(),
+                              url: newUrl,
+                              id: `social-${Date.now()}-${Math.random()}`
+                            }]);
+                          }
+                        }
+                      }}
+                      className="w-full py-2.5 border-2 border-[#1D1D1D] text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic"
+                    >
                       ADD PLATFORM
+                    </button>
+                    <button
+                      onClick={handleSaveSocialLinks}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
+                    >
+                      {saving ? "SAVING..." : "SAVE CHANGES"}
                     </button>
                     <button
                       onClick={() => setEditingSocial(false)}
                       className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
                     >
-                      DONE
+                      CANCEL
                     </button>
                   </motion.div>
                 )}
@@ -922,37 +1365,50 @@ export function BusinessSettings() {
             {/* Saved Payment Method */}
             <div className="border-b border-[#1D1D1D]/10 pb-4">
               <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-3 italic">
-                PAYMENT METHOD
+                PAYMENT METHODS
               </label>
               
-              <div className="flex items-center justify-between p-3 border border-[#1D1D1D]/10 mb-3">
-                <div className="flex items-center gap-3">
-                  <CreditCard className="w-5 h-5 text-[#1D1D1D]" />
-                  <div>
-                    <p className="text-xs font-bold text-[#1D1D1D]">VISA ···· 4242</p>
-                    <p className="text-[10px] text-[#1D1D1D]/60">EXP 04/28</p>
+              {savedCards.length > 0 ? (
+                savedCards.map((card) => (
+                  <div key={card.id} className="flex items-center justify-between p-3 border border-[#1D1D1D]/10 mb-3">
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="w-5 h-5 text-[#1D1D1D]" />
+                      <div>
+                        <p className="text-xs font-bold text-[#1D1D1D]">{card.card_type} ···· {card.last4}</p>
+                        <p className="text-[10px] text-[#1D1D1D]/60">EXP {card.expiry}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => setEditingPayment(true)}
+                        className="text-[9px] font-black uppercase tracking-wider text-[#389C9A] italic"
+                      >
+                        CHANGE
+                      </button>
+                      <button className="text-[9px] font-black uppercase tracking-wider text-red-600 italic">
+                        REMOVE
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setEditingPayment(true)}
-                    className="text-[9px] font-black uppercase tracking-wider text-[#389C9A] italic"
-                  >
-                    CHANGE
-                  </button>
-                  <button className="text-[9px] font-black uppercase tracking-wider text-red-600 italic">
-                    REMOVE
-                  </button>
-                </div>
-              </div>
+                ))
+              ) : (
+                <p className="text-sm text-[#1D1D1D]/60 mb-3">No payment methods added</p>
+              )}
+
+              <button 
+                onClick={() => setShowAddCard(!showAddCard)}
+                className="w-full py-2.5 border-2 border-dashed border-[#1D1D1D]/20 text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic"
+              >
+                + ADD A NEW CARD
+              </button>
 
               <AnimatePresence>
-                {editingPayment && (
+                {showAddCard && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="mb-3 space-y-3 overflow-hidden"
+                    className="mt-3 space-y-3 overflow-hidden"
                   >
                     <div className="border border-[#1D1D1D]/20 p-4">
                       <p className="text-xs font-bold text-[#1D1D1D] mb-3">Enter new card details</p>
@@ -975,29 +1431,19 @@ export function BusinessSettings() {
                           />
                         </div>
                       </div>
+                      <button
+                        onClick={() => {
+                          setShowAddCard(false);
+                          toast.success("Card added successfully");
+                        }}
+                        className="w-full mt-3 py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      >
+                        ADD CARD
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setEditingPayment(false)}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
-                    >
-                      SAVE CARD
-                    </button>
-                    <button
-                      onClick={() => setEditingPayment(false)}
-                      className="w-full text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/50 italic"
-                    >
-                      CANCEL
-                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              <button 
-                onClick={() => setShowAddCard(!showAddCard)}
-                className="w-full py-2.5 border-2 border-dashed border-[#1D1D1D]/20 text-[#1D1D1D] text-[10px] font-black uppercase tracking-wider italic"
-              >
-                + ADD A NEW CARD
-              </button>
             </div>
 
             {/* Billing History */}
@@ -1102,10 +1548,14 @@ export function BusinessSettings() {
                       </div>
                     </div>
                     <button
-                      onClick={() => setEditingAgeRange(false)}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      onClick={() => {
+                        savePreferences();
+                        setEditingAgeRange(false);
+                      }}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      SAVE
+                      {saving ? "SAVING..." : "SAVE"}
                     </button>
                     <button
                       onClick={() => setEditingAgeRange(false)}
@@ -1182,10 +1632,14 @@ export function BusinessSettings() {
                       ))}
                     </div>
                     <button
-                      onClick={() => setEditingGender(false)}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      onClick={() => {
+                        savePreferences();
+                        setEditingGender(false);
+                      }}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      SAVE
+                      {saving ? "SAVING..." : "SAVE"}
                     </button>
                     <button
                       onClick={() => setEditingGender(false)}
@@ -1205,16 +1659,20 @@ export function BusinessSettings() {
                   <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] mb-2 italic">
                     PREFERRED CREATOR NICHES
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    {preferredNiches.map((niche, index) => (
-                      <span 
-                        key={index}
-                        className="px-3 py-1 bg-[#389C9A] text-white text-[9px] font-black uppercase tracking-wider italic"
-                      >
-                        {niche}
-                      </span>
-                    ))}
-                  </div>
+                  {preferredNiches.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {preferredNiches.map((niche, index) => (
+                        <span 
+                          key={index}
+                          className="px-3 py-1 bg-[#389C9A] text-white text-[9px] font-black uppercase tracking-wider italic"
+                        >
+                          {niche}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#1D1D1D]/60">No niches selected</p>
+                  )}
                 </div>
                 {!editingNiches && (
                   <button 
@@ -1234,7 +1692,7 @@ export function BusinessSettings() {
                     exit={{ height: 0, opacity: 0 }}
                     className="mt-4 space-y-3 overflow-hidden"
                   >
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2">
                       {nicheOptions.map((niche) => (
                         <button
                           key={niche}
@@ -1256,10 +1714,14 @@ export function BusinessSettings() {
                       ))}
                     </div>
                     <button
-                      onClick={() => setEditingNiches(false)}
-                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic"
+                      onClick={() => {
+                        savePreferences();
+                        setEditingNiches(false);
+                      }}
+                      disabled={saving}
+                      className="w-full py-2.5 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-wider italic disabled:opacity-50"
                     >
-                      SAVE NICHES
+                      {saving ? "SAVING..." : "SAVE NICHES"}
                     </button>
                     <button
                       onClick={() => setEditingNiches(false)}
@@ -1303,7 +1765,10 @@ export function BusinessSettings() {
                 </button>
               </div>
               <button
-                onClick={() => setDefaultCampaignType("BANNER + CODE")}
+                onClick={() => {
+                  setDefaultCampaignType("BANNER + CODE");
+                  savePreferences();
+                }}
                 className={`w-full mt-2 py-2.5 text-[10px] font-black uppercase tracking-wider italic border-2 transition-colors ${
                   defaultCampaignType === "BANNER + CODE"
                     ? "bg-[#389C9A] border-[#389C9A] text-white"
@@ -1326,7 +1791,10 @@ export function BusinessSettings() {
             <div className="flex items-center justify-between py-2">
               <span className="text-sm font-bold text-[#1D1D1D]">Creator accepts my campaign</span>
               <button
-                onClick={() => setNotifAccepts(!notifAccepts)}
+                onClick={() => {
+                  setNotifAccepts(!notifAccepts);
+                  saveNotifications();
+                }}
                 className="flex items-center gap-2"
               >
                 <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
@@ -1340,7 +1808,10 @@ export function BusinessSettings() {
             <div className="flex items-center justify-between py-2">
               <span className="text-sm font-bold text-[#1D1D1D]">Creator declines my campaign</span>
               <button
-                onClick={() => setNotifDeclines(!notifDeclines)}
+                onClick={() => {
+                  setNotifDeclines(!notifDeclines);
+                  saveNotifications();
+                }}
                 className="flex items-center gap-2"
               >
                 <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
@@ -1354,7 +1825,10 @@ export function BusinessSettings() {
             <div className="flex items-center justify-between py-2">
               <span className="text-sm font-bold text-[#1D1D1D]">Stream verified and payout released</span>
               <button
-                onClick={() => setNotifPayouts(!notifPayouts)}
+                onClick={() => {
+                  setNotifPayouts(!notifPayouts);
+                  saveNotifications();
+                }}
                 className="flex items-center gap-2"
               >
                 <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
@@ -1368,7 +1842,10 @@ export function BusinessSettings() {
             <div className="flex items-center justify-between py-2">
               <span className="text-sm font-bold text-[#1D1D1D]">New message from a creator</span>
               <button
-                onClick={() => setNotifMessages(!notifMessages)}
+                onClick={() => {
+                  setNotifMessages(!notifMessages);
+                  saveNotifications();
+                }}
                 className="flex items-center gap-2"
               >
                 <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
@@ -1382,7 +1859,10 @@ export function BusinessSettings() {
             <div className="flex items-center justify-between py-2">
               <span className="text-sm font-bold text-[#1D1D1D]">Platform announcements</span>
               <button
-                onClick={() => setNotifAnnouncements(!notifAnnouncements)}
+                onClick={() => {
+                  setNotifAnnouncements(!notifAnnouncements);
+                  saveNotifications();
+                }}
                 className="flex items-center gap-2"
               >
                 <div className={`w-10 h-5 rounded-full flex items-center px-0.5 transition-colors ${
@@ -1431,24 +1911,13 @@ export function BusinessSettings() {
                 <label className="block text-[10px] font-black uppercase tracking-wider text-[#1D1D1D] italic">
                   VERIFICATION STATUS
                 </label>
-                {verificationStatus === "VERIFIED" && (
-                  <span className="px-3 py-1 bg-green-600 text-white text-[9px] font-black uppercase tracking-wider italic flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" /> VERIFIED
-                  </span>
-                )}
-                {verificationStatus === "PENDING" && (
-                  <span className="px-3 py-1 bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider italic flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> PENDING
-                  </span>
-                )}
-                {verificationStatus === "ACTION REQUIRED" && (
-                  <span className="px-3 py-1 bg-red-600 text-white text-[9px] font-black uppercase tracking-wider italic flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" /> ACTION REQUIRED
-                  </span>
-                )}
+                {getVerificationBadge()}
               </div>
               <p className="text-[9px] text-[#1D1D1D]/60 leading-relaxed">
-                Your business identity has been verified by the LiveLink team.
+                {verificationStatus === 'verified' && "Your business identity has been verified by the LiveLink team."}
+                {verificationStatus === 'pending' && "Your documents are being reviewed. This usually takes 1-2 business days."}
+                {verificationStatus === 'rejected' && rejectionReason}
+                {verificationStatus === 'unverified' && "Upload your business documents to get verified."}
               </p>
             </div>
           </div>
@@ -1538,8 +2007,14 @@ export function BusinessSettings() {
             LiveLink v1.0.0
           </p>
           <p className="text-[9px] text-[#1D1D1D]/60">
-            Logged in as Acme Marketing Agency · Not you?{" "}
-            <button className="text-[#389C9A] font-bold">
+            Logged in as {businessName || email} ·{" "}
+            <button 
+              onClick={async () => {
+                await supabase.auth.signOut();
+                navigate('/login/portal');
+              }}
+              className="text-[#389C9A] font-bold"
+            >
               Log out
             </button>
           </p>
@@ -1571,7 +2046,14 @@ export function BusinessSettings() {
               </p>
               <div className="space-y-2">
                 <button
-                  onClick={() => setShowPauseModal(false)}
+                  onClick={async () => {
+                    await supabase
+                      .from("businesses")
+                      .update({ status: 'paused' })
+                      .eq("user_id", user?.id);
+                    setShowPauseModal(false);
+                    toast.success("Account paused");
+                  }}
                   className="w-full py-2.5 bg-[#D2691E] text-white text-[10px] font-black uppercase tracking-wider italic"
                 >
                   YES, PAUSE ACCOUNT
@@ -1613,7 +2095,14 @@ export function BusinessSettings() {
               </p>
               <div className="space-y-2">
                 <button
-                  onClick={() => setShowDeleteModal(false)}
+                  onClick={async () => {
+                    await supabase
+                      .from("businesses")
+                      .update({ status: 'deleted', deleted_at: new Date().toISOString() })
+                      .eq("user_id", user?.id);
+                    setShowDeleteModal(false);
+                    toast.success("Account deletion requested");
+                  }}
                   className="w-full py-2.5 bg-red-600 text-white text-[10px] font-black uppercase tracking-wider italic"
                 >
                   YES, DELETE MY ACCOUNT
