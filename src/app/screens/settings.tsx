@@ -987,12 +987,22 @@ export function Settings() {
 
   // Handle save all settings
   const handleSaveAll = async () => {
-    if (!creatorId) return;
+    if (!creatorId) {
+      toast.error("Unable to save: Creator profile not found");
+      return;
+    }
 
     setSaving(true);
+    const startTime = Date.now();
+    
     try {
+      // Show loading toast
+      const loadingToast = toast.loading("Saving all settings...", {
+        duration: Infinity
+      });
+
       // Update notification preferences
-      await supabase
+      const { error } = await supabase
         .from("creator_profiles")
         .update({
           notification_preferences: {
@@ -1005,10 +1015,63 @@ export function Settings() {
         })
         .eq("id", creatorId);
 
-      toast.success("All settings saved");
-    } catch (error) {
-      toast.error("Failed to save settings");
-    } finally {
+      if (error) throw error;
+
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+
+      // Calculate how long the operation took to ensure minimum animation time
+      const elapsedTime = Date.now() - startTime;
+      const minimumTime = 800; // Minimum time to show success state for better UX
+      
+      if (elapsedTime < minimumTime) {
+        await new Promise(resolve => setTimeout(resolve, minimumTime - elapsedTime));
+      }
+
+      // Show success toast with detailed message
+      toast.success(
+        <div className="flex flex-col">
+          <span className="font-bold text-sm">✓ All settings saved!</span>
+          <span className="text-xs opacity-90 mt-0.5">
+            Notification preferences updated successfully
+          </span>
+        </div>, 
+        {
+          icon: <CheckCircle2 className="w-5 h-5 text-green-500" />,
+          duration: 4000,
+          style: {
+            background: '#10b981',
+            color: 'white',
+            border: 'none'
+          }
+        }
+      );
+
+      // Also show a success indicator in the button for 3 seconds
+      setTimeout(() => setSaving(false), 1000); // Keep saving false after success
+
+    } catch (error: any) {
+      console.error("Save error:", error);
+      
+      // Show error toast with details
+      toast.error(
+        <div className="flex flex-col">
+          <span className="font-bold text-sm">Failed to save settings</span>
+          <span className="text-xs opacity-90 mt-0.5">
+            {error.message || "Please try again or contact support"}
+          </span>
+        </div>,
+        {
+          icon: <AlertCircle className="w-5 h-5 text-red-500" />,
+          duration: 5000,
+          style: {
+            background: '#ef4444',
+            color: 'white',
+            border: 'none'
+          }
+        }
+      );
+      
       setSaving(false);
     }
   };
@@ -1147,7 +1210,7 @@ export function Settings() {
                         type="text"
                         value={fullNameInput}
                         onChange={(e) => setFullNameInput(e.target.value)}
-                        placeholder="Full Name"
+                        placeholder="John Doe"
                         className="w-full px-3 py-2 border border-[#1D1D1D]/20 text-sm focus:border-[#389C9A] outline-none"
                       />
                     </div>
@@ -2648,12 +2711,16 @@ export function Settings() {
         <button
           onClick={handleSaveAll}
           disabled={saving}
-          className="w-full bg-[#1D1D1D] text-white py-4 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          className={`w-full py-4 text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
+            saving 
+              ? 'bg-[#389C9A] text-white opacity-80' 
+              : 'bg-[#1D1D1D] text-white hover:bg-[#389C9A]'
+          }`}
         >
           {saving ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              SAVING...
+              <span className="animate-pulse">SAVING...</span>
             </>
           ) : (
             <>
@@ -2662,6 +2729,20 @@ export function Settings() {
             </>
           )}
         </button>
+        
+        {/* Optional: Add a small success message that fades out */}
+        <AnimatePresence>
+          {!saving && (
+            <motion.p 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-[8px] text-center mt-2 text-[#1D1D1D]/40"
+            >
+              Changes are saved automatically as you edit
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* PAUSE ACCOUNT MODAL */}
