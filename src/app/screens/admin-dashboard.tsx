@@ -139,7 +139,8 @@ function AdminMessages({ adminId }: { adminId: string }) {
         .or(`and(sender_id.eq.${adminId},receiver_id.eq.${selected.user_id}),and(sender_id.eq.${selected.user_id},receiver_id.eq.${adminId})`)
         .order('created_at', { ascending: true });
       setMessages(data || []);
-      await supabase.from('messages').update({ is_read: true })
+      await supabase.from('messages')
+        .update({ is_read: true, seen: true, read_at: new Date().toISOString() })
         .eq('sender_id', selected.user_id).eq('receiver_id', adminId).eq('is_read', false);
     };
     load();
@@ -150,7 +151,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
         const msg = p.new as Message;
         if (msg.sender_id === selected.user_id) {
           setMessages(prev => [...prev, msg]);
-          supabase.from('messages').update({ is_read: true }).eq('id', msg.id);
+          supabase.from('messages').update({ is_read: true, seen: true, read_at: new Date().toISOString() }).eq('id', msg.id);
         }
       }).subscribe();
 
@@ -169,10 +170,22 @@ function AdminMessages({ adminId }: { adminId: string }) {
     };
     setMessages(prev => [...prev, optimistic]);
     setNewMessage('');
+    const now = new Date().toISOString();
     const { error } = await supabase.from('messages').insert({
-      sender_id: adminId, receiver_id: selected.user_id,
-      content: optimistic.content, sender_name: 'Admin',
-      is_read: false, created_at: optimistic.created_at,
+      sender_id: adminId,
+      receiver_id: selected.user_id,
+      recipient_id: selected.user_id,
+      content: optimistic.content,
+      sender_name: 'Admin',
+      sender_type: 'admin',
+      topic: 'direct',
+      extension: 'text',
+      is_read: false,
+      seen: false,
+      private: true,
+      created_at: now,
+      updated_at: now,
+      inserted_at: now,
     });
     if (error) { toast.error('Failed to send'); setMessages(prev => prev.filter(m => m.id !== optimistic.id)); }
     setSending(false);
@@ -369,7 +382,7 @@ export function AdminDashboard() {
     const { data: ap } = await supabase.from('admin_profiles').select('id').eq('id', user.id).maybeSingle();
     if (!ap && user.app_metadata?.role !== 'admin') { navigate('/'); return; }
     const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true })
-      .eq('receiver_id', user.id).eq('is_read', false);
+      .eq('receiver_id', user.id).eq('is_read', false).is('read_at', null);
     setUnread(count || 0);
     await fetchData();
   };
@@ -639,7 +652,9 @@ export function AdminDashboard() {
                   ))}
                 </div>
               </div>
-              <AdminApplicationQueue />
+              <div className="[&_nav]:hidden [&_.bottom-nav]:hidden [&_header]:hidden">
+                <AdminApplicationQueue />
+              </div>
             </div>
           )}
 
