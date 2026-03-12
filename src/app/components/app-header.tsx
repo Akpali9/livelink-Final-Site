@@ -1518,7 +1518,7 @@ export function AppHeader({
   const isBusiness = userType === "business";
   const isAdmin    = userType === "admin";
 
-  const settingsPath      = isBusiness ? "/business/settings"           : "/settings";
+
   const profilePath       = isBusiness ? "/business/profile"            : isAdmin ? "/admin" : "/profile/me";
   const messagesPath      = isBusiness ? "/messages?role=business"      : isAdmin ? "/messages?role=admin" : "/messages?role=creator";
   const notificationsPath = isBusiness ? "/notifications?role=business" : isAdmin ? "/notifications?role=admin" : "/notifications?role=creator";
@@ -2190,15 +2190,7 @@ export function AppHeader({
                         )}
                       </Link>
 
-                      {!isAdmin && (
-                        <Link
-                          to={settingsPath}
-                          onClick={() => setShowProfileMenu(false)}
-                          className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white flex items-center gap-3 transition-colors"
-                        >
-                          <Settings className="w-3.5 h-3.5 text-[#389C9A]" /> Settings
-                        </Link>
-                      )}
+                      
 
                       <button
                         onClick={handleLogout}
