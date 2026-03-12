@@ -11,9 +11,15 @@ import {
   AlertCircle, Loader2, Eye, EyeOff, Lock, Unlock,
   UserCheck, UserX, Ban, Crown, Award, Gift,
   CreditCard, Wallet, Calendar, Clock3, Smile,
-  Archive, Flag, Download as DownloadIcon
+  Archive, Flag, Download as DownloadIcon, Video,
+  Mic, MicOff, VideoOff, PhoneOff, PhoneCall,
+  Settings, Users2, Pin, Reply, Copy, Check,
+  ThumbsUp, Heart, Laugh, Frown, Angry,
+  Sparkles, Share2, Bookmark, Volume2, VolumeX,
+  Maximize2, Minimize2, ScreenShare, StopCircle,
+  Play, Pause, SkipBack, SkipForward, Volume1
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast, Toaster } from 'sonner';
 import { supabase } from '../lib/supabase';
 
@@ -114,6 +120,19 @@ interface Message {
   attachment_type?: 'image' | 'file' | 'video' | 'audio';
   attachment_name?: string;
   attachment_size?: number;
+  reply_to_id?: string;
+  reply_to?: Message;
+  reactions?: MessageReaction[];
+  is_pinned?: boolean;
+  is_starred?: boolean;
+}
+
+interface MessageReaction {
+  id: string;
+  message_id: string;
+  user_id: string;
+  reaction: string;
+  created_at: string;
 }
 
 interface MessageParticipant {
@@ -124,6 +143,10 @@ interface MessageParticipant {
   avatar?: string;
   type: 'creator' | 'business';
   username?: string;
+  company_name?: string;
+  status?: 'online' | 'offline' | 'away';
+  last_seen?: string;
+  typing?: boolean;
 }
 
 interface MessageThread {
@@ -131,6 +154,25 @@ interface MessageThread {
   last_message: Message;
   unread_count: number;
   updated_at: string;
+  is_typing?: boolean;
+}
+
+interface CallSession {
+  id: string;
+  room_id: string;
+  participants: {
+    user_id: string;
+    name: string;
+    avatar?: string;
+    joined_at: string;
+    left_at?: string;
+    audio_enabled: boolean;
+    video_enabled: boolean;
+  }[];
+  started_at: string;
+  ended_at?: string;
+  status: 'ringing' | 'active' | 'ended' | 'missed';
+  type: 'audio' | 'video';
 }
 
 // ============================================================================
@@ -243,59 +285,78 @@ function useOnlineStatus() {
 // ============================================================================
 
 // ── Emoji Picker Component ─────────────────────────────────────────────────
-const EmojiPicker = ({ onSelect }: { onSelect: (emoji: string) => void }) => {
-  const [showPicker, setShowPicker] = useState(false);
-  const emojis = ['😊', '👍', '❤️', '😂', '🎉', '👏', '🙏', '🔥', '✨', '⭐'];
+const EmojiPicker = ({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) => {
+  const emojis = [
+    '😊', '👍', '❤️', '😂', '🎉', '👏', '🙏', '🔥', '✨', '⭐',
+    '😍', '🥰', '😘', '🤗', '😎', '🤔', '😅', '😇', '🥳', '🤩',
+    '💯', '💪', '🤝', '👌', '✌️', '🤞', '👊', '💥', '💫', '🌟',
+    '🎯', '🎨', '🎭', '🎪', '🎤', '🎧', '🎸', '🎮', '🎲', '🎰'
+  ];
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setShowPicker(!showPicker)}
-        className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
-        title="Add emoji"
-      >
-        <Smile className="w-4 h-4 text-white/40" />
-      </button>
-      
-      <AnimatePresence>
-        {showPicker && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="absolute bottom-full mb-2 left-0 bg-[#1A1A1A] border border-white/10 rounded-xl p-2 grid grid-cols-5 gap-1 z-50"
-          >
-            {emojis.map(emoji => (
-              <button
-                key={emoji}
-                onClick={() => {
-                  onSelect(emoji);
-                  setShowPicker(false);
-                }}
-                className="w-8 h-8 hover:bg-white/10 rounded-lg text-lg flex items-center justify-center transition-colors"
-              >
-                {emoji}
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 10 }}
+      className="absolute bottom-full mb-2 left-0 bg-[#1A1A1A] border border-white/10 rounded-xl p-2 grid grid-cols-8 gap-1 z-50"
+    >
+      {emojis.map(emoji => (
+        <button
+          key={emoji}
+          onClick={() => {
+            onSelect(emoji);
+            onClose();
+          }}
+          className="w-8 h-8 hover:bg-white/10 rounded-lg text-lg flex items-center justify-center transition-colors"
+        >
+          {emoji}
+        </button>
+      ))}
+    </motion.div>
+  );
+};
+
+// ── Reaction Picker Component ────────────────────────────────────────────
+const ReactionPicker = ({ onSelect, onClose }: { onSelect: (reaction: string) => void; onClose: () => void }) => {
+  const reactions = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="absolute bottom-full mb-2 left-0 bg-[#1A1A1A] border border-white/10 rounded-full p-1 flex gap-1 z-50"
+    >
+      {reactions.map(reaction => (
+        <button
+          key={reaction}
+          onClick={() => {
+            onSelect(reaction);
+            onClose();
+          }}
+          className="w-8 h-8 hover:bg-white/10 rounded-full text-lg flex items-center justify-center transition-colors"
+        >
+          {reaction}
+        </button>
+      ))}
+    </motion.div>
   );
 };
 
 // ── Attachment Preview Component ───────────────────────────────────────────
 const AttachmentPreview = ({ file, onClear }: { file: File; onClear: () => void }) => {
   const isImage = file.type.startsWith('image/');
+  const isVideo = file.type.startsWith('video/');
+  const isAudio = file.type.startsWith('audio/');
   const [preview, setPreview] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isImage) {
+    if (isImage || isVideo) {
       const url = URL.createObjectURL(file);
       setPreview(url);
       return () => URL.revokeObjectURL(url);
     }
-  }, [file, isImage]);
+  }, [file, isImage, isVideo]);
 
   return (
     <motion.div
@@ -311,6 +372,15 @@ const AttachmentPreview = ({ file, onClear }: { file: File; onClear: () => void 
             alt="Preview" 
             className="w-12 h-12 rounded-lg object-cover border border-white/10"
           />
+        ) : isVideo && preview ? (
+          <video 
+            src={preview} 
+            className="w-12 h-12 rounded-lg object-cover border border-white/10"
+          />
+        ) : isAudio ? (
+          <div className="w-12 h-12 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+            <Volume2 className="w-5 h-5 text-blue-400" />
+          </div>
         ) : (
           <div className="w-12 h-12 rounded-lg bg-[#00FF94]/10 border border-[#00FF94]/20 flex items-center justify-center">
             <Paperclip className="w-5 h-5 text-[#00FF94]" />
@@ -346,7 +416,7 @@ const MessageStatus = ({ message, isAdmin }: { message: Message; isAdmin: boolea
         </>
       ) : message.seen ? (
         <>
-          <CheckCircle2 className="w-3 h-3 text-blue-400" />
+          <Check className className="w-3 h-3 text-blue-400" />
           <span className="text-[8px] text-blue-400">Delivered</span>
         </>
       ) : (
@@ -365,6 +435,390 @@ const MessageStatus = ({ message, isAdmin }: { message: Message; isAdmin: boolea
   );
 };
 
+// ── Message Reactions Component ──────────────────────────────────────────
+const MessageReactions = ({ 
+  reactions, 
+  onAddReaction,
+  currentUserId 
+}: { 
+  reactions: MessageReaction[]; 
+  onAddReaction: (reaction: string) => void;
+  currentUserId: string;
+}) => {
+  const [showPicker, setShowPicker] = useState(false);
+  const groupedReactions = reactions.reduce((acc, r) => {
+    acc[r.reaction] = (acc[r.reaction] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const userReaction = reactions.find(r => r.user_id === currentUserId)?.reaction;
+
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      {Object.entries(groupedReactions).map(([reaction, count]) => (
+        <button
+          key={reaction}
+          onClick={() => onAddReaction(reaction)}
+          className={`px-1.5 py-0.5 rounded-full text-[9px] flex items-center gap-0.5 transition-colors ${
+            userReaction === reaction
+              ? 'bg-[#00FF94]/20 text-[#00FF94] border border-[#00FF94]/30'
+              : 'bg-white/5 text-white/60 hover:bg-white/10 border border-white/10'
+          }`}
+        >
+          <span>{reaction}</span>
+          <span>{count}</span>
+        </button>
+      ))}
+      
+      <button
+        onClick={() => setShowPicker(!showPicker)}
+        className="p-1 rounded-full hover:bg-white/10 transition-colors"
+      >
+        <Smile className="w-3 h-3 text-white/40" />
+      </button>
+
+      <AnimatePresence>
+        {showPicker && (
+          <ReactionPicker
+            onSelect={(reaction) => {
+              onAddReaction(reaction);
+              setShowPicker(false);
+            }}
+            onClose={() => setShowPicker(false)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ── Voice/Video Call Component ────────────────────────────────────────────
+const CallInterface = ({ 
+  session, 
+  onEndCall,
+  onToggleAudio,
+  onToggleVideo
+}: { 
+  session: CallSession; 
+  onEndCall: () => void;
+  onToggleAudio: () => void;
+  onToggleVideo: () => void;
+}) => {
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    // Initialize WebRTC connection
+    // This would connect to your WebRTC signaling server
+  }, [session]);
+
+  const handleToggleAudio = () => {
+    setAudioEnabled(!audioEnabled);
+    onToggleAudio();
+  };
+
+  const handleToggleVideo = () => {
+    setVideoEnabled(!videoEnabled);
+    onToggleVideo();
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      className="fixed bottom-4 right-4 w-96 bg-[#1A1A1A] border border-white/10 rounded-2xl overflow-hidden shadow-2xl z-50"
+    >
+      {/* Video Grid */}
+      <div className="relative bg-black aspect-video">
+        {/* Remote Video */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          className="w-full h-full object-cover"
+        />
+        
+        {/* Local Video (Picture-in-Picture) */}
+        <div className="absolute bottom-3 right-3 w-24 h-24 bg-gray-900 rounded-lg overflow-hidden border-2 border-[#00FF94]">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover"
+          />
+        </div>
+
+        {/* Call Info */}
+        <div className="absolute top-3 left-3 bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
+          <span className="text-[10px] text-white/90">
+            {session.type === 'video' ? 'Video Call' : 'Voice Call'} · {session.participants.length} participants
+          </span>
+        </div>
+
+        {/* Call Duration */}
+        <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
+          <span className="text-[10px] text-[#00FF94] font-mono">
+            {new Date().toLocaleTimeString()}
+          </span>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="p-4">
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={handleToggleAudio}
+            className={`p-3 rounded-full transition-colors ${
+              audioEnabled
+                ? 'bg-white/10 hover:bg-white/20 text-white'
+                : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+            }`}
+          >
+            {audioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={handleToggleVideo}
+            className={`p-3 rounded-full transition-colors ${
+              videoEnabled
+                ? 'bg-white/10 hover:bg-white/20 text-white'
+                : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+            }`}
+          >
+            {videoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => setMuted(!muted)}
+            className={`p-3 rounded-full transition-colors ${
+              muted
+                ? 'bg-white/10 hover:bg-white/20 text-white'
+                : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+            }`}
+          >
+            {muted ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => setFullscreen(!fullscreen)}
+            className="p-3 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+          >
+            {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={onEndCall}
+            className="p-3 rounded-full bg-red-500 hover:bg-red-600 transition-colors"
+          >
+            <PhoneOff className="w-4 h-4 text-white" />
+          </button>
+        </div>
+
+        {/* Participants */}
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <p className="text-[9px] font-mono text-white/30 mb-2">PARTICIPANTS</p>
+          <div className="space-y-2">
+            {session.participants.map((participant, index) => (
+              <div key={index} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00FF94]/30 to-[#00D4FF]/30 flex items-center justify-center">
+                    <span className="text-[8px] font-bold text-white">
+                      {getInitials(participant.name)}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-white/80">{participant.name}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {participant.audio_enabled ? (
+                    <Mic className="w-3 h-3 text-[#00FF94]" />
+                  ) : (
+                    <MicOff className="w-3 h-3 text-red-400" />
+                  )}
+                  {participant.video_enabled && (
+                    <Video className="w-3 h-3 text-[#00FF94]" />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+// ── Quick Chat Modal ─────────────────────────────────────────────────────
+const QuickChatModal = ({ 
+  isOpen, 
+  onClose, 
+  participant,
+  adminId 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  participant: MessageParticipant;
+  adminId: string;
+}) => {
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSend = async () => {
+    if (!message.trim() && !attachment) return;
+
+    setSending(true);
+    try {
+      let attachmentUrl = null;
+      let attachmentType = null;
+      let attachmentName = null;
+      let attachmentSize = null;
+
+      if (attachment) {
+        const fileExt = attachment.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `message-attachments/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, attachment);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(filePath);
+
+        attachmentUrl = publicUrl;
+        attachmentType = attachment.type.startsWith('image/') ? 'image' : 'file';
+        attachmentName = attachment.name;
+        attachmentSize = attachment.size;
+      }
+
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          sender_id: adminId,
+          receiver_id: participant.user_id,
+          recipient_id: participant.user_id,
+          content: message,
+          sender_name: 'Admin',
+          sender_type: 'admin',
+          topic: 'direct',
+          extension: 'text',
+          is_read: false,
+          seen: false,
+          private: true,
+          attachment_url: attachmentUrl,
+          attachment_type: attachmentType,
+          attachment_name: attachmentName,
+          attachment_size: attachmentSize
+        });
+
+      if (error) throw error;
+
+      toast.success('Message sent');
+      setMessage('');
+      setAttachment(null);
+      onClose();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Failed to send message');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="bg-[#0D0D0D] border border-white/10 rounded-2xl p-6 max-w-md w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00FF94]/30 to-[#00D4FF]/30 flex items-center justify-center">
+              {participant.avatar ? (
+                <img src={participant.avatar} alt={participant.name} className="w-full h-full object-cover rounded-full" />
+              ) : (
+                <span className="text-white text-[11px] font-bold">{getInitials(participant.name)}</span>
+              )}
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-sm">{participant.name}</h3>
+              <p className="text-[9px] text-white/40 font-mono">{participant.email}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-white/10"
+          >
+            <X className="w-4 h-4 text-white/50" />
+          </button>
+        </div>
+
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder={`Message ${participant.name}...`}
+          className="w-full h-32 bg-white/5 border border-white/10 rounded-lg p-3 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-[#00FF94]/40 resize-none mb-3"
+        />
+
+        {attachment && (
+          <AttachmentPreview file={attachment} onClear={() => setAttachment(null)} />
+        )}
+
+        <div className="flex items-center gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={(e) => e.target.files?.[0] && setAttachment(e.target.files[0])}
+            className="hidden"
+            accept="image/*,.pdf,.doc,.docx,.txt"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
+          >
+            <Paperclip className="w-4 h-4 text-white/40" />
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={(!message.trim() && !attachment) || sending}
+            className="flex-1 bg-[#00FF94] text-black py-2.5 text-[10px] font-bold rounded-lg hover:bg-[#00FF94]/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {sending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <Send className="w-3.5 h-3.5" />
+                Send Message
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 // ── Business Queue Component ───────────────────────────────────────────────
 function AdminBusinessQueue() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -372,6 +826,8 @@ function AdminBusinessQueue() {
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showQuickChat, setShowQuickChat] = useState(false);
+  const [selectedParticipant, setSelectedParticipant] = useState<MessageParticipant | null>(null);
 
   useEffect(() => { fetchBusinesses(); }, []);
 
@@ -452,6 +908,18 @@ function AdminBusinessQueue() {
     }
   };
 
+  const openQuickChat = (business: Business) => {
+    setSelectedParticipant({
+      id: business.id,
+      user_id: business.user_id,
+      name: business.company_name || business.contact_name || 'Business',
+      email: business.email,
+      type: 'business',
+      company_name: business.company_name
+    });
+    setShowQuickChat(true);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -519,6 +987,13 @@ function AdminBusinessQueue() {
               >
                 Reject
               </button>
+              <button
+                onClick={() => openQuickChat(business)}
+                className="px-3 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2 text-[10px] font-bold rounded-lg hover:bg-blue-500/20 transition-colors"
+                title="Quick message"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+              </button>
             </div>
           </motion.div>
         ))}
@@ -581,6 +1056,19 @@ function AdminBusinessQueue() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Quick Chat Modal */}
+      {selectedParticipant && (
+        <QuickChatModal
+          isOpen={showQuickChat}
+          onClose={() => {
+            setShowQuickChat(false);
+            setSelectedParticipant(null);
+          }}
+          participant={selectedParticipant}
+          adminId={adminId}
+        />
+      )}
     </>
   );
 }
@@ -602,6 +1090,14 @@ function AdminMessages({ adminId }: { adminId: string }) {
   const [page, setPage] = useState(1);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState<Set<string>>(new Set());
+  const [starredMessages, setStarredMessages] = useState<Set<string>>(new Set());
+  const [activeCall, setActiveCall] = useState<CallSession | null>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -610,6 +1106,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
   const messageContainerRef = useRef<HTMLDivElement>(null);
   const typingChannel = useRef<any>(null);
   const presenceChannel = useRef<any>(null);
+  const messagesChannel = useRef<any>(null);
 
   const debouncedSearch = useDebounce(searchTerm, 300);
 
@@ -685,7 +1182,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
   useEffect(() => {
     if (!selectedThread) return;
 
-    const channel = supabase.channel(`messages-${selectedThread.participant.user_id}`)
+    messagesChannel.current = supabase.channel(`messages-${selectedThread.participant.user_id}`)
       .on('postgres_changes', 
         { 
           event: 'INSERT', 
@@ -701,10 +1198,19 @@ function AdminMessages({ adminId }: { adminId: string }) {
           }
         }
       )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        (payload) => {
+          const updatedMsg = payload.new as Message;
+          setMessages(prev => 
+            prev.map(msg => msg.id === updatedMsg.id ? updatedMsg : msg)
+          );
+        }
+      )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(messagesChannel.current);
     };
   }, [selectedThread, adminId]);
 
@@ -744,14 +1250,18 @@ function AdminMessages({ adminId }: { adminId: string }) {
           name: b.company_name || b.contact_name || 'Unnamed Business',
           email: b.email || '',
           avatar: null,
-          type: 'business' as const
+          type: 'business' as const,
+          company_name: b.company_name
         }))
       ];
 
-      // Get all messages involving admin
+      // Get all messages involving admin with reactions
       const { data: messageData, error: messagesError } = await supabase
         .from('messages')
-        .select('*')
+        .select(`
+          *,
+          reactions:message_reactions(*)
+        `)
         .or(`sender_id.eq.${adminId},receiver_id.eq.${adminId}`)
         .order('created_at', { ascending: false });
 
@@ -812,7 +1322,8 @@ function AdminMessages({ adminId }: { adminId: string }) {
             sender_type: participant.type,
             topic: 'direct',
             extension: 'text',
-            private: true
+            private: true,
+            reactions: []
           };
 
           threadMap.set(participant.user_id, {
@@ -874,7 +1385,11 @@ function AdminMessages({ adminId }: { adminId: string }) {
 
       const { data, error } = await supabase
         .from('messages')
-        .select('*')
+        .select(`
+          *,
+          reactions:message_reactions(*),
+          reply_to:messages!reply_to_id(*)
+        `)
         .or(`and(sender_id.eq.${adminId},receiver_id.eq.${participantId}),and(sender_id.eq.${participantId},receiver_id.eq.${adminId})`)
         .order('created_at', { ascending: false })
         .range(from, to);
@@ -1007,7 +1522,9 @@ function AdminMessages({ adminId }: { adminId: string }) {
       // Upload attachment if exists
       if (attachment) {
         attachmentUrl = await uploadAttachment(attachment);
-        attachmentType = attachment.type.startsWith('image/') ? 'image' : 'file';
+        attachmentType = attachment.type.startsWith('image/') ? 'image' : 
+                        attachment.type.startsWith('video/') ? 'video' :
+                        attachment.type.startsWith('audio/') ? 'audio' : 'file';
         attachmentName = attachment.name;
         attachmentSize = attachment.size;
       }
@@ -1017,7 +1534,19 @@ function AdminMessages({ adminId }: { adminId: string }) {
       // Create message content
       let content = newMessage.trim();
       if (attachment && !content) {
-        content = attachmentType === 'image' ? '📸 Sent an image' : `📎 Sent a file: ${attachment.name}`;
+        switch (attachmentType) {
+          case 'image':
+            content = '📸 Sent an image';
+            break;
+          case 'video':
+            content = '🎥 Sent a video';
+            break;
+          case 'audio':
+            content = '🎵 Sent an audio file';
+            break;
+          default:
+            content = `📎 Sent a file: ${attachment.name}`;
+        }
       }
 
       // Optimistic update
@@ -1040,12 +1569,16 @@ function AdminMessages({ adminId }: { adminId: string }) {
         attachment_url: attachmentUrl || undefined,
         attachment_type: attachmentType as any,
         attachment_name: attachmentName || undefined,
-        attachment_size: attachmentSize || undefined
+        attachment_size: attachmentSize || undefined,
+        reply_to_id: replyingTo?.id,
+        reply_to: replyingTo || undefined,
+        reactions: []
       };
 
       setMessages(prev => [...prev, optimisticMessage]);
       setNewMessage('');
       setAttachment(null);
+      setReplyingTo(null);
       handleTyping(false);
 
       // Insert into database
@@ -1069,7 +1602,8 @@ function AdminMessages({ adminId }: { adminId: string }) {
           attachment_url: attachmentUrl,
           attachment_type: attachmentType,
           attachment_name: attachmentName,
-          attachment_size: attachmentSize
+          attachment_size: attachmentSize,
+          reply_to_id: replyingTo?.id
         });
 
       if (error) throw error;
@@ -1092,6 +1626,209 @@ function AdminMessages({ adminId }: { adminId: string }) {
     }
   };
 
+  const addReaction = async (messageId: string, reaction: string) => {
+    try {
+      const { error } = await supabase
+        .from('message_reactions')
+        .insert({
+          message_id: messageId,
+          user_id: adminId,
+          reaction
+        });
+
+      if (error) throw error;
+
+      // Optimistic update
+      setMessages(prev => prev.map(msg => {
+        if (msg.id === messageId) {
+          const reactions = msg.reactions || [];
+          return {
+            ...msg,
+            reactions: [...reactions, {
+              id: `temp-${Date.now()}`,
+              message_id: messageId,
+              user_id: adminId,
+              reaction,
+              created_at: new Date().toISOString()
+            }]
+          };
+        }
+        return msg;
+      }));
+    } catch (error) {
+      console.error('Error adding reaction:', error);
+      toast.error('Failed to add reaction');
+    }
+  };
+
+  const removeReaction = async (messageId: string, reaction: string) => {
+    try {
+      const { error } = await supabase
+        .from('message_reactions')
+        .delete()
+        .eq('message_id', messageId)
+        .eq('user_id', adminId)
+        .eq('reaction', reaction);
+
+      if (error) throw error;
+
+      // Optimistic update
+      setMessages(prev => prev.map(msg => {
+        if (msg.id === messageId) {
+          return {
+            ...msg,
+            reactions: (msg.reactions || []).filter(r => 
+              !(r.user_id === adminId && r.reaction === reaction)
+            )
+          };
+        }
+        return msg;
+      }));
+    } catch (error) {
+      console.error('Error removing reaction:', error);
+      toast.error('Failed to remove reaction');
+    }
+  };
+
+  const togglePinMessage = async (messageId: string) => {
+    try {
+      const newPinnedState = !pinnedMessages.has(messageId);
+      
+      const { error } = await supabase
+        .from('messages')
+        .update({ is_pinned: newPinnedState })
+        .eq('id', messageId);
+
+      if (error) throw error;
+
+      setPinnedMessages(prev => {
+        const newSet = new Set(prev);
+        if (newPinnedState) {
+          newSet.add(messageId);
+        } else {
+          newSet.delete(messageId);
+        }
+        return newSet;
+      });
+
+      toast.success(newPinnedState ? 'Message pinned' : 'Message unpinned');
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+      toast.error('Failed to update message');
+    }
+  };
+
+  const toggleStarMessage = async (messageId: string) => {
+    try {
+      const newStarredState = !starredMessages.has(messageId);
+      
+      const { error } = await supabase
+        .from('messages')
+        .update({ is_starred: newStarredState })
+        .eq('id', messageId);
+
+      if (error) throw error;
+
+      setStarredMessages(prev => {
+        const newSet = new Set(prev);
+        if (newStarredState) {
+          newSet.add(messageId);
+        } else {
+          newSet.delete(messageId);
+        }
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Error toggling star:', error);
+      toast.error('Failed to update message');
+    }
+  };
+
+  const copyMessage = (content: string) => {
+    navigator.clipboard.writeText(content);
+    toast.success('Message copied to clipboard');
+  };
+
+  const deleteMessage = async (messageId: string) => {
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', messageId);
+
+      if (error) throw error;
+
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      toast.success('Message deleted');
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      toast.error('Failed to delete message');
+    }
+  };
+
+  const startCall = async (type: 'audio' | 'video') => {
+    if (!selectedThread) return;
+
+    try {
+      // Create call session
+      const { data: session, error } = await supabase
+        .from('call_sessions')
+        .insert({
+          room_id: `call-${Date.now()}`,
+          participants: [{
+            user_id: adminId,
+            name: 'Admin',
+            joined_at: new Date().toISOString(),
+            audio_enabled: true,
+            video_enabled: type === 'video'
+          }],
+          started_at: new Date().toISOString(),
+          status: 'ringing',
+          type
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Notify other participant
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: selectedThread.participant.user_id,
+          type: 'incoming_call',
+          title: `Incoming ${type} call`,
+          content: 'Admin is calling you',
+          data: { call_id: session.id, type }
+        });
+
+      setActiveCall(session);
+    } catch (error) {
+      console.error('Error starting call:', error);
+      toast.error('Failed to start call');
+    }
+  };
+
+  const endCall = async () => {
+    if (!activeCall) return;
+
+    try {
+      const { error } = await supabase
+        .from('call_sessions')
+        .update({
+          status: 'ended',
+          ended_at: new Date().toISOString()
+        })
+        .eq('id', activeCall.id);
+
+      if (error) throw error;
+
+      setActiveCall(null);
+    } catch (error) {
+      console.error('Error ending call:', error);
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -1101,6 +1838,7 @@ function AdminMessages({ adminId }: { adminId: string }) {
 
   const handleEmojiSelect = (emoji: string) => {
     setNewMessage(prev => prev + emoji);
+    setShowEmojiPicker(false);
   };
 
   // Thread Item Component
@@ -1192,351 +1930,546 @@ function AdminMessages({ adminId }: { adminId: string }) {
   };
 
   // Message Bubble Component
-  const MessageBubble = ({ message, isAdmin }: { message: Message; isAdmin: boolean }) => (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}
-    >
-      <div className={`max-w-[70%] ${isAdmin ? 'items-end' : 'items-start'}`}>
-        {/* Attachment */}
-        {message.attachment_url && (
-          <div className="mb-2">
-            {message.attachment_type === 'image' ? (
-              <img
-                src={message.attachment_url}
-                alt="Attachment"
-                className="max-w-[300px] max-h-[300px] rounded-lg border border-white/10 cursor-pointer hover:opacity-90 transition-opacity"
-                onClick={() => window.open(message.attachment_url, '_blank')}
-              />
-            ) : (
-              <a
-                href={message.attachment_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 px-4 py-3 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors group"
-              >
-                <div className="p-2 bg-[#00FF94]/10 rounded-lg">
-                  <DownloadIcon className="w-4 h-4 text-[#00FF94]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-medium text-white truncate">
-                    {message.attachment_name || 'Attachment'}
-                  </p>
-                  {message.attachment_size && (
-                    <p className="text-[8px] text-white/40 mt-0.5">
-                      {formatFileSize(message.attachment_size)}
+  const MessageBubble = ({ message, isAdmin, onReply, onReact, onPin, onStar, onCopy, onDelete }: { 
+    message: Message; 
+    isAdmin: boolean;
+    onReply: () => void;
+    onReact: (reaction: string) => void;
+    onPin: () => void;
+    onStar: () => void;
+    onCopy: () => void;
+    onDelete: () => void;
+  }) => {
+    const [showActions, setShowActions] = useState(false);
+    const [showReactions, setShowReactions] = useState(false);
+    const isPinned = pinnedMessages.has(message.id);
+    const isStarred = starredMessages.has(message.id);
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={`flex ${isAdmin ? 'justify-end' : 'justify-start'} relative group`}
+        onMouseEnter={() => setShowActions(true)}
+        onMouseLeave={() => setShowActions(false)}
+      >
+        <div className={`max-w-[70%] ${isAdmin ? 'items-end' : 'items-start'}`}>
+          {/* Reply indicator */}
+          {message.reply_to && (
+            <div className="mb-1 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[9px] text-white/40">
+              Replying to: {message.reply_to.content.substring(0, 50)}
+              {message.reply_to.content.length > 50 && '...'}
+            </div>
+          )}
+
+          {/* Attachment */}
+          {message.attachment_url && (
+            <div className="mb-2">
+              {message.attachment_type === 'image' ? (
+                <img
+                  src={message.attachment_url}
+                  alt="Attachment"
+                  className="max-w-[300px] max-h-[300px] rounded-lg border border-white/10 cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => window.open(message.attachment_url, '_blank')}
+                />
+              ) : message.attachment_type === 'video' ? (
+                <video
+                  src={message.attachment_url}
+                  controls
+                  className="max-w-[300px] max-h-[300px] rounded-lg border border-white/10"
+                />
+              ) : message.attachment_type === 'audio' ? (
+                <audio
+                  src={message.attachment_url}
+                  controls
+                  className="w-full"
+                />
+              ) : (
+                <a
+                  href={message.attachment_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-4 py-3 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors group"
+                >
+                  <div className="p-2 bg-[#00FF94]/10 rounded-lg">
+                    <DownloadIcon className="w-4 h-4 text-[#00FF94]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-medium text-white truncate">
+                      {message.attachment_name || 'Attachment'}
                     </p>
+                    {message.attachment_size && (
+                      <p className="text-[8px] text-white/40 mt-0.5">
+                        {formatFileSize(message.attachment_size)}
+                      </p>
+                    )}
+                  </div>
+                  <DownloadIcon className="w-4 h-4 text-white/30 group-hover:text-white/50 transition-colors" />
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Message content */}
+          {message.content && (
+            <div
+              className={`px-4 py-2.5 rounded-2xl text-[12px] leading-relaxed break-words ${
+                isAdmin
+                  ? 'bg-[#00FF94] text-[#0A0A0A] font-medium rounded-tr-sm'
+                  : 'bg-white/8 text-white border border-white/10 rounded-tl-sm'
+              } ${isPinned ? 'border-l-2 border-l-amber-400' : ''} ${
+                isStarred ? 'border-r-2 border-r-yellow-400' : ''
+              }`}
+            >
+              {message.content}
+            </div>
+          )}
+
+          {/* Reactions */}
+          {message.reactions && message.reactions.length > 0 && (
+            <MessageReactions
+              reactions={message.reactions}
+              onAddReaction={onReact}
+              currentUserId={adminId}
+            />
+          )}
+
+          {/* Status */}
+          <MessageStatus message={message} isAdmin={isAdmin} />
+        </div>
+
+        {/* Message Actions */}
+        <AnimatePresence>
+          {showActions && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className={`absolute ${isAdmin ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'} top-0 flex gap-1 bg-[#1A1A1A] border border-white/10 rounded-lg p-1 z-10`}
+            >
+              <button
+                onClick={() => setShowReactions(!showReactions)}
+                className="p-1.5 hover:bg-white/10 rounded transition-colors relative"
+                title="Add reaction"
+              >
+                <Smile className="w-3.5 h-3.5 text-white/60" />
+                <AnimatePresence>
+                  {showReactions && (
+                    <ReactionPicker
+                      onSelect={onReact}
+                      onClose={() => setShowReactions(false)}
+                    />
                   )}
-                </div>
-                <DownloadIcon className="w-4 h-4 text-white/30 group-hover:text-white/50 transition-colors" />
-              </a>
-            )}
-          </div>
-        )}
-
-        {/* Message content */}
-        {message.content && (
-          <div
-            className={`px-4 py-2.5 rounded-2xl text-[12px] leading-relaxed break-words ${
-              isAdmin
-                ? 'bg-[#00FF94] text-[#0A0A0A] font-medium rounded-tr-sm'
-                : 'bg-white/8 text-white border border-white/10 rounded-tl-sm'
-            }`}
-          >
-            {message.content}
-          </div>
-        )}
-
-        {/* Status */}
-        <MessageStatus message={message} isAdmin={isAdmin} />
-      </div>
-    </motion.div>
-  );
+                </AnimatePresence>
+              </button>
+              <button
+                onClick={onReply}
+                className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                title="Reply"
+              >
+                <Reply className="w-3.5 h-3.5 text-white/60" />
+              </button>
+              <button
+                onClick={onPin}
+                className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                title={isPinned ? 'Unpin' : 'Pin'}
+              >
+                <Pin className={`w-3.5 h-3.5 ${isPinned ? 'text-amber-400' : 'text-white/60'}`} />
+              </button>
+              <button
+                onClick={onStar}
+                className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                title={isStarred ? 'Unstar' : 'Star'}
+              >
+                <Star className={`w-3.5 h-3.5 ${isStarred ? 'text-yellow-400' : 'text-white/60'}`} />
+              </button>
+              <button
+                onClick={onCopy}
+                className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                title="Copy"
+              >
+                <Copy className="w-3.5 h-3.5 text-white/60" />
+              </button>
+              <button
+                onClick={onDelete}
+                className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                title="Delete"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    );
+  };
 
   return (
-    <div className="flex h-[700px] bg-[#0D0D0D] border border-white/10 rounded-2xl overflow-hidden">
-      {/* Threads Sidebar */}
-      <div className={`w-80 border-r border-white/10 flex flex-col flex-shrink-0 ${
-        selectedThread ? 'hidden md:flex' : 'flex'
-      }`}>
-        {/* Header */}
-        <div className="p-4 border-b border-white/10">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[11px] font-bold text-white/50 uppercase tracking-widest">
-              Conversations
-            </h3>
-            <span className="text-[9px] bg-[#00FF94]/10 text-[#00FF94] px-2 py-1 rounded-full">
-              {threads.length} contacts
-            </span>
+    <>
+      <div className="flex h-[700px] bg-[#0D0D0D] border border-white/10 rounded-2xl overflow-hidden">
+        {/* Threads Sidebar */}
+        <div className={`w-80 border-r border-white/10 flex flex-col flex-shrink-0 ${
+          selectedThread ? 'hidden md:flex' : 'flex'
+        }`}>
+          {/* Header */}
+          <div className="p-4 border-b border-white/10">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[11px] font-bold text-white/50 uppercase tracking-widest">
+                Conversations
+              </h3>
+              <span className="text-[9px] bg-[#00FF94]/10 text-[#00FF94] px-2 py-1 rounded-full">
+                {threads.length} contacts
+              </span>
+            </div>
+
+            {/* Search */}
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search contacts..."
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-[#00FF94]/40 transition-colors"
+              />
+            </div>
+
+            {/* Filters */}
+            <div className="flex gap-1">
+              {(['all', 'unread', 'creators', 'businesses'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`flex-1 px-2 py-1.5 text-[8px] font-bold rounded-lg capitalize transition-colors ${
+                    filter === f
+                      ? 'bg-[#00FF94] text-black'
+                      : 'bg-white/5 text-white/30 hover:bg-white/10'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Search */}
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search contacts..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-[#00FF94]/40 transition-colors"
-            />
-          </div>
-
-          {/* Filters */}
-          <div className="flex gap-1">
-            {(['all', 'unread', 'creators', 'businesses'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`flex-1 px-2 py-1.5 text-[8px] font-bold rounded-lg capitalize transition-colors ${
-                  filter === f
-                    ? 'bg-[#00FF94] text-black'
-                    : 'bg-white/5 text-white/30 hover:bg-white/10'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
+          {/* Threads List */}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-5 h-5 text-[#00FF94] animate-spin" />
+              </div>
+            ) : threads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                <MessageSquare className="w-8 h-8 text-white/10 mb-3" />
+                <p className="text-[10px] text-white/20 font-mono">
+                  No contacts found
+                </p>
+                <p className="text-[8px] text-white/10 mt-2">
+                  Approved creators and businesses will appear here
+                </p>
+              </div>
+            ) : (
+              threads.map(thread => (
+                <ThreadItem key={thread.participant.user_id} thread={thread} />
+              ))
+            )}
           </div>
         </div>
 
-        {/* Threads List */}
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-5 h-5 text-[#00FF94] animate-spin" />
-            </div>
-          ) : threads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-              <MessageSquare className="w-8 h-8 text-white/10 mb-3" />
-              <p className="text-[10px] text-white/20 font-mono">
-                No contacts found
-              </p>
-              <p className="text-[8px] text-white/10 mt-2">
-                Approved creators and businesses will appear here
+        {/* Chat Area */}
+        <div className={`flex-1 flex flex-col ${
+          !selectedThread ? 'hidden md:flex' : 'flex'
+        }`}>
+          {!selectedThread ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+                <MessageSquare className="w-7 h-7 text-white/20" />
+              </div>
+              <p className="text-[11px] text-white/30 font-mono">
+                Select a contact to start messaging
               </p>
             </div>
           ) : (
-            threads.map(thread => (
-              <ThreadItem key={thread.participant.user_id} thread={thread} />
-            ))
+            <>
+              {/* Chat Header */}
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 bg-white/3">
+                <button
+                  onClick={() => setSelectedThread(null)}
+                  className="md:hidden p-1.5 rounded-lg hover:bg-white/10"
+                >
+                  <ChevronRight className="w-4 h-4 text-white/50" />
+                </button>
+
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00FF94]/20 to-[#00D4FF]/20 border border-white/10 flex items-center justify-center overflow-hidden">
+                    {selectedThread.participant.avatar ? (
+                      <img
+                        src={selectedThread.participant.avatar}
+                        alt={selectedThread.participant.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-white text-[12px] font-bold">
+                        {getInitials(selectedThread.participant.name)}
+                      </span>
+                    )}
+                  </div>
+                  {onlineUsers.has(selectedThread.participant.user_id) && (
+                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#00FF94] rounded-full border-2 border-[#0D0D0D]" />
+                  )}
+                </div>
+
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-white">
+                      {selectedThread.participant.name}
+                    </p>
+                    {selectedThread.participant.type === 'business' && (
+                      <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[7px] font-bold rounded-full border border-amber-500/30">
+                        BUSINESS
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-white/40 font-mono">
+                    {selectedThread.participant.email}
+                  </p>
+                  {typingUsers.has(selectedThread.participant.user_id) && (
+                    <p className="text-[8px] text-[#00FF94] mt-0.5">Typing...</p>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => startCall('audio')}
+                    className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+                    title="Voice call"
+                  >
+                    <Phone className="w-4 h-4 text-white/40" />
+                  </button>
+                  <button
+                    onClick={() => startCall('video')}
+                    className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+                    title="Video call"
+                  >
+                    <Video className="w-4 h-4 text-white/40" />
+                  </button>
+                  <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
+                    <Mail className="w-4 h-4 text-white/40" />
+                  </button>
+                  <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
+                    <MoreVertical className="w-4 h-4 text-white/40" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Messages Container */}
+              <div 
+                ref={messageContainerRef}
+                className="flex-1 overflow-y-auto p-5 space-y-4"
+              >
+                {/* Load More */}
+                {hasMore && messages.length > 0 && (
+                  <div className="flex justify-center">
+                    <button
+                      onClick={loadMoreMessages}
+                      disabled={loadingMessages}
+                      className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors disabled:opacity-50"
+                    >
+                      {loadingMessages ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        'Load More'
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Welcome message for new conversations */}
+                {messages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <MessageSquare className="w-12 h-12 text-white/10 mb-3" />
+                    <p className="text-[11px] text-white/30 font-mono">
+                      No messages yet
+                    </p>
+                    <p className="text-[9px] text-white/20 mt-2">
+                      Send a message to start the conversation
+                    </p>
+                  </div>
+                )}
+
+                {/* Messages */}
+                {messages.map((message) => (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    isAdmin={message.sender_id === adminId}
+                    onReply={() => setReplyingTo(message)}
+                    onReact={(reaction) => {
+                      const userReaction = message.reactions?.find(
+                        r => r.user_id === adminId && r.reaction === reaction
+                      );
+                      if (userReaction) {
+                        removeReaction(message.id, reaction);
+                      } else {
+                        addReaction(message.id, reaction);
+                      }
+                    }}
+                    onPin={() => togglePinMessage(message.id)}
+                    onStar={() => toggleStarMessage(message.id)}
+                    onCopy={() => copyMessage(message.content)}
+                    onDelete={() => deleteMessage(message.id)}
+                  />
+                ))}
+
+                {/* Typing Indicator */}
+                {typingUsers.has(selectedThread.participant.user_id) && (
+                  <div className="flex justify-start">
+                    <div className="bg-white/8 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Reply Indicator */}
+              <AnimatePresence>
+                {replyingTo && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="px-4 py-2 bg-white/5 border-t border-white/10 flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Reply className="w-3 h-3 text-white/40" />
+                      <span className="text-[9px] text-white/40">
+                        Replying to: {replyingTo.content.substring(0, 50)}
+                        {replyingTo.content.length > 50 && '...'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setReplyingTo(null)}
+                      className="p-1 hover:bg-white/10 rounded"
+                    >
+                      <X className="w-3 h-3 text-white/40" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Input Area */}
+              <div className="p-4 border-t border-white/10">
+                {/* Attachment Preview */}
+                <AnimatePresence>
+                  {attachment && (
+                    <AttachmentPreview
+                      file={attachment}
+                      onClear={() => setAttachment(null)}
+                    />
+                  )}
+                </AnimatePresence>
+
+                <div className="flex items-end gap-2">
+                  {/* Attachment Button */}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.xls,.xlsx"
+                  />
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending}
+                    className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50 flex-shrink-0"
+                    title="Attach file"
+                  >
+                    <Paperclip className="w-4 h-4 text-white/40" />
+                  </button>
+
+                  {/* Emoji Picker */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
+                      title="Add emoji"
+                    >
+                      <Smile className="w-4 h-4 text-white/40" />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {showEmojiPicker && (
+                        <EmojiPicker
+                          onSelect={handleEmojiSelect}
+                          onClose={() => setShowEmojiPicker(false)}
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Text Input */}
+                  <div className="flex-1 bg-white/5 border border-white/10 rounded-lg overflow-hidden">
+                    <textarea
+                      value={newMessage}
+                      onChange={(e) => {
+                        setNewMessage(e.target.value);
+                        handleTyping(true);
+                      }}
+                      onKeyDown={handleKeyPress}
+                      placeholder={`Message ${selectedThread.participant.name}...`}
+                      className="w-full bg-transparent px-4 py-2.5 text-[12px] text-white placeholder-white/20 resize-none focus:outline-none"
+                      rows={1}
+                      style={{ minHeight: '40px', maxHeight: '120px' }}
+                    />
+                  </div>
+
+                  {/* Send Button */}
+                  <button
+                    onClick={sendMessage}
+                    disabled={(!newMessage.trim() && !attachment) || sending}
+                    className="px-4 py-2 bg-[#00FF94] rounded-lg flex items-center gap-2 hover:bg-[#00FF94]/80 transition-colors disabled:opacity-30 flex-shrink-0"
+                  >
+                    {sending ? (
+                      <Loader2 className="w-4 h-4 text-black animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 text-black" />
+                        <span className="text-[10px] font-bold text-black hidden sm:inline">Send</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
 
-      {/* Chat Area */}
-      <div className={`flex-1 flex flex-col ${
-        !selectedThread ? 'hidden md:flex' : 'flex'
-      }`}>
-        {!selectedThread ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
-              <MessageSquare className="w-7 h-7 text-white/20" />
-            </div>
-            <p className="text-[11px] text-white/30 font-mono">
-              Select a contact to start messaging
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Chat Header */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 bg-white/3">
-              <button
-                onClick={() => setSelectedThread(null)}
-                className="md:hidden p-1.5 rounded-lg hover:bg-white/10"
-              >
-                <ChevronRight className="w-4 h-4 text-white/50" />
-              </button>
-
-              <div className="relative">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00FF94]/20 to-[#00D4FF]/20 border border-white/10 flex items-center justify-center overflow-hidden">
-                  {selectedThread.participant.avatar ? (
-                    <img
-                      src={selectedThread.participant.avatar}
-                      alt={selectedThread.participant.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-white text-[12px] font-bold">
-                      {getInitials(selectedThread.participant.name)}
-                    </span>
-                  )}
-                </div>
-                {onlineUsers.has(selectedThread.participant.user_id) && (
-                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#00FF94] rounded-full border-2 border-[#0D0D0D]" />
-                )}
-              </div>
-
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-white">
-                    {selectedThread.participant.name}
-                  </p>
-                  {selectedThread.participant.type === 'business' && (
-                    <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 text-[7px] font-bold rounded-full border border-amber-500/30">
-                      BUSINESS
-                    </span>
-                  )}
-                </div>
-                <p className="text-[9px] text-white/40 font-mono">
-                  {selectedThread.participant.email}
-                </p>
-                {typingUsers.has(selectedThread.participant.user_id) && (
-                  <p className="text-[8px] text-[#00FF94] mt-0.5">Typing...</p>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1">
-                <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                  <Phone className="w-4 h-4 text-white/40" />
-                </button>
-                <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                  <Mail className="w-4 h-4 text-white/40" />
-                </button>
-                <button className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                  <MoreVertical className="w-4 h-4 text-white/40" />
-                </button>
-              </div>
-            </div>
-
-            {/* Messages Container */}
-            <div 
-              ref={messageContainerRef}
-              className="flex-1 overflow-y-auto p-5 space-y-4"
-            >
-              {/* Load More */}
-              {hasMore && messages.length > 0 && (
-                <div className="flex justify-center">
-                  <button
-                    onClick={loadMoreMessages}
-                    disabled={loadingMessages}
-                    className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[8px] text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors disabled:opacity-50"
-                  >
-                    {loadingMessages ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      'Load More'
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {/* Welcome message for new conversations */}
-              {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <MessageSquare className="w-12 h-12 text-white/10 mb-3" />
-                  <p className="text-[11px] text-white/30 font-mono">
-                    No messages yet
-                  </p>
-                  <p className="text-[9px] text-white/20 mt-2">
-                    Send a message to start the conversation
-                  </p>
-                </div>
-              )}
-
-              {/* Messages */}
-              {messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  isAdmin={message.sender_id === adminId}
-                />
-              ))}
-
-              {/* Typing Indicator */}
-              {typingUsers.has(selectedThread.participant.user_id) && (
-                <div className="flex justify-start">
-                  <div className="bg-white/8 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Area */}
-            <div className="p-4 border-t border-white/10">
-              {/* Attachment Preview */}
-              <AnimatePresence>
-                {attachment && (
-                  <AttachmentPreview
-                    file={attachment}
-                    onClear={() => setAttachment(null)}
-                  />
-                )}
-              </AnimatePresence>
-
-              <div className="flex items-end gap-2">
-                {/* Attachment Button */}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx"
-                />
-
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={sending}
-                  className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50 flex-shrink-0"
-                  title="Attach file"
-                >
-                  <Paperclip className="w-4 h-4 text-white/40" />
-                </button>
-
-                {/* Emoji Picker */}
-                <EmojiPicker onSelect={handleEmojiSelect} />
-
-                {/* Text Input */}
-                <div className="flex-1 bg-white/5 border border-white/10 rounded-lg overflow-hidden">
-                  <textarea
-                    value={newMessage}
-                    onChange={(e) => {
-                      setNewMessage(e.target.value);
-                      handleTyping(true);
-                    }}
-                    onKeyDown={handleKeyPress}
-                    placeholder={`Message ${selectedThread.participant.name}...`}
-                    className="w-full bg-transparent px-4 py-2.5 text-[12px] text-white placeholder-white/20 resize-none focus:outline-none"
-                    rows={1}
-                    style={{ minHeight: '40px', maxHeight: '120px' }}
-                  />
-                </div>
-
-                {/* Send Button */}
-                <button
-                  onClick={sendMessage}
-                  disabled={(!newMessage.trim() && !attachment) || sending}
-                  className="px-4 py-2 bg-[#00FF94] rounded-lg flex items-center gap-2 hover:bg-[#00FF94]/80 transition-colors disabled:opacity-30 flex-shrink-0"
-                >
-                  {sending ? (
-                    <Loader2 className="w-4 h-4 text-black animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 text-black" />
-                      <span className="text-[10px] font-bold text-black hidden sm:inline">Send</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </>
+      {/* Active Call Interface */}
+      <AnimatePresence>
+        {activeCall && (
+          <CallInterface
+            session={activeCall}
+            onEndCall={endCall}
+            onToggleAudio={() => {}}
+            onToggleVideo={() => {}}
+          />
         )}
-      </div>
-    </div>
+      </AnimatePresence>
+    </>
   );
 }
 
 // ── Creator Management Component ───────────────────────────────────────────
-function AdminCreatorManagement() {
+function AdminCreatorManagement({ adminId }: { adminId: string }) {
   const [creators, setCreators] = useState<Creator[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCreator, setSelectedCreator] = useState<Creator | null>(null);
@@ -1544,6 +2477,8 @@ function AdminCreatorManagement() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'suspended'>('all');
   const [sortBy, setSortBy] = useState<'name' | 'created_at' | 'followers'>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showQuickChat, setShowQuickChat] = useState(false);
+  const [selectedParticipant, setSelectedParticipant] = useState<MessageParticipant | null>(null);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -1608,6 +2543,19 @@ function AdminCreatorManagement() {
     }
   };
 
+  const openQuickChat = (creator: Creator) => {
+    setSelectedParticipant({
+      id: creator.id,
+      user_id: creator.user_id,
+      name: creator.name || 'Creator',
+      email: creator.email,
+      avatar: creator.avatar,
+      type: 'creator',
+      username: creator.username
+    });
+    setShowQuickChat(true);
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved': return 'text-[#00FF94] bg-[#00FF94]/10 border-[#00FF94]/20';
@@ -1619,358 +2567,391 @@ function AdminCreatorManagement() {
   };
 
   return (
-    <div className="bg-[#0D0D0D] border border-white/10 rounded-2xl overflow-hidden">
-      {/* Header */}
-      <div className="p-6 border-b border-white/10">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-white">Creator Management</h3>
-          <span className="text-[9px] bg-white/10 text-white/50 px-2 py-1 rounded-full">
-            {creators.length} total
-          </span>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search creators..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-[#00FF94]/40"
-            />
+    <>
+      <div className="bg-[#0D0D0D] border border-white/10 rounded-2xl overflow-hidden">
+        {/* Header */}
+        <div className="p-6 border-b border-white/10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-white">Creator Management</h3>
+            <span className="text-[9px] bg-white/10 text-white/50 px-2 py-1 rounded-full">
+              {creators.length} total
+            </span>
           </div>
 
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as any)}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-white focus:outline-none focus:border-[#00FF94]/40"
-          >
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="suspended">Suspended</option>
-          </select>
+          {/* Filters */}
+          <div className="flex flex-wrap gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search creators..."
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-[#00FF94]/40"
+              />
+            </div>
 
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-white focus:outline-none focus:border-[#00FF94]/40"
-          >
-            <option value="created_at">Join Date</option>
-            <option value="name">Name</option>
-            <option value="followers">Followers</option>
-          </select>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as any)}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-white focus:outline-none focus:border-[#00FF94]/40"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="suspended">Suspended</option>
+            </select>
 
-          <button
-            onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-            className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-[11px] text-white/50 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            {sortOrder === 'asc' ? '↑' : '↓'}
-          </button>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[11px] text-white focus:outline-none focus:border-[#00FF94]/40"
+            >
+              <option value="created_at">Join Date</option>
+              <option value="name">Name</option>
+              <option value="followers">Followers</option>
+            </select>
+
+            <button
+              onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+              className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-[11px] text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-white/10 bg-white/3">
-              <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Creator</th>
-              <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Category</th>
-              <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Followers</th>
-              <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Engagement</th>
-              <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Joined</th>
-              <th className="px-6 py-3 text-right text-[9px] font-mono text-white/30 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={7} className="px-6 py-12 text-center">
-                  <Loader2 className="w-5 h-5 text-[#00FF94] animate-spin mx-auto" />
-                </td>
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/10 bg-white/3">
+                <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Creator</th>
+                <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Category</th>
+                <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Followers</th>
+                <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Engagement</th>
+                <th className="px-6 py-3 text-left text-[9px] font-mono text-white/30 uppercase tracking-wider">Joined</th>
+                <th className="px-6 py-3 text-right text-[9px] font-mono text-white/30 uppercase tracking-wider">Actions</th>
               </tr>
-            ) : creators.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-6 py-12 text-center">
-                  <div className="flex flex-col items-center gap-2">
-                    <Users className="w-6 h-6 text-white/10" />
-                    <p className="text-[10px] text-white/20 font-mono">No creators found</p>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              creators.map((creator) => (
-                <tr key={creator.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF94]/20 to-[#00D4FF]/20 flex items-center justify-center overflow-hidden">
-                        {creator.avatar ? (
-                          <img src={creator.avatar} alt={creator.name || 'Creator'} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-white text-[10px] font-bold">{getInitials(creator.name)}</span>
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-[11px] font-medium text-white">{creator.name || 'Unnamed'}</p>
-                          {creator.verified && (
-                            <CheckCircle2 className="w-3 h-3 text-[#00FF94]" />
-                          )}
-                        </div>
-                        <p className="text-[8px] text-white/30 font-mono">{creator.email || 'No email'}</p>
-                        {creator.username && (
-                          <p className="text-[8px] text-[#00FF94]/50">@{creator.username}</p>
-                        )}
-                      </div>
-                    </div>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <Loader2 className="w-5 h-5 text-[#00FF94] animate-spin mx-auto" />
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 text-[8px] font-bold rounded-full border ${getStatusColor(creator.status)}`}>
-                      {(creator.status || 'unknown').toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-[10px] text-white/60">{creator.category || '—'}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-[10px] text-white/60">
-                      {creator.followers ? creator.followers.toLocaleString() : '—'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {creator.engagement_rate ? (
-                      <span className="text-[10px] text-[#00FF94]">{creator.engagement_rate}%</span>
-                    ) : (
-                      <span className="text-[10px] text-white/30">—</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-[9px] text-white/40 font-mono">
-                      {formatDate(creator.created_at)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => handleVerify(creator.id, !creator.verified)}
-                        className="p-1.5 rounded hover:bg-white/10 transition-colors"
-                        title={creator.verified ? 'Remove verification' : 'Verify creator'}
-                      >
-                        {creator.verified ? (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#00FF94]" />
-                        ) : (
-                          <Award className="w-3.5 h-3.5 text-white/30" />
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => handleStatusChange(creator.id, creator.status === 'suspended' ? 'approved' : 'suspended')}
-                        className="p-1.5 rounded hover:bg-white/10 transition-colors"
-                        title={creator.status === 'suspended' ? 'Unsuspend' : 'Suspend'}
-                      >
-                        {creator.status === 'suspended' ? (
-                          <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                        ) : (
-                          <Ban className="w-3.5 h-3.5 text-orange-400/70" />
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => setSelectedCreator(creator)}
-                        className="p-1.5 rounded hover:bg-white/10 transition-colors"
-                        title="View details"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-white/40" />
-                      </button>
+                </tr>
+              ) : creators.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <Users className="w-6 h-6 text-white/10" />
+                      <p className="text-[10px] text-white/20 font-mono">No creators found</p>
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                creators.map((creator) => (
+                  <tr key={creator.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF94]/20 to-[#00D4FF]/20 flex items-center justify-center overflow-hidden">
+                          {creator.avatar ? (
+                            <img src={creator.avatar} alt={creator.name || 'Creator'} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-white text-[10px] font-bold">{getInitials(creator.name)}</span>
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[11px] font-medium text-white">{creator.name || 'Unnamed'}</p>
+                            {creator.verified && (
+                              <CheckCircle2 className="w-3 h-3 text-[#00FF94]" />
+                            )}
+                          </div>
+                          <p className="text-[8px] text-white/30 font-mono">{creator.email || 'No email'}</p>
+                          {creator.username && (
+                            <p className="text-[8px] text-[#00FF94]/50">@{creator.username}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 text-[8px] font-bold rounded-full border ${getStatusColor(creator.status)}`}>
+                        {(creator.status || 'unknown').toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-[10px] text-white/60">{creator.category || '—'}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-[10px] text-white/60">
+                        {creator.followers ? creator.followers.toLocaleString() : '—'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {creator.engagement_rate ? (
+                        <span className="text-[10px] text-[#00FF94]">{creator.engagement_rate}%</span>
+                      ) : (
+                        <span className="text-[10px] text-white/30">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-[9px] text-white/40 font-mono">
+                        {formatDate(creator.created_at)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openQuickChat(creator)}
+                          className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                          title="Send message"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-blue-400" />
+                        </button>
+
+                        <button
+                          onClick={() => handleVerify(creator.id, !creator.verified)}
+                          className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                          title={creator.verified ? 'Remove verification' : 'Verify creator'}
+                        >
+                          {creator.verified ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#00FF94]" />
+                          ) : (
+                            <Award className="w-3.5 h-3.5 text-white/30" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => handleStatusChange(creator.id, creator.status === 'suspended' ? 'approved' : 'suspended')}
+                          className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                          title={creator.status === 'suspended' ? 'Unsuspend' : 'Suspend'}
+                        >
+                          {creator.status === 'suspended' ? (
+                            <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                          ) : (
+                            <Ban className="w-3.5 h-3.5 text-orange-400/70" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => setSelectedCreator(creator)}
+                          className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                          title="View details"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-white/40" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Creator Details Modal */}
+        <AnimatePresence>
+          {selectedCreator && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              onClick={() => setSelectedCreator(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-[#0D0D0D] border border-white/10 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-bold text-white">Creator Details</h3>
+                  <button
+                    onClick={() => setSelectedCreator(null)}
+                    className="p-1 rounded hover:bg-white/10"
+                  >
+                    <X className="w-4 h-4 text-white/50" />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Profile */}
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00FF94]/30 to-[#00D4FF]/30 flex items-center justify-center overflow-hidden">
+                      {selectedCreator.avatar ? (
+                        <img src={selectedCreator.avatar} alt={selectedCreator.name || 'Creator'} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-2xl font-bold text-white">{getInitials(selectedCreator.name)}</span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-lg font-bold text-white">{selectedCreator.name || 'Unnamed'}</p>
+                        {selectedCreator.verified && (
+                          <CheckCircle2 className="w-4 h-4 text-[#00FF94]" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-white/40 font-mono">{selectedCreator.email || 'No email'}</p>
+                      {selectedCreator.username && (
+                        <p className="text-[10px] text-[#00FF94]">@{selectedCreator.username}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span className={`px-3 py-1 text-[9px] font-bold rounded-full border ${getStatusColor(selectedCreator.status)}`}>
+                        {(selectedCreator.status || 'unknown').toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                      <p className="text-[8px] text-white/30 font-mono mb-1">Followers</p>
+                      <p className="text-lg font-bold text-white">
+                        {selectedCreator.followers?.toLocaleString() || '0'}
+                      </p>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                      <p className="text-[8px] text-white/30 font-mono mb-1">Engagement</p>
+                      <p className="text-lg font-bold text-[#00FF94]">
+                        {selectedCreator.engagement_rate || '0'}%
+                      </p>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                      <p className="text-[8px] text-white/30 font-mono mb-1">Category</p>
+                      <p className="text-sm font-bold text-white">
+                        {selectedCreator.category || '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Bio */}
+                  {selectedCreator.bio && (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                      <p className="text-[10px] text-white/40 font-mono mb-2">Bio</p>
+                      <p className="text-[11px] text-white/80 leading-relaxed">{selectedCreator.bio}</p>
+                    </div>
+                  )}
+
+                  {/* Contact Info */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {selectedCreator.phone && (
+                      <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-3">
+                        <Phone className="w-3.5 h-3.5 text-white/40" />
+                        <span className="text-[10px] text-white/80">{selectedCreator.phone}</span>
+                      </div>
+                    )}
+                    {selectedCreator.location && (
+                      <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-3">
+                        <Globe className="w-3.5 h-3.5 text-white/40" />
+                        <span className="text-[10px] text-white/80">{selectedCreator.location}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Social Links */}
+                  {selectedCreator.social_links && (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                      <p className="text-[10px] text-white/40 font-mono mb-3">Social Links</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCreator.social_links.instagram && (
+                          <a
+                            href={selectedCreator.social_links.instagram}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-pink-500/10 border border-pink-500/20 rounded-lg hover:bg-pink-500/20 transition-colors"
+                          >
+                            <Instagram className="w-3 h-3 text-pink-400" />
+                            <span className="text-[8px] text-pink-400">Instagram</span>
+                          </a>
+                        )}
+                        {selectedCreator.social_links.twitter && (
+                          <a
+                            href={selectedCreator.social_links.twitter}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors"
+                          >
+                            <Twitter className="w-3 h-3 text-blue-400" />
+                            <span className="text-[8px] text-blue-400">Twitter</span>
+                          </a>
+                        )}
+                        {selectedCreator.social_links.youtube && (
+                          <a
+                            href={selectedCreator.social_links.youtube}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors"
+                          >
+                            <Youtube className="w-3 h-3 text-red-400" />
+                            <span className="text-[8px] text-red-400">YouTube</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-4 border-t border-white/10">
+                    <button
+                      onClick={() => {
+                        openQuickChat(selectedCreator);
+                        setSelectedCreator(null);
+                      }}
+                      className="flex-1 bg-blue-500 text-white py-2.5 text-[10px] font-bold rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 inline mr-1" />
+                      Message Creator
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange(selectedCreator.id, 'approved')}
+                      className="flex-1 bg-[#00FF94] text-black py-2.5 text-[10px] font-bold rounded-lg hover:bg-[#00FF94]/80 transition-colors"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange(selectedCreator.id, 'rejected')}
+                      className="flex-1 bg-red-500/10 text-red-400 border border-red-500/20 py-2.5 text-[10px] font-bold rounded-lg hover:bg-red-500/20 transition-colors"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleVerify(selectedCreator.id, !selectedCreator.verified)}
+                      className="px-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
+                      title={selectedCreator.verified ? 'Remove verification' : 'Verify creator'}
+                    >
+                      {selectedCreator.verified ? (
+                        <Unlock className="w-3.5 h-3.5 text-white/40" />
+                      ) : (
+                        <Lock className="w-3.5 h-3.5 text-white/40" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Creator Details Modal */}
-      <AnimatePresence>
-        {selectedCreator && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setSelectedCreator(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-[#0D0D0D] border border-white/10 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="font-bold text-white">Creator Details</h3>
-                <button
-                  onClick={() => setSelectedCreator(null)}
-                  className="p-1 rounded hover:bg-white/10"
-                >
-                  <X className="w-4 h-4 text-white/50" />
-                </button>
-              </div>
-
-              <div className="space-y-6">
-                {/* Profile */}
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00FF94]/30 to-[#00D4FF]/30 flex items-center justify-center overflow-hidden">
-                    {selectedCreator.avatar ? (
-                      <img src={selectedCreator.avatar} alt={selectedCreator.name || 'Creator'} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-2xl font-bold text-white">{getInitials(selectedCreator.name)}</span>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-lg font-bold text-white">{selectedCreator.name || 'Unnamed'}</p>
-                      {selectedCreator.verified && (
-                        <CheckCircle2 className="w-4 h-4 text-[#00FF94]" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-white/40 font-mono">{selectedCreator.email || 'No email'}</p>
-                    {selectedCreator.username && (
-                      <p className="text-[10px] text-[#00FF94]">@{selectedCreator.username}</p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <span className={`px-3 py-1 text-[9px] font-bold rounded-full border ${getStatusColor(selectedCreator.status)}`}>
-                      {(selectedCreator.status || 'unknown').toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <p className="text-[8px] text-white/30 font-mono mb-1">Followers</p>
-                    <p className="text-lg font-bold text-white">
-                      {selectedCreator.followers?.toLocaleString() || '0'}
-                    </p>
-                  </div>
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <p className="text-[8px] text-white/30 font-mono mb-1">Engagement</p>
-                    <p className="text-lg font-bold text-[#00FF94]">
-                      {selectedCreator.engagement_rate || '0'}%
-                    </p>
-                  </div>
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <p className="text-[8px] text-white/30 font-mono mb-1">Category</p>
-                    <p className="text-sm font-bold text-white">
-                      {selectedCreator.category || '—'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Bio */}
-                {selectedCreator.bio && (
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <p className="text-[10px] text-white/40 font-mono mb-2">Bio</p>
-                    <p className="text-[11px] text-white/80 leading-relaxed">{selectedCreator.bio}</p>
-                  </div>
-                )}
-
-                {/* Contact Info */}
-                <div className="grid grid-cols-2 gap-3">
-                  {selectedCreator.phone && (
-                    <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-3">
-                      <Phone className="w-3.5 h-3.5 text-white/40" />
-                      <span className="text-[10px] text-white/80">{selectedCreator.phone}</span>
-                    </div>
-                  )}
-                  {selectedCreator.location && (
-                    <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-3">
-                      <Globe className="w-3.5 h-3.5 text-white/40" />
-                      <span className="text-[10px] text-white/80">{selectedCreator.location}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Social Links */}
-                {selectedCreator.social_links && (
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <p className="text-[10px] text-white/40 font-mono mb-3">Social Links</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedCreator.social_links.instagram && (
-                        <a
-                          href={selectedCreator.social_links.instagram}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-pink-500/10 border border-pink-500/20 rounded-lg hover:bg-pink-500/20 transition-colors"
-                        >
-                          <Instagram className="w-3 h-3 text-pink-400" />
-                          <span className="text-[8px] text-pink-400">Instagram</span>
-                        </a>
-                      )}
-                      {selectedCreator.social_links.twitter && (
-                        <a
-                          href={selectedCreator.social_links.twitter}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors"
-                        >
-                          <Twitter className="w-3 h-3 text-blue-400" />
-                          <span className="text-[8px] text-blue-400">Twitter</span>
-                        </a>
-                      )}
-                      {selectedCreator.social_links.youtube && (
-                        <a
-                          href={selectedCreator.social_links.youtube}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors"
-                        >
-                          <Youtube className="w-3 h-3 text-red-400" />
-                          <span className="text-[8px] text-red-400">YouTube</span>
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-2 pt-4 border-t border-white/10">
-                  <button
-                    onClick={() => handleStatusChange(selectedCreator.id, 'approved')}
-                    className="flex-1 bg-[#00FF94] text-black py-2.5 text-[10px] font-bold rounded-lg hover:bg-[#00FF94]/80 transition-colors"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleStatusChange(selectedCreator.id, 'rejected')}
-                    className="flex-1 bg-red-500/10 text-red-400 border border-red-500/20 py-2.5 text-[10px] font-bold rounded-lg hover:bg-red-500/20 transition-colors"
-                  >
-                    Reject
-                  </button>
-                  <button
-                    onClick={() => handleVerify(selectedCreator.id, !selectedCreator.verified)}
-                    className="px-4 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
-                    title={selectedCreator.verified ? 'Remove verification' : 'Verify creator'}
-                  >
-                    {selectedCreator.verified ? (
-                      <Unlock className="w-3.5 h-3.5 text-white/40" />
-                    ) : (
-                      <Lock className="w-3.5 h-3.5 text-white/40" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+      {/* Quick Chat Modal */}
+      {selectedParticipant && (
+        <QuickChatModal
+          isOpen={showQuickChat}
+          onClose={() => {
+            setShowQuickChat(false);
+            setSelectedParticipant(null);
+          }}
+          participant={selectedParticipant}
+          adminId={adminId}
+        />
+      )}
+    </>
   );
 }
 
@@ -2522,10 +3503,10 @@ export function AdminDashboard() {
           )}
 
           {/* Creators Tab */}
-          {activeTab === 'creators' && <AdminCreatorManagement />}
+          {activeTab === 'creators' && adminId && <AdminCreatorManagement adminId={adminId} />}
 
           {/* Businesses Tab */}
-          {activeTab === 'businesses' && (
+          {activeTab === 'businesses' && adminId && (
             <div className="bg-[#0D0D0D] border border-white/10 rounded-2xl p-6">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-semibold text-white">Business Applications</h3>
