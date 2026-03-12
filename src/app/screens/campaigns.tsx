@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router";
-import { 
-  ArrowLeft, 
-  Search, 
-  Plus, 
-  ChevronRight, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle,
+import {
+  Search,
+  Plus,
+  ChevronRight,
+  Clock,
+  CheckCircle2,
   Video as VideoIcon,
   DollarSign,
-  TrendingUp,
-  Filter,
   RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -61,25 +57,21 @@ export function Campaigns() {
   });
 
   useEffect(() => {
-    if (user) {
-      fetchCampaigns();
-    }
+    if (user) fetchCampaigns();
   }, [user]);
 
   const fetchCampaigns = async () => {
     if (!user) return;
-    
+
     try {
       setLoading(true);
 
-      // Get creator profile first to get creator_id if needed
       const { data: creatorProfile } = await supabase
         .from("creator_profiles")
         .select("id")
         .eq("user_id", user.id)
         .single();
 
-      // Fetch campaigns where creator is involved
       const { data: campaignCreators, error: campaignError } = await supabase
         .from("campaign_creators")
         .select(`
@@ -110,25 +102,17 @@ export function Campaigns() {
       if (campaignError) throw campaignError;
 
       if (campaignCreators) {
-        // Transform data to match our interface
         const formattedCampaigns = campaignCreators.map((item: any) => {
           const campaign = item.campaign;
           const streamsCompleted = item.streams_completed || 0;
           const streamsTarget = item.streams_target || 4;
           const progress = Math.min(100, Math.round((streamsCompleted / streamsTarget) * 100));
-          
-          // Determine campaign status based on creator's status and dates
-          let status: 'Active' | 'Upcoming' | 'Completed' | 'Pending' = 'Pending';
-          
-          if (item.status === 'COMPLETED' || progress === 100) {
-            status = 'Completed';
-          } else if (item.status === 'ACTIVE') {
-            status = 'Active';
-          } else if (item.status === 'PENDING') {
-            status = 'Upcoming';
-          }
 
-          // Calculate earnings (placeholder - replace with actual earnings logic)
+          let status: 'Active' | 'Upcoming' | 'Completed' | 'Pending' = 'Pending';
+          if (item.status === 'COMPLETED' || progress === 100) status = 'Completed';
+          else if (item.status === 'ACTIVE') status = 'Active';
+          else if (item.status === 'PENDING') status = 'Upcoming';
+
           const earnings = campaign.budget ? `£${campaign.budget}` : '£0.00';
 
           return {
@@ -152,7 +136,6 @@ export function Campaigns() {
 
         setCampaigns(formattedCampaigns);
 
-        // Calculate stats
         const total = formattedCampaigns.length;
         const active = formattedCampaigns.filter(c => c.status === 'Active').length;
         const upcoming = formattedCampaigns.filter(c => c.status === 'Upcoming').length;
@@ -178,47 +161,40 @@ export function Campaigns() {
     toast.success('Campaigns updated');
   };
 
-  // Filter campaigns based on search and status filter
   const filteredCampaigns = campaigns.filter(camp => {
-    const matchesSearch = 
+    const matchesSearch =
       camp.business_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       camp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       camp.type.toLowerCase().includes(searchQuery.toLowerCase());
-    
     const matchesFilter = activeFilter === "All" || camp.status === activeFilter;
-    
     return matchesSearch && matchesFilter;
   });
 
   const filters = ["All", "Active", "Upcoming", "Completed", "Pending"];
 
   const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'Active': return 'bg-[#389C9A] text-white border-[#389C9A]';
-      case 'Upcoming': return 'bg-[#FEDB71] text-[#1D1D1D] border-[#1D1D1D]/10';
+    switch (status) {
+      case 'Active':    return 'bg-[#389C9A] text-white border-[#389C9A]';
+      case 'Upcoming':  return 'bg-[#FEDB71] text-[#1D1D1D] border-[#1D1D1D]/10';
       case 'Completed': return 'bg-green-500 text-white border-green-500';
-      case 'Pending': return 'bg-gray-100 text-gray-500 border-gray-200';
-      default: return 'bg-gray-100 text-gray-400 border-gray-200';
+      case 'Pending':   return 'bg-gray-100 text-gray-500 border-gray-200';
+      default:          return 'bg-gray-100 text-gray-400 border-gray-200';
     }
   };
 
   const getProgressColor = (status: string) => {
-    switch(status) {
-      case 'Active': return 'bg-[#389C9A]';
-      case 'Upcoming': return 'bg-[#FEDB71]';
+    switch (status) {
+      case 'Active':    return 'bg-[#389C9A]';
+      case 'Upcoming':  return 'bg-[#FEDB71]';
       case 'Completed': return 'bg-green-500';
-      default: return 'bg-gray-300';
+      default:          return 'bg-gray-300';
     }
   };
 
   const getCampaignLink = (campaign: Campaign) => {
-    if (campaign.status === 'Active') {
-      return `/campaign/live-update/${campaign.id}`;
-    } else if (campaign.status === 'Upcoming') {
-      return `/creator/upcoming-gig/${campaign.id}`;
-    } else {
-      return `/campaign/${campaign.id}/summary`;
-    }
+    if (campaign.status === 'Active')   return `/campaign/live-update/${campaign.id}`;
+    if (campaign.status === 'Upcoming') return `/creator/upcoming-gig/${campaign.id}`;
+    return `/campaign/${campaign.id}/summary`;
   };
 
   if (loading) {
@@ -239,7 +215,7 @@ export function Campaigns() {
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
       <AppHeader showBack title="My Campaigns" />
-      
+
       <div className="px-6 py-6 sticky top-[84px] bg-white z-20 border-b border-[#1D1D1D]/10">
         {/* Stats Cards */}
         <div className="grid grid-cols-4 gap-2 mb-6">
@@ -262,21 +238,21 @@ export function Campaigns() {
         </div>
 
         {/* Find Opportunities Button */}
-        <div className="flex items-center justify-between mb-6">
-          <Link 
-            to="/browse-businesses" 
+        <div className="mb-6">
+          <Link
+            to="/browse-businesses"
             className="w-full bg-[#1D1D1D] text-white py-4 px-6 text-[10px] font-black uppercase italic tracking-widest flex items-center justify-between active:scale-[0.98] transition-all hover:bg-[#389C9A]"
           >
             Find New Opportunities
             <Plus className="w-5 h-5 text-[#FEDB71]" />
           </Link>
         </div>
-        
+
         {/* Search and Refresh */}
         <div className="flex gap-3 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-20" />
-            <input 
+            <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="SEARCH CAMPAIGNS..."
@@ -299,9 +275,9 @@ export function Campaigns() {
               key={filter}
               onClick={() => setActiveFilter(filter)}
               className={`whitespace-nowrap px-4 py-2 text-[9px] font-black uppercase tracking-widest italic border-2 transition-all ${
-                activeFilter === filter 
-                ? "bg-[#1D1D1D] text-white border-[#1D1D1D]" 
-                : "bg-white text-[#1D1D1D]/40 border-[#1D1D1D]/10 hover:border-[#1D1D1D]/40"
+                activeFilter === filter
+                  ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
+                  : "bg-white text-[#1D1D1D]/40 border-[#1D1D1D]/10 hover:border-[#1D1D1D]/40"
               }`}
             >
               {filter} {filter !== 'All' && `(${campaigns.filter(c => c.status === filter).length})`}
@@ -315,7 +291,7 @@ export function Campaigns() {
           <div className="mt-12 p-8 border-2 border-dashed border-[#1D1D1D]/10 flex flex-col items-center text-center">
             <VideoIcon className="w-12 h-12 opacity-20 mb-4 text-[#389C9A]" />
             <p className="text-sm font-medium text-[#1D1D1D]/40 leading-relaxed max-w-[220px] italic mb-4">
-              {searchQuery 
+              {searchQuery
                 ? "No campaigns match your search"
                 : "New campaigns appear here once you've been accepted by a brand."}
             </p>
@@ -329,7 +305,7 @@ export function Campaigns() {
           <div className="flex flex-col gap-6">
             <AnimatePresence mode="popLayout">
               {filteredCampaigns.map((camp) => (
-                <motion.div 
+                <motion.div
                   key={camp.id}
                   layout
                   initial={{ opacity: 0, scale: 0.9 }}
@@ -367,7 +343,7 @@ export function Campaigns() {
                       </span>
                     </div>
                     <div className="h-1.5 bg-[#1D1D1D]/5 w-full overflow-hidden">
-                      <div 
+                      <div
                         className={`h-full transition-all duration-500 ${getProgressColor(camp.status)}`}
                         style={{ width: `${camp.progress}%` }}
                       />
@@ -384,9 +360,8 @@ export function Campaigns() {
                         {camp.earnings}
                       </p>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
-                      {/* Status-specific indicators */}
                       {camp.status === 'Active' && (
                         <div className="flex items-center gap-1 text-[8px] font-black text-[#389C9A]">
                           <Clock className="w-3 h-3" /> Live
@@ -402,16 +377,10 @@ export function Campaigns() {
                           <CheckCircle2 className="w-3 h-3" /> Done
                         </div>
                       )}
-                      
                       <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest underline underline-offset-4 decoration-[#389C9A] text-[#1D1D1D]">
                         Manage <ChevronRight className="w-3 h-3 text-[#FEDB71]" />
                       </div>
                     </div>
-                  </div>
-
-                  {/* Campaign Type Badge */}
-                  <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <VideoIcon className="w-12 h-12" />
                   </div>
                 </motion.div>
               ))}
