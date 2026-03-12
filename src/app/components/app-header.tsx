@@ -769,36 +769,54 @@ const ChatModal = ({
   useEffect(() => {
     if (!isOpen || !participant) return;
 
-    const loadMessages = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('messages')
-          .select(`
-            *,
-            reactions:message_reactions(*)
-          `)
-          .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${participant.user_id}),and(sender_id.eq.${participant.user_id},receiver_id.eq.${currentUserId})`)
-          .order('created_at', { ascending: true });
+   const loadMessages = async () => {
+  if (!participant) return;
+  
+  setLoading(true);
+  try {
+    // Find the conversation
+    const participantIds = [currentUserId, participant.user_id].sort();
+    
+    const { data: convs } = await supabase
+      .from('conversations')
+      .select('id')
+      .contains('participant_ids', participantIds);
 
-        if (error) throw error;
-        setMessages(data || []);
+    if (!convs || convs.length === 0) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
 
-        // Mark messages as read
-        await supabase
-          .from('messages')
-          .update({ is_read: true, seen: true, read_at: new Date().toISOString() })
-          .eq('sender_id', participant.user_id)
-          .eq('receiver_id', currentUserId)
-          .eq('is_read', false);
+    const conversationId = convs[0].id;
 
-      } catch (error) {
-        console.error('Error loading messages:', error);
-        toast.error('Failed to load messages');
-      } finally {
-        setLoading(false);
-      }
-    };
+    const { data, error } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        reactions:message_reactions(*)
+      `)
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    setMessages(data || []);
+
+    // Mark messages as read
+    await supabase
+      .from('messages')
+      .update({ is_read: true, seen: true, read_at: new Date().toISOString() })
+      .eq('conversation_id', conversationId)
+      .eq('receiver_id', currentUserId)
+      .eq('is_read', false);
+
+  } catch (error) {
+    console.error('Error loading messages:', error);
+    toast.error('Failed to load messages');
+  } finally {
+    setLoading(false);
+  }
+};
 
     loadMessages();
 
@@ -920,78 +938,116 @@ const ChatModal = ({
   };
 
   const sendMessage = async () => {
-    if ((!newMessage.trim() && !attachment) || !participant || sending) return;
+  if ((!newMessage.trim() && !attachment) || !participant || sending) return;
 
-    setSending(true);
+  setSending(true);
 
-    try {
-      let attachmentUrl = null;
-      let attachmentType = null;
-      let attachmentName = null;
-      let attachmentSize = null;
+  try {
+    // First, find or create a conversation
+    const participantIds = [currentUserId, participant.user_id].sort();
+    
+    let conversationId;
+    
+    // Check if conversation exists
+    const { data: existingConvs } = await supabase
+      .from('conversations')
+      .select('id')
+      .contains('participant_ids', participantIds);
 
-      if (attachment) {
-        attachmentUrl = await uploadAttachment(attachment);
-        attachmentType = attachment.type.startsWith('image/') ? 'image' : 
-                        attachment.type.startsWith('video/') ? 'video' :
-                        attachment.type.startsWith('audio/') ? 'audio' : 'file';
-        attachmentName = attachment.name;
-        attachmentSize = attachment.size;
-      }
+    if (existingConvs && existingConvs.length > 0) {
+      conversationId = existingConvs[0].id;
+    } else {
+      // Create new conversation
+      const { data: newConv, error: convError } = await supabase
+        .from('conversations')
+        .insert({
+          participant_ids: participantIds,
+          last_message_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-      const now = new Date().toISOString();
+      if (convError) throw convError;
+      conversationId = newConv.id;
+    }
 
-      // Optimistic update
-      const optimisticMessage: Message = {
-        id: `temp-${Date.now()}`,
+    // Upload attachment if exists
+    let attachmentUrl = null;
+    let attachmentType = null;
+    let attachmentName = null;
+    let attachmentSize = null;
+
+    if (attachment) {
+      attachmentUrl = await uploadAttachment(attachment);
+      attachmentType = attachment.type.startsWith('image/') ? 'image' : 
+                      attachment.type.startsWith('video/') ? 'video' :
+                      attachment.type.startsWith('audio/') ? 'audio' : 'file';
+      attachmentName = attachment.name;
+      attachmentSize = attachment.size;
+    }
+
+    const now = new Date().toISOString();
+
+    // Insert message
+    const { error: msgError } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
         sender_id: currentUserId,
         receiver_id: participant.user_id,
         content: newMessage,
         sender_name: 'You',
-        sender_type: userType as any,
-        created_at: now,
+        sender_type: userType,
         is_read: false,
         seen: false,
-        reactions: [],
+        created_at: now,
+        attachment_url: attachmentUrl,
+        attachment_type: attachmentType,
+        attachment_name: attachmentName,
+        attachment_size: attachmentSize,
         reply_to_id: replyingTo?.id
-      };
+      });
 
-      setMessages(prev => [...prev, optimisticMessage]);
-      setNewMessage('');
-      setAttachment(null);
-      setReplyingTo(null);
-      handleTyping(false);
+    if (msgError) throw msgError;
 
-      // Insert into database
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          sender_id: currentUserId,
-          receiver_id: participant.user_id,
-          content: newMessage,
-          sender_name: 'You',
-          sender_type: userType,
-          is_read: false,
-          seen: false,
-          created_at: now,
-          attachment_url: attachmentUrl,
-          attachment_type: attachmentType,
-          attachment_name: attachmentName,
-          attachment_size: attachmentSize,
-          reply_to_id: replyingTo?.id
-        });
+    // Update conversation's last_message_at
+    await supabase
+      .from('conversations')
+      .update({ last_message_at: now })
+      .eq('id', conversationId);
 
-      if (error) throw error;
+    // Optimistic update
+    const optimisticMessage: Message = {
+      id: `temp-${Date.now()}`,
+      sender_id: currentUserId,
+      receiver_id: participant.user_id,
+      content: newMessage,
+      sender_name: 'You',
+      sender_type: userType as any,
+      created_at: now,
+      is_read: false,
+      seen: false,
+      reactions: [],
+      reply_to_id: replyingTo?.id,
+      attachment_url: attachmentUrl || undefined,
+      attachment_type: attachmentType as any,
+      attachment_name: attachmentName || undefined,
+      attachment_size: attachmentSize || undefined
+    };
 
-    } catch (error) {
-      console.error('Error sending message:', error);
-      toast.error('Failed to send message');
-      setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')));
-    } finally {
-      setSending(false);
-    }
-  };
+    setMessages(prev => [...prev, optimisticMessage]);
+    setNewMessage('');
+    setAttachment(null);
+    setReplyingTo(null);
+    handleTyping(false);
 
+  } catch (error) {
+    console.error('Error sending message:', error);
+    toast.error('Failed to send message');
+  } finally {
+    setSending(false);
+  }
+};
   const addReaction = async (messageId: string, reaction: string) => {
     try {
       const { error } = await supabase
@@ -1535,30 +1591,42 @@ export function AppHeader({
   };
 
   // Fetch conversations
-  const fetchRecentConversations = async () => {
-    if (!user) return;
+  // Replace the fetchRecentConversations function with this:
 
-    const { data: convs } = await supabase
+const fetchRecentConversations = async () => {
+  if (!user) return;
+
+  try {
+    // Get conversations where user is a participant
+    const { data: convs, error } = await supabase
       .from("conversations")
       .select(`
         *,
         messages:messages(
-          id, content, created_at, sender_id, receiver_id, is_read, seen,
+          id, 
+          content, 
+          created_at, 
+          sender_id, 
+          receiver_id, 
+          is_read, 
+          seen,
           reactions:message_reactions(*)
         )
       `)
-      .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
+      .contains('participant_ids', [user.id])
       .order("last_message_at", { ascending: false })
       .limit(5);
 
+    if (error) throw error;
     if (!convs) return;
 
     let totalUnread = 0;
     const formatted = await Promise.all(
       convs.map(async (conv: any) => {
-        const otherId = conv.participant1_id === user.id
-          ? conv.participant2_id
-          : conv.participant1_id;
+        // Get the other participant's ID
+        const otherId = conv.participant_ids.find((id: string) => id !== user.id);
+        
+        if (!otherId) return null;
 
         const other = await resolveParticipant(otherId);
 
@@ -1570,7 +1638,11 @@ export function AppHeader({
         totalUnread += unread;
 
         return {
-          ...conv,
+          id: conv.id,
+          participant1_id: conv.participant_ids[0],
+          participant2_id: conv.participant_ids[1],
+          last_message_at: conv.last_message_at,
+          created_at: conv.created_at,
           other_participant: other,
           last_message: lastMsg,
           unread_count: unread
@@ -1578,6 +1650,15 @@ export function AppHeader({
       })
     );
 
+    // Filter out null values
+    const validConversations = formatted.filter(Boolean);
+    setRecentConversations(validConversations);
+    setUnreadMessages(totalUnread);
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    toast.error('Failed to load conversations');
+  }
+};
     setRecentConversations(formatted);
     setUnreadMessages(totalUnread);
   };
