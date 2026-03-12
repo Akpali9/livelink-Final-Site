@@ -1,9 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router";
-import {
-  Search,
-  Filter,
-  ChevronRight,import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   Search,
