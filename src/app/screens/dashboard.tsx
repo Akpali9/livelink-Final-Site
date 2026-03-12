@@ -266,7 +266,7 @@ export function Dashboard() {
               { label: "Browse Campaigns", path: "/browse", icon: TrendingUp },
               { label: "My Campaigns", path: "/campaigns", icon: Calendar },
               { label: "Messages", path: "/messages", icon: Users },
-              { label: "Profile Settings", path: "/settings", icon: Zap },
+            
             ].map((action) => (
               <button
                 key={action.path}
