@@ -14,8 +14,8 @@ export function BottomNav({ userType = "creator" }) {
 
   const profileItem =
     userType === "business"
-      ? { icon: Building2, label: "Business", path: "/business/me" }
-      : { icon: User,      label: "Profile",  path: "/profile/me"  };
+      ? { icon: Building2, label: "Business", path: "/business/profile" }
+      : { icon: User,      label: "Profile",  path: "/profile/me"       };
 
   const navItems = [
     { icon: Home,     label: "Home",          path: "/dashboard"    },
