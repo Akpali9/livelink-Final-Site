@@ -349,10 +349,10 @@ export function BecomeCreator() {
                   <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Email Address</label>
                   <div className="flex items-center bg-[#F8F8F8] border border-[#1D1D1D]/10 opacity-60">
                     <Mail className="w-4 h-4 ml-4 flex-shrink-0 text-[#1D1D1D]/40" />
-                    <input type="email" value={formData.email} disabled
+                    <input type="email" value={formData.email} 
                       className="flex-1 py-5 px-4 text-sm font-bold uppercase tracking-tight bg-transparent outline-none italic" />
                   </div>
-                  <p className="text-[9px] font-medium opacity-40 italic">Pulled from your account. Cannot be changed here.</p>
+             
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
