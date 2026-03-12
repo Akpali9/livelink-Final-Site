@@ -5,6 +5,42 @@ import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
 
+interface CreatorProfile {
+  id: string;
+  user_id: string;
+  full_name: string;
+  avatar_url: string;
+  username: string;
+  bio: string;
+  location: string;
+  verified: boolean;
+  category: string;
+  platforms: any;
+  niches: any;
+  availability: string;
+  stats?: {
+    followers: number;
+    avgViewers: number;
+    totalStreams: number;
+  };
+}
+
+interface Business {
+  id: string;
+  user_id: string;
+  business_name: string;
+  contact_name: string;
+  logo_url: string;
+  location: string;
+  bio: string;
+  website: string;
+  verified: boolean;
+  industry: string;
+  industries: string[];
+  campaign_types: string[];
+  budget_range: string;
+}
+
 export function Profile() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -12,20 +48,27 @@ export function Profile() {
   const [loading, setLoading] = useState(true);
   const [isOwn, setIsOwn] = useState(false);
   const [profileType, setProfileType] = useState<"creator" | "business" | null>(null);
-  const [creator, setCreator] = useState<any>(null);
-  const [business, setBusiness] = useState<any>(null);
+  const [creator, setCreator] = useState<CreatorProfile | null>(null);
+  const [business, setBusiness] = useState<Business | null>(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) { navigate("/"); return; }
+      if (!session?.user) { 
+        navigate("/"); 
+        return; 
+      }
 
       const targetUserId = id === "me" ? session.user.id : id;
       setIsOwn(targetUserId === session.user.id);
 
-      const { data: biz } = await supabase
-        .from("businesses").select("*").eq("user_id", targetUserId).maybeSingle();
+      // Check businesses table first
+      const { data: biz, error: bizError } = await supabase
+        .from("businesses")
+        .select("*")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
 
       if (biz) {
         setProfileType("business");
@@ -34,12 +77,49 @@ export function Profile() {
         return;
       }
 
-      const { data: cre } = await supabase
-        .from("creators").select("*").eq("user_id", targetUserId).maybeSingle();
+      // Check creator_profiles table (main creator table)
+      const { data: creatorProfile, error: creatorError } = await supabase
+        .from("creator_profiles")
+        .select("*")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
 
-      if (cre) {
+      if (creatorProfile) {
         setProfileType("creator");
-        setCreator(cre);
+        setCreator(creatorProfile);
+        setLoading(false);
+        return;
+      }
+
+      // Fallback to creators table
+      const { data: creatorLegacy } = await supabase
+        .from("creators")
+        .select("*")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+
+      if (creatorLegacy) {
+        setProfileType("creator");
+        // Map legacy fields to match expected structure
+        setCreator({
+          id: creatorLegacy.id,
+          user_id: creatorLegacy.user_id,
+          full_name: creatorLegacy.name,
+          avatar_url: creatorLegacy.avatar,
+          username: creatorLegacy.username,
+          bio: creatorLegacy.bio,
+          location: creatorLegacy.location,
+          verified: creatorLegacy.verified || false,
+          category: creatorLegacy.category,
+          platforms: creatorLegacy.platforms,
+          niches: creatorLegacy.niches,
+          availability: creatorLegacy.availability || "Available for campaigns",
+          stats: creatorLegacy.stats || {
+            followers: creatorLegacy.followers || 0,
+            avgViewers: creatorLegacy.avg_viewers || 0,
+            totalStreams: creatorLegacy.total_streams || 0
+          }
+        });
       }
 
       setLoading(false);
@@ -84,9 +164,9 @@ export function Profile() {
 
             {/* Avatar / Logo */}
             <div className="w-20 h-20 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center flex-shrink-0">
-              {(profileType === "creator" ? creator?.avatar : business?.logo) ? (
+              {(profileType === "creator" ? creator?.avatar_url : business?.logo_url) ? (
                 <img
-                  src={profileType === "creator" ? creator.avatar : business.logo}
+                  src={profileType === "creator" ? creator?.avatar_url : business?.logo_url}
                   alt="profile"
                   className="w-full h-full object-cover"
                 />
@@ -106,7 +186,9 @@ export function Profile() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-lg font-black uppercase tracking-tight italic truncate">
-                  {profileType === "creator" ? (creator?.name || "Creator") : (business?.company_name || "Business")}
+                  {profileType === "creator" 
+                    ? (creator?.full_name || creator?.username || "Creator") 
+                    : (business?.business_name || "Business")}
                 </h1>
                 {(creator?.verified || business?.verified) && (
                   <CheckCircle2 className="w-4 h-4 text-[#389C9A] flex-shrink-0" />
@@ -135,7 +217,7 @@ export function Profile() {
             <div className="flex items-center gap-1.5 mt-4 text-[#1D1D1D]/40">
               <MapPin className="w-3 h-3" />
               <span className="text-[10px] font-bold italic">
-                {profileType === "creator" ? creator.location : business.location}
+                {profileType === "creator" ? creator?.location : business?.location}
               </span>
             </div>
           )}
@@ -143,7 +225,7 @@ export function Profile() {
           {/* Bio */}
           {(creator?.bio || business?.bio) && (
             <p className="mt-3 text-[12px] leading-relaxed text-[#1D1D1D]/70">
-              {profileType === "creator" ? creator.bio : business.bio}
+              {profileType === "creator" ? creator?.bio : business?.bio}
             </p>
           )}
 
@@ -177,10 +259,10 @@ export function Profile() {
         </section>
 
         {/* ── CREATOR SECTIONS ─────────────────────────────── */}
-        {profileType === "creator" && (
+        {profileType === "creator" && creator && (
           <>
             {/* Availability */}
-            {creator?.availability && (
+            {creator.availability && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Availability</Label>
                 <div className={`inline-flex items-center gap-2 px-3 py-2 border text-[10px] font-black uppercase tracking-widest italic ${
@@ -201,14 +283,14 @@ export function Profile() {
             )}
 
             {/* Platforms */}
-            {creator?.platforms?.length > 0 && (
+            {creator.platforms && creator.platforms.length > 0 && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Platforms</Label>
                 <div className="flex flex-wrap gap-2">
-                  {creator.platforms.map((p: any) => (
-                    <span key={typeof p === "string" ? p : p.name}
+                  {(Array.isArray(creator.platforms) ? creator.platforms : []).map((p: any, idx: number) => (
+                    <span key={idx}
                       className="px-3 py-1.5 bg-[#389C9A] text-white text-[9px] font-black uppercase tracking-widest italic">
-                      {typeof p === "string" ? p : p.name}
+                      {typeof p === "string" ? p : p.name || "Platform"}
                     </span>
                   ))}
                 </div>
@@ -216,12 +298,12 @@ export function Profile() {
             )}
 
             {/* Niches */}
-            {creator?.niches?.length > 0 && (
+            {creator.niches && creator.niches.length > 0 && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Content Niches</Label>
                 <div className="flex flex-wrap gap-2">
-                  {creator.niches.map((n: string) => (
-                    <span key={n} className="px-3 py-1.5 bg-[#FEDB71] border border-[#1D1D1D] text-[#1D1D1D] text-[9px] font-black uppercase tracking-widest italic">
+                  {(Array.isArray(creator.niches) ? creator.niches : []).map((n: string, idx: number) => (
+                    <span key={idx} className="px-3 py-1.5 bg-[#FEDB71] border border-[#1D1D1D] text-[#1D1D1D] text-[9px] font-black uppercase tracking-widest italic">
                       {n}
                     </span>
                   ))}
@@ -230,19 +312,19 @@ export function Profile() {
             )}
 
             {/* Stats */}
-            {creator?.stats && (creator.stats.avgViewers || creator.stats.followers || creator.stats.totalStreams) && (
+            {creator.stats && (creator.stats.followers || creator.stats.avgViewers || creator.stats.totalStreams) && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Channel Stats</Label>
                 <div className="grid grid-cols-3 gap-3">
-                  {creator.stats.followers && (
+                  {creator.stats.followers ? (
                     <StatCard icon={<Users className="w-3.5 h-3.5" />} value={formatNumber(creator.stats.followers)} label="Followers" />
-                  )}
-                  {creator.stats.avgViewers && (
+                  ) : null}
+                  {creator.stats.avgViewers ? (
                     <StatCard icon={<Eye className="w-3.5 h-3.5" />} value={formatNumber(creator.stats.avgViewers)} label="Avg Viewers" />
-                  )}
-                  {creator.stats.totalStreams && (
+                  ) : null}
+                  {creator.stats.totalStreams ? (
                     <StatCard icon={<Video className="w-3.5 h-3.5" />} value={formatNumber(creator.stats.totalStreams)} label="Streams" />
-                  )}
+                  ) : null}
                 </div>
               </section>
             )}
@@ -250,14 +332,27 @@ export function Profile() {
         )}
 
         {/* ── BUSINESS SECTIONS ────────────────────────────── */}
-        {profileType === "business" && (
+        {profileType === "business" && business && (
           <>
-            {business?.industries?.length > 0 && (
+            {/* Industry */}
+            {business.industry && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Industry</Label>
                 <div className="flex flex-wrap gap-2">
-                  {business.industries.map((i: string) => (
-                    <span key={i} className="px-3 py-1.5 bg-[#FEDB71] border border-[#1D1D1D] text-[#1D1D1D] text-[9px] font-black uppercase tracking-widest italic">
+                  <span className="px-3 py-1.5 bg-[#FEDB71] border border-[#1D1D1D] text-[#1D1D1D] text-[9px] font-black uppercase tracking-widest italic">
+                    {business.industry}
+                  </span>
+                </div>
+              </section>
+            )}
+
+            {/* Industries array if exists */}
+            {business.industries && business.industries.length > 0 && (
+              <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
+                <Label>Industries</Label>
+                <div className="flex flex-wrap gap-2">
+                  {business.industries.map((i: string, idx: number) => (
+                    <span key={idx} className="px-3 py-1.5 bg-[#FEDB71] border border-[#1D1D1D] text-[#1D1D1D] text-[9px] font-black uppercase tracking-widest italic">
                       {i}
                     </span>
                   ))}
@@ -265,12 +360,13 @@ export function Profile() {
               </section>
             )}
 
-            {business?.campaign_types?.length > 0 && (
+            {/* Campaign Types */}
+            {business.campaign_types && business.campaign_types.length > 0 && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Campaign Types</Label>
                 <div className="flex flex-wrap gap-2">
-                  {business.campaign_types.map((c: string) => (
-                    <span key={c} className="px-3 py-1.5 bg-[#1D1D1D] text-white text-[9px] font-black uppercase tracking-widest italic">
+                  {business.campaign_types.map((c: string, idx: number) => (
+                    <span key={idx} className="px-3 py-1.5 bg-[#1D1D1D] text-white text-[9px] font-black uppercase tracking-widest italic">
                       {c}
                     </span>
                   ))}
@@ -278,7 +374,8 @@ export function Profile() {
               </section>
             )}
 
-            {business?.budget_range && (
+            {/* Budget Range */}
+            {business.budget_range && (
               <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
                 <Label>Campaign Budget</Label>
                 <div className="inline-flex items-center gap-2 px-3 py-2 border-2 border-[#FEDB71] bg-[#FEDB71]/10 text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]">
