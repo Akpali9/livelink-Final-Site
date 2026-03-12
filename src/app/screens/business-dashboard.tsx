@@ -39,9 +39,10 @@ export function BusinessDashboard() {
         return;
       }
 
+      // FIXED: Use business_name instead of name
       const { data: business, error: bizError } = await supabase
         .from("businesses")
-        .select("id, name")
+        .select("id, business_name, contact_name")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -53,29 +54,64 @@ export function BusinessDashboard() {
 
       if (business) {
         setBusinessId(business.id);
-        setBusinessName(business.name || "");
+        // Use business_name, fallback to contact_name if needed
+        setBusinessName(business.business_name || business.contact_name || "Your Business");
       } else {
         navigate("/become-business");
       }
     };
     fetchBusiness();
-  }, [user]);
+  }, [user, navigate]);
 
   /* ── Fetch data ── */
   useEffect(() => {
     if (!businessId) return;
     const fetchData = async () => {
       setLoading(true);
-      const { data: campaignData } = await supabase
+      
+      // Fetch campaigns with proper joins
+      const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
-        .select(`*, campaign_creators(id, status)`)
+        .select(`
+          *,
+          campaign_creators(
+            id, 
+            status,
+            creator:creators(
+              id,
+              name,
+              avatar
+            )
+          )
+        `)
         .eq("business_id", businessId);
 
-      const { data: offerData } = await supabase
+      if (campaignError) {
+        console.error("Error fetching campaigns:", campaignError);
+      }
+
+      // Fetch offers with proper joins
+      const { data: offerData, error: offerError } = await supabase
         .from("offers")
-        .select(`*, creators(id, name, avatar), campaigns(id, name, type)`)
+        .select(`
+          *,
+          creator:creators(
+            id,
+            name,
+            avatar
+          ),
+          campaign:campaigns(
+            id,
+            name,
+            type
+          )
+        `)
         .eq("business_id", businessId)
         .in("status", ["Offer Received", "Negotiating"]);
+
+      if (offerError) {
+        console.error("Error fetching offers:", offerError);
+      }
 
       setCampaigns(campaignData || []);
       setOffers(offerData || []);
@@ -89,26 +125,89 @@ export function BusinessDashboard() {
   const pending   = campaigns.filter(c => c.status === "PENDING REVIEW").length;
   const completed = campaigns.filter(c => c.status === "COMPLETED").length;
   const totalSpent = campaigns.reduce((sum, c) => {
-    return sum + parseInt(c.price?.replace(/[^\d]/g, "") || "0");
+    // Handle price which might be string with currency symbol
+    const priceStr = c.price || "0";
+    const priceNum = parseInt(priceStr.replace(/[^\d]/g, "")) || 0;
+    return sum + priceNum;
   }, 0);
 
   /* ── Accept / Reject ── */
   const acceptOffer = async (offer: any) => {
-    await supabase.from("offers").update({ status: "Accepted" }).eq("id", offer.id);
-    await supabase.from("campaign_creators").insert({
-      campaign_id: offer.campaigns.id,
-      creator_id: offer.creators.id,
-      status: "ACTIVE",
-      streams_target: 4,
-    });
-    toast.success("Offer accepted!");
-    setOffers(prev => prev.filter(o => o.id !== offer.id));
+    try {
+      // Update offer status
+      const { error: offerError } = await supabase
+        .from("offers")
+        .update({ status: "Accepted" })
+        .eq("id", offer.id);
+
+      if (offerError) throw offerError;
+
+      // Create campaign_creator entry
+      const { error: ccError } = await supabase
+        .from("campaign_creators")
+        .insert({
+          campaign_id: offer.campaign_id,
+          creator_id: offer.creator_id,
+          status: "ACTIVE",
+          streams_target: 4,
+        });
+
+      if (ccError) throw ccError;
+
+      // Create notification for creator
+      await supabase
+        .from("notifications")
+        .insert({
+          user_id: offer.creator_id,
+          type: "offer_accepted",
+          title: "Offer Accepted!",
+          message: `Your offer for ${offer.campaign?.name || 'campaign'} has been accepted`,
+          data: { campaign_id: offer.campaign_id }
+        });
+
+      toast.success("Offer accepted!");
+      setOffers(prev => prev.filter(o => o.id !== offer.id));
+      
+      // Refresh campaigns to show new creator
+      const { data: updatedCampaigns } = await supabase
+        .from("campaigns")
+        .select(`
+          *,
+          campaign_creators(
+            id, 
+            status,
+            creator:creators(
+              id,
+              name,
+              avatar
+            )
+          )
+        `)
+        .eq("business_id", businessId);
+      
+      if (updatedCampaigns) setCampaigns(updatedCampaigns);
+      
+    } catch (error) {
+      console.error("Error accepting offer:", error);
+      toast.error("Failed to accept offer");
+    }
   };
 
   const rejectOffer = async (offerId: string) => {
-    await supabase.from("offers").update({ status: "Rejected" }).eq("id", offerId);
-    toast.success("Offer rejected");
-    setOffers(prev => prev.filter(o => o.id !== offerId));
+    try {
+      const { error } = await supabase
+        .from("offers")
+        .update({ status: "Rejected" })
+        .eq("id", offerId);
+
+      if (error) throw error;
+
+      toast.success("Offer rejected");
+      setOffers(prev => prev.filter(o => o.id !== offerId));
+    } catch (error) {
+      console.error("Error rejecting offer:", error);
+      toast.error("Failed to reject offer");
+    }
   };
 
   const filteredCampaigns = campaigns.filter(c => {
@@ -203,8 +302,8 @@ export function BusinessDashboard() {
                   >
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <p className="text-[11px] font-black uppercase tracking-tight italic">{o.campaigns?.name}</p>
-                        <p className="text-[9px] font-bold text-[#389C9A] uppercase tracking-widest">{o.creators?.name}</p>
+                        <p className="text-[11px] font-black uppercase tracking-tight italic">{o.campaign?.name || 'Campaign'}</p>
+                        <p className="text-[9px] font-bold text-[#389C9A] uppercase tracking-widest">{o.creator?.name || 'Creator'}</p>
                       </div>
                       <span className="text-[10px] font-black italic">{o.amount}</span>
                     </div>
