@@ -9,25 +9,15 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   );
 }
 
-// Singleton pattern to prevent multiple instances
-let supabaseInstance: ReturnType<typeof createClient> | null = null;
-
-export const getSupabaseClient = () => {
-  if (!supabaseInstance) {
-    supabaseInstance = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storageKey: 'livelink-auth-token', // Custom storage key
-      }
-    });
+// Create a single instance with custom storage key to prevent conflicts
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: 'livelink-auth-token',
   }
-  return supabaseInstance;
-};
-
-// Export the singleton instance
-export const supabase = getSupabaseClient();
+});
 
 // Helper to check if we're in browser
 export const isBrowser = typeof window !== 'undefined';
