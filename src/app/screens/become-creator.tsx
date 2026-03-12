@@ -30,7 +30,7 @@ import { useAuth } from "../lib/contexts/AuthContext";
 
 const PLATFORMS = ["Twitch", "YouTube", "TikTok", "Instagram", "Twitter", "Facebook", "Kick", "Rumble"];
 const NICHES = ["Gaming", "Beauty", "Fashion", "Fitness", "Tech", "Comedy", "Music", "Education", "Travel", "Food", "Sports", "Business"];
-const TOTAL_STEPS = 5; // Added password as step 2
+const TOTAL_STEPS = 5; // Added password step
 
 export function BecomeCreator() {
   const navigate = useNavigate();
@@ -110,7 +110,7 @@ export function BecomeCreator() {
       case 1: return formData.fullName.trim() && formData.username.trim();
       case 2: return formData.password.length >= 8;
       case 3: return formData.platforms.length > 0 && formData.niches.length > 0;
-      case 4: return true;
+      case 4: return true; // Social links optional
       case 5: return formData.agreeToTerms;
       default: return true;
     }
@@ -129,13 +129,14 @@ export function BecomeCreator() {
 
   const handleSubmit = async () => {
     if (!formData.fullName || !formData.username || formData.password.length < 8) {
-      toast.error("Please fill in all required fields and password must be 8+ characters");
+      toast.error("Please fill all required fields and ensure password is 8+ characters");
       return;
     }
     setLoading(true);
     try {
       if (user) {
         const avatarUrl = await uploadAvatar();
+
         const creatorProfileData = {
           user_id: user.id,
           full_name: formData.fullName,
@@ -168,7 +169,6 @@ export function BecomeCreator() {
         const { error: profileError } = await supabase.from("creator_profiles").insert(creatorProfileData);
         if (profileError) console.error("Profile insert error:", profileError);
 
-        // Legacy table insert
         const legacyCreatorData = {
           user_id: user.id,
           name: formData.fullName,
@@ -195,7 +195,7 @@ export function BecomeCreator() {
 
       setIsSubmitted(true);
       window.scrollTo(0, 0);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Submission error:", error);
       setIsSubmitted(true);
       window.scrollTo(0, 0);
@@ -260,8 +260,31 @@ export function BecomeCreator() {
       </div>
 
       <div className="px-8 mt-12 max-w-[600px] mx-auto w-full flex-1">
-        {/* Here you would render each step (Profile, Password, Niches, Socials, Review) */}
-        {/* For brevity, you can now copy your step JSX from previous code and add password as step 2 */}
+        {/* Steps JSX will go here: Profile, Password, Niches, Socials, Review */}
+        {/* For brevity, you can now copy all step JSX from your previous code, just add step 2 for password */}
+      </div>
+
+      {/* Footer Nav */}
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-50 max-w-[480px] mx-auto">
+        <div className="flex gap-4">
+          {step > 1 && (
+            <button onClick={prevStep} disabled={loading}
+              className="px-6 py-5 border-2 border-[#1D1D1D] text-[#1D1D1D] font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-all rounded-none italic disabled:opacity-50">
+              Back
+            </button>
+          )}
+          <button
+            onClick={step === TOTAL_STEPS ? handleSubmit : nextStep}
+            disabled={!validateStep() || loading}
+            className={`flex-1 flex items-center justify-between p-6 font-black uppercase tracking-tight transition-all rounded-none italic ${
+              validateStep() && !loading ? 'bg-[#1D1D1D] text-white active:scale-[0.98]' : 'bg-[#1D1D1D]/30 text-white/50 cursor-not-allowed'
+            }`}
+          >
+            <span>{loading ? 'Submitting...' : step === TOTAL_STEPS ? 'Submit Registration' : 'Continue'}</span>
+            {!loading && step < TOTAL_STEPS && <ArrowRight className="w-5 h-5 text-[#FEDB71]" />}
+            {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+          </button>
+        </div>
       </div>
     </div>
   );
