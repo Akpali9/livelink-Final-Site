@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react"; // Add useCallback
 import { useNavigate } from "react-router";
 import { supabase } from "../lib/supabase";
 import { Toaster, toast } from "sonner";
@@ -19,56 +19,89 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+// Define types for better type safety
+interface Campaign {
+  id: string;
+  name: string;
+  status: string;
+  type?: string;
+  price?: string;
+  campaign_creators?: any[];
+}
+
+interface Offer {
+  id: string;
+  campaign_id: string;
+  creator_id: string;
+  amount?: string;
+  status: string;
+  campaign?: {
+    id: string;
+    name: string;
+    type: string;
+  };
+  creator?: {
+    id: string;
+    name: string;
+    avatar: string;
+  };
+}
+
 export function BusinessDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("");
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [offers, setOffers] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
   const [campaignFilter, setCampaignFilter] = useState<"LIVE" | "PENDING" | "COMPLETED">("LIVE");
 
   /* ── Fetch business ── */
   useEffect(() => {
     if (!user) return;
+    
     const fetchBusiness = async () => {
       if (!user.email_confirmed_at) {
         navigate("/confirm-email", { state: { email: user.email } });
         return;
       }
 
-      // FIXED: Use business_name instead of name
-      const { data: business, error: bizError } = await supabase
-        .from("businesses")
-        .select("id, business_name, contact_name")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      try {
+        const { data: business, error: bizError } = await supabase
+          .from("businesses")
+          .select("id, business_name, contact_name")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-      if (bizError) {
-        console.error("Business fetch error:", bizError);
-        setLoading(false);
-        return;
-      }
+        if (bizError) {
+          console.error("Business fetch error:", bizError);
+          setLoading(false);
+          return;
+        }
 
-      if (business) {
-        setBusinessId(business.id);
-        // Use business_name, fallback to contact_name if needed
-        setBusinessName(business.business_name || business.contact_name || "Your Business");
-      } else {
-        navigate("/become-business");
+        if (business) {
+          setBusinessId(business.id);
+          setBusinessName(business.business_name || business.contact_name || "Your Business");
+        } else {
+          navigate("/become-business");
+        }
+      } catch (error) {
+        console.error("Error fetching business:", error);
+        toast.error("Failed to load business data");
       }
     };
+    
     fetchBusiness();
   }, [user, navigate]);
 
   /* ── Fetch data ── */
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!businessId) return;
-    const fetchData = async () => {
-      setLoading(true);
-      
+    
+    setLoading(true);
+    try {
       // Fetch campaigns with proper joins
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
@@ -88,6 +121,7 @@ export function BusinessDashboard() {
 
       if (campaignError) {
         console.error("Error fetching campaigns:", campaignError);
+        toast.error("Failed to load campaigns");
       }
 
       // Fetch offers with proper joins
@@ -111,14 +145,22 @@ export function BusinessDashboard() {
 
       if (offerError) {
         console.error("Error fetching offers:", offerError);
+        toast.error("Failed to load offers");
       }
 
       setCampaigns(campaignData || []);
       setOffers(offerData || []);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      toast.error("Failed to load dashboard data");
+    } finally {
       setLoading(false);
-    };
-    fetchData();
+    }
   }, [businessId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   /* ── Stats ── */
   const active    = campaigns.filter(c => c.status === "ACTIVE").length;
@@ -132,7 +174,9 @@ export function BusinessDashboard() {
   }, 0);
 
   /* ── Accept / Reject ── */
-  const acceptOffer = async (offer: any) => {
+  const acceptOffer = async (offer: Offer) => {
+    if (!businessId) return;
+    
     try {
       // Update offer status
       const { error: offerError } = await supabase
@@ -169,23 +213,7 @@ export function BusinessDashboard() {
       setOffers(prev => prev.filter(o => o.id !== offer.id));
       
       // Refresh campaigns to show new creator
-      const { data: updatedCampaigns } = await supabase
-        .from("campaigns")
-        .select(`
-          *,
-          campaign_creators(
-            id, 
-            status,
-            creator:creators(
-              id,
-              name,
-              avatar
-            )
-          )
-        `)
-        .eq("business_id", businessId);
-      
-      if (updatedCampaigns) setCampaigns(updatedCampaigns);
+      fetchData();
       
     } catch (error) {
       console.error("Error accepting offer:", error);
@@ -220,7 +248,7 @@ export function BusinessDashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+        <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -279,6 +307,7 @@ export function BusinessDashboard() {
             <motion.section
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               className="px-6 mt-8"
             >
               <div className="flex items-center justify-between mb-4">
@@ -305,7 +334,7 @@ export function BusinessDashboard() {
                         <p className="text-[11px] font-black uppercase tracking-tight italic">{o.campaign?.name || 'Campaign'}</p>
                         <p className="text-[9px] font-bold text-[#389C9A] uppercase tracking-widest">{o.creator?.name || 'Creator'}</p>
                       </div>
-                      <span className="text-[10px] font-black italic">{o.amount}</span>
+                      <span className="text-[10px] font-black italic">{o.amount || '—'}</span>
                     </div>
                     <div className="flex gap-2">
                       <button
