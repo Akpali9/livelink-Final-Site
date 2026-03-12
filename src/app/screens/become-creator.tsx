@@ -232,6 +232,7 @@ export function BecomeCreator() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white pb-32 text-[#1D1D1D]">
+
       {/* Header */}
       <div className="px-8 pt-12 pb-8 border-b-2 border-[#1D1D1D]">
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest mb-6 opacity-40 italic">
@@ -259,9 +260,35 @@ export function BecomeCreator() {
         })}
       </div>
 
+      {/* Steps */}
       <div className="px-8 mt-12 max-w-[600px] mx-auto w-full flex-1">
-        {/* Steps JSX will go here: Profile, Password, Niches, Socials, Review */}
-        {/* For brevity, you can now copy all step JSX from your previous code, just add step 2 for password */}
+        {/* Step 1: Profile */}
+        {step === 1 && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
+            <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Your Profile</h2>
+            {/* Avatar + Full Name + Username + Email */}
+            {/* Copy your previous profile JSX here */}
+          </motion.div>
+        )}
+
+        {/* Step 2: Password */}
+        {step === 2 && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6">
+            <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Set Password</h2>
+            <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-4 italic">Create a secure password (8+ characters)</p>
+            <div className="flex items-center bg-[#F8F8F8] border border-[#1D1D1D]/10">
+              <input type={showPassword ? "text" : "password"} value={formData.password} onChange={e => update("password", e.target.value)}
+                placeholder="Enter your password"
+                className="flex-1 py-5 px-4 text-sm font-bold uppercase tracking-tight bg-transparent outline-none italic" />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="p-4">
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Step 3, 4, 5 */}
+        {/* Copy your previous Niches, Socials, Review JSX here */}
       </div>
 
       {/* Footer Nav */}
