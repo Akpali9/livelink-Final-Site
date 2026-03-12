@@ -416,7 +416,7 @@ const MessageStatus = ({ message, isAdmin }: { message: Message; isAdmin: boolea
         </>
       ) : message.seen ? (
         <>
-          <Check className className="w-3 h-3 text-blue-400" />
+          <Check className="w-3 h-3 text-blue-400" />
           <span className="text-[8px] text-blue-400">Delivered</span>
         </>
       ) : (
