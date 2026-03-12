@@ -1726,15 +1726,6 @@ export function AppHeader({
         <div className="flex items-center gap-3 relative">
           {showActions && (
             <>
-              {/* ── New Chat Button ── */}
-              <button
-                onClick={() => setShowUserDirectory(true)}
-                className="p-1.5 hover:bg-[#1D1D1D]/5 transition-colors border-2 border-[#1D1D1D] hidden sm:flex items-center gap-1"
-                title="Start new chat"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-[9px] font-black uppercase tracking-widest">New Chat</span>
-              </button>
 
               {/* ── Messages button ── */}
               <div className="relative">
