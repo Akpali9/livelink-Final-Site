@@ -50,7 +50,682 @@ import { useAuth } from "../lib/contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
 
-// ... (keep all the interface and type definitions the same) ...
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface Message {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+  is_read: boolean;
+  seen: boolean;
+  read_at?: string;
+  sender_name?: string;
+  sender_type: 'creator' | 'business' | 'admin';
+  attachment_url?: string;
+  attachment_type?: 'image' | 'file' | 'video' | 'audio';
+  attachment_name?: string;
+  attachment_size?: number;
+  reply_to_id?: string;
+  reactions?: MessageReaction[];
+}
+
+interface MessageReaction {
+  id: string;
+  message_id: string;
+  user_id: string;
+  reaction: string;
+  created_at: string;
+}
+
+interface UserProfile {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  type: 'creator' | 'business' | 'admin';
+  username?: string;
+  company_name?: string;
+  online?: boolean;
+  last_seen?: string;
+  typing?: boolean;
+}
+
+interface UserDirectoryItem {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  type: 'creator' | 'business' | 'admin';
+  username?: string;
+  company_name?: string;
+  category?: string;
+  followers?: number;
+  verified?: boolean;
+}
+
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: "offer" | "campaign" | "payment" | "system" | "message" | "call";
+  is_read: boolean;
+  created_at: string;
+  data?: any;
+}
+
+interface Conversation {
+  id: string;
+  participant1_id: string;
+  participant2_id: string;
+  last_message_at: string;
+  created_at: string;
+  messages?: Message[];
+  other_participant?: UserProfile;
+  unread_count?: number;
+  last_message?: Message;
+}
+
+interface CallSession {
+  id: string;
+  room_id: string;
+  participants: {
+    user_id: string;
+    name: string;
+    avatar?: string;
+    joined_at: string;
+    audio_enabled: boolean;
+    video_enabled: boolean;
+  }[];
+  started_at: string;
+  status: 'ringing' | 'active' | 'ended' | 'missed';
+  type: 'audio' | 'video';
+}
+
+interface AppHeaderProps {
+  title?: string;
+  showBack?: boolean;
+  backPath?: string;
+  showLogo?: boolean;
+  userType?: "creator" | "business" | "admin";
+  subtitle?: string;
+  showHome?: boolean;
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+const formatTimestamp = (ts: string) => {
+  const date = new Date(ts);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
+  return date.toLocaleDateString();
+};
+
+const formatMessageTime = (timestamp: string) => {
+  try {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
+  } catch {
+    return 'Invalid date';
+  }
+};
+
+const getInitials = (name: string = '') => {
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .map(word => word.charAt(0))
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+};
+
+const formatFileSize = (bytes?: number) => {
+  if (!bytes) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+};
+
+// Resolve any user's display info regardless of their role
+async function resolveParticipant(userId: string): Promise<UserProfile> {
+  // Check admin
+  const { data: admin } = await supabase
+    .from("admin_profiles")
+    .select("id, full_name, avatar_url")
+    .eq("id", userId)
+    .maybeSingle();
+  if (admin) {
+    return { 
+      id: admin.id,
+      user_id: admin.id,
+      name: admin.full_name || "Admin", 
+      avatar: admin.avatar_url || "", 
+      type: "admin",
+      email: ''
+    };
+  }
+
+  // Check creator
+  const { data: creator } = await supabase
+    .from("creator_profiles")
+    .select("id, full_name, avatar_url, username")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (creator) {
+    return { 
+      id: creator.id,
+      user_id: userId,
+      name: creator.full_name || "Creator", 
+      avatar: creator.avatar_url || "", 
+      type: "creator",
+      email: '',
+      username: creator.username
+    };
+  }
+
+  // Check business
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id, business_name, logo_url")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (business) {
+    return { 
+      id: business.id,
+      user_id: userId,
+      name: business.business_name || "Business", 
+      avatar: business.logo_url || "", 
+      type: "business",
+      email: '',
+      company_name: business.business_name
+    };
+  }
+
+  // Fallback
+  return { 
+    id: userId,
+    user_id: userId,
+    name: "Unknown", 
+    avatar: "", 
+    type: "creator",
+    email: ''
+  };
+}
+
+// ============================================================================
+// COMPONENTS
+// ============================================================================
+
+// ── Emoji Picker Component ─────────────────────────────────────────────────
+const EmojiPicker = ({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) => {
+  const emojis = [
+    '😊', '👍', '❤️', '😂', '🎉', '👏', '🙏', '🔥', '✨', '⭐',
+    '😍', '🥰', '😘', '🤗', '😎', '🤔', '😅', '😇', '🥳', '🤩',
+    '💯', '💪', '🤝', '👌', '✌️', '🤞', '👊', '💥', '💫', '🌟'
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 10 }}
+      className="absolute bottom-full mb-2 left-0 bg-white border-2 border-[#1D1D1D] p-2 grid grid-cols-8 gap-1 z-50"
+    >
+      {emojis.map(emoji => (
+        <button
+          key={emoji}
+          onClick={() => {
+            onSelect(emoji);
+            onClose();
+          }}
+          className="w-8 h-8 hover:bg-[#1D1D1D]/5 text-lg flex items-center justify-center transition-colors"
+        >
+          {emoji}
+        </button>
+      ))}
+    </motion.div>
+  );
+};
+
+// ── Reaction Picker Component ────────────────────────────────────────────
+const ReactionPicker = ({ onSelect, onClose }: { onSelect: (reaction: string) => void; onClose: () => void }) => {
+  const reactions = ['👍', '❤️', '😂', '😮', '😢', '😡'];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="absolute bottom-full mb-2 left-0 bg-white border-2 border-[#1D1D1D] rounded-full p-1 flex gap-1 z-50"
+    >
+      {reactions.map(reaction => (
+        <button
+          key={reaction}
+          onClick={() => {
+            onSelect(reaction);
+            onClose();
+          }}
+          className="w-8 h-8 hover:bg-[#1D1D1D]/5 rounded-full text-lg flex items-center justify-center transition-colors"
+        >
+          {reaction}
+        </button>
+      ))}
+    </motion.div>
+  );
+};
+
+// ── Message Reactions Component ──────────────────────────────────────────
+const MessageReactions = ({ 
+  reactions, 
+  onAddReaction,
+  currentUserId 
+}: { 
+  reactions: MessageReaction[]; 
+  onAddReaction: (reaction: string) => void;
+  currentUserId: string;
+}) => {
+  const [showPicker, setShowPicker] = useState(false);
+  const groupedReactions = reactions.reduce((acc, r) => {
+    acc[r.reaction] = (acc[r.reaction] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const userReaction = reactions.find(r => r.user_id === currentUserId)?.reaction;
+
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      {Object.entries(groupedReactions).map(([reaction, count]) => (
+        <button
+          key={reaction}
+          onClick={() => onAddReaction(reaction)}
+          className={`px-1.5 py-0.5 rounded-full text-[9px] flex items-center gap-0.5 transition-colors border ${
+            userReaction === reaction
+              ? 'bg-[#389C9A]/10 text-[#389C9A] border-[#389C9A]/30'
+              : 'bg-[#1D1D1D]/5 text-[#1D1D1D]/60 hover:bg-[#1D1D1D]/10 border-[#1D1D1D]/10'
+          }`}
+        >
+          <span>{reaction}</span>
+          <span>{count}</span>
+        </button>
+      ))}
+      
+      <button
+        onClick={() => setShowPicker(!showPicker)}
+        className="p-1 rounded-full hover:bg-[#1D1D1D]/10 transition-colors"
+      >
+        <Smile className="w-3 h-3 text-[#1D1D1D]/40" />
+      </button>
+
+      <AnimatePresence>
+        {showPicker && (
+          <ReactionPicker
+            onSelect={(reaction) => {
+              onAddReaction(reaction);
+              setShowPicker(false);
+            }}
+            onClose={() => setShowPicker(false)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ── Message Status Component ───────────────────────────────────────────────
+const MessageStatus = ({ message, isMe }: { message: Message; isMe: boolean }) => {
+  if (!isMe) return null;
+
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      {message.is_read ? (
+        <>
+          <CheckCircle2 className="w-3 h-3 text-[#389C9A]" />
+          <span className="text-[8px] text-[#389C9A]">Read</span>
+        </>
+      ) : message.seen ? (
+        <>
+          <CheckCircle2 className="w-3 h-3 text-blue-400" />
+          <span className="text-[8px] text-blue-400">Delivered</span>
+        </>
+      ) : (
+        <>
+          <Clock className="w-3 h-3 text-[#1D1D1D]/30" />
+          <span className="text-[8px] text-[#1D1D1D]/30">Sent</span>
+        </>
+      )}
+      <span className="text-[8px] text-[#1D1D1D]/20 ml-1">
+        {new Date(message.created_at).toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })}
+      </span>
+    </div>
+  );
+};
+
+// ── User Directory Modal ──────────────────────────────────────────────────
+const UserDirectoryModal = ({ 
+  isOpen, 
+  onClose, 
+  currentUserId,
+  userType,
+  onStartChat 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  currentUserId: string;
+  userType: string;
+  onStartChat: (user: UserDirectoryItem) => void;
+}) => {
+  const [users, setUsers] = useState<UserDirectoryItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'creators' | 'businesses' | 'admin'>('all');
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchUsers();
+      setupPresence();
+    }
+  }, [isOpen, search, filter]);
+
+  const setupPresence = () => {
+    const channel = supabase.channel('online-users')
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const online = new Set<string>();
+        Object.values(state).forEach((presence: any) => {
+          presence.forEach((p: any) => online.add(p.user_id));
+        });
+        setOnlineUsers(online);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const usersList: UserDirectoryItem[] = [];
+
+      // Fetch creators
+      if (filter === 'all' || filter === 'creators') {
+        const { data: creators } = await supabase
+          .from('creator_profiles')
+          .select('user_id, full_name, avatar_url, username, category, followers, verified')
+          .neq('user_id', currentUserId)
+          .ilike('full_name', `%${search}%`)
+          .limit(20);
+
+        if (creators) {
+          creators.forEach(c => {
+            usersList.push({
+              id: c.user_id,
+              user_id: c.user_id,
+              name: c.full_name || 'Creator',
+              email: '',
+              avatar: c.avatar_url,
+              type: 'creator',
+              username: c.username,
+              category: c.category,
+              followers: c.followers,
+              verified: c.verified
+            });
+          });
+        }
+      }
+
+      // Fetch businesses
+      if (filter === 'all' || filter === 'businesses') {
+        const { data: businesses } = await supabase
+          .from('businesses')
+          .select('user_id, business_name, logo_url, industry, verified')
+          .neq('user_id', currentUserId)
+          .ilike('business_name', `%${search}%`)
+          .limit(20);
+
+        if (businesses) {
+          businesses.forEach(b => {
+            usersList.push({
+              id: b.user_id,
+              user_id: b.user_id,
+              name: b.business_name || 'Business',
+              email: '',
+              avatar: b.logo_url,
+              type: 'business',
+              company_name: b.business_name,
+              category: b.industry,
+              verified: b.verified
+            });
+          });
+        }
+      }
+
+      // Fetch admins (for business users)
+      if (userType === 'business' && (filter === 'all' || filter === 'admin')) {
+        const { data: admins } = await supabase
+          .from('admin_profiles')
+          .select('id, full_name, avatar_url')
+          .neq('id', currentUserId)
+          .ilike('full_name', `%${search}%`)
+          .limit(10);
+
+        if (admins) {
+          admins.forEach(a => {
+            usersList.push({
+              id: a.id,
+              user_id: a.id,
+              name: a.full_name || 'Admin',
+              email: '',
+              avatar: a.avatar_url,
+              type: 'admin'
+            });
+          });
+        }
+      }
+
+      setUsers(usersList);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      toast.error('Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white border-2 border-[#1D1D1D] shadow-2xl z-50"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 border-b-2 border-[#1D1D1D] bg-[#F8F8F8]">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-black uppercase tracking-widest italic">Start New Chat</h3>
+                <button
+                  onClick={onClose}
+                  className="p-1 hover:bg-[#1D1D1D]/10 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Search */}
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1D1D1D]/30" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search users..."
+                  className="w-full bg-white border-2 border-[#1D1D1D] pl-10 pr-3 py-2 text-sm focus:outline-none focus:border-[#389C9A] transition-colors"
+                />
+              </div>
+
+              {/* Filters */}
+              <div className="flex gap-2">
+                {['all', 'creators', 'businesses', userType === 'business' ? 'admin' : ''].filter(Boolean).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f as any)}
+                    className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest border-2 border-[#1D1D1D] transition-colors ${
+                      filter === f
+                        ? 'bg-[#1D1D1D] text-white'
+                        : 'bg-white hover:bg-[#1D1D1D]/5'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* User List */}
+            <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
+              {loading ? (
+                <div className="p-12 text-center">
+                  <div className="w-10 h-10 border-2 border-[#1D1D1D] border-t-[#389C9A] rounded-full animate-spin mx-auto mb-4" />
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Loading users...</p>
+                </div>
+              ) : users.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="w-16 h-16 bg-[#F8F8F8] mx-auto mb-4 flex items-center justify-center border-2 border-[#1D1D1D]/10">
+                    <Users className="w-6 h-6 opacity-20" />
+                  </div>
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No users found</p>
+                  <p className="text-[8px] opacity-30 mt-2">Try adjusting your search or filters</p>
+                </div>
+              ) : (
+                users.map((user) => (
+                  <div
+                    key={user.id}
+                    onClick={() => {
+                      onStartChat(user);
+                      onClose();
+                    }}
+                    className="flex items-center gap-4 p-4 border-b border-[#1D1D1D]/10 hover:bg-[#F8F8F8] transition-colors cursor-pointer group"
+                  >
+                    {/* Avatar */}
+                    <div className="relative flex-shrink-0">
+                      <div className="w-12 h-12 border-2 border-[#1D1D1D]/10 overflow-hidden">
+                        {user.avatar ? (
+                          <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-[#F8F8F8] flex items-center justify-center">
+                            {user.type === 'admin' ? (
+                              <Shield className="w-5 h-5 text-purple-600" />
+                            ) : user.type === 'business' ? (
+                              <Building2 className="w-5 h-5 text-[#389C9A]" />
+                            ) : (
+                              <User className="w-5 h-5 text-[#FEDB71]" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {onlineUsers.has(user.user_id) && (
+                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm font-black uppercase tracking-widest truncate">
+                          {user.name}
+                        </p>
+                        {user.verified && (
+                          <CheckCircle2 className="w-3 h-3 text-[#389C9A] flex-shrink-0" />
+                        )}
+                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 flex-shrink-0 ${
+                          user.type === 'admin' ? 'bg-purple-100 text-purple-600' :
+                          user.type === 'business' ? 'bg-[#389C9A]/10 text-[#389C9A]' :
+                          'bg-[#FEDB71]/10 text-[#D4A800]'
+                        }`}>
+                          {user.type}
+                        </span>
+                      </div>
+                      {user.username && (
+                        <p className="text-[9px] opacity-40 mb-1">@{user.username}</p>
+                      )}
+                      {user.category && (
+                        <p className="text-[8px] opacity-30">{user.category}</p>
+                      )}
+                      {user.followers !== undefined && (
+                        <p className="text-[8px] opacity-30">{user.followers.toLocaleString()} followers</p>
+                      )}
+                    </div>
+
+                    {/* Action */}
+                    <button className="p-2 border-2 border-[#1D1D1D] bg-white group-hover:bg-[#1D1D1D] group-hover:text-white transition-colors">
+                      <MessageSquare className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+};
 
 // ── Full Chat Modal ── with proper size
 const ChatModal = ({ 
@@ -90,7 +765,7 @@ const ChatModal = ({
     scrollToBottom();
   }, [messages]);
 
-  // Load messages (same as before)
+  // Load messages
   useEffect(() => {
     if (!isOpen || !participant) return;
 
@@ -127,7 +802,7 @@ const ChatModal = ({
 
     loadMessages();
 
-    // Setup presence (same as before)
+    // Setup presence
     const presenceChannel = supabase.channel('online-users')
       .on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState();
@@ -139,7 +814,7 @@ const ChatModal = ({
       })
       .subscribe();
 
-    // Setup typing indicators (same as before)
+    // Setup typing indicators
     const typingChannel = supabase.channel('typing-indicators')
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.userId === participant.user_id) {
@@ -151,7 +826,7 @@ const ChatModal = ({
       })
       .subscribe();
 
-    // Subscribe to new messages (same as before)
+    // Subscribe to new messages
     const messagesChannel = supabase
       .channel(`messages-${participant.user_id}`)
       .on('postgres_changes', 
@@ -189,7 +864,6 @@ const ChatModal = ({
     };
   }, [isOpen, participant, currentUserId]);
 
-  // Handle typing (same as before)
   const handleTyping = (isTyping: boolean) => {
     if (!participant) return;
 
@@ -210,7 +884,6 @@ const ChatModal = ({
     }
   };
 
-  // Handle file select (same as before)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -223,7 +896,6 @@ const ChatModal = ({
     setAttachment(file);
   };
 
-  // Upload attachment (same as before)
   const uploadAttachment = async (file: File): Promise<string | null> => {
     try {
       const fileExt = file.name.split('.').pop();
@@ -247,7 +919,6 @@ const ChatModal = ({
     }
   };
 
-  // Send message (same as before)
   const sendMessage = async () => {
     if ((!newMessage.trim() && !attachment) || !participant || sending) return;
 
@@ -321,7 +992,6 @@ const ChatModal = ({
     }
   };
 
-  // Add reaction (same as before)
   const addReaction = async (messageId: string, reaction: string) => {
     try {
       const { error } = await supabase
@@ -339,7 +1009,6 @@ const ChatModal = ({
     }
   };
 
-  // Remove reaction (same as before)
   const removeReaction = async (messageId: string, reaction: string) => {
     try {
       const { error } = await supabase
@@ -356,7 +1025,6 @@ const ChatModal = ({
     }
   };
 
-  // Start call (same as before)
   const startCall = async (type: 'audio' | 'video') => {
     try {
       const { data: session, error } = await supabase
@@ -409,7 +1077,7 @@ const ChatModal = ({
     setShowEmojiPicker(false);
   };
 
-  // Message Bubble Component (same as before)
+  // Message Bubble Component
   const MessageBubble = ({ message }: { message: Message }) => {
     const isMe = message.sender_id === currentUserId;
     const [showActions, setShowActions] = useState(false);
@@ -544,7 +1212,6 @@ const ChatModal = ({
 
   if (!isOpen) return null;
 
-  // FIXED: Properly sized chat modal
   return (
     <AnimatePresence>
       {isOpen && (
@@ -818,8 +1485,7 @@ export function AppHeader({
   const location = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
 
-  const { profileType: detectedType } = useProfileType();
-  const userType = userTypeProp ?? detectedType ?? "creator";
+  const userType = userTypeProp ?? (user?.user_metadata?.user_type || "creator");
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -943,7 +1609,7 @@ export function AppHeader({
             toast.info(n.title, { 
               description: n.message, 
               icon: <Phone className="w-4 h-4" />,
-              action: { label: "Answer", onClick: () => handleIncomingCall(n.data) }
+              action: { label: "Answer", onClick: () => console.log('Answer call', n.data) }
             });
           } else if (n.type === "offer") {
             toast.success(n.title, { 
@@ -984,11 +1650,6 @@ export function AppHeader({
     } catch {
       toast.error("Failed to logout");
     }
-  };
-
-  const handleIncomingCall = (callData: any) => {
-    // Handle incoming call - would show call interface
-    console.log('Incoming call:', callData);
   };
 
   const startChatWithUser = (user: UserDirectoryItem) => {
@@ -1116,6 +1777,15 @@ export function AppHeader({
         <div className="flex items-center gap-3 relative">
           {showActions && (
             <>
+              {/* ── New Chat Button ── */}
+              <button
+                onClick={() => setShowUserDirectory(true)}
+                className="p-1.5 hover:bg-[#1D1D1D]/5 transition-colors border-2 border-[#1D1D1D] hidden sm:flex items-center gap-1"
+                title="Start new chat"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-[9px] font-black uppercase tracking-widest">New Chat</span>
+              </button>
 
               {/* ── Messages button ── */}
               <div className="relative">
