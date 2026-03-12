@@ -565,10 +565,7 @@ export function BecomeCreator() {
             </section>
           </motion.div>
         )}
-      </div>
-
-      {/* Fixed Footer Nav */}
-      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-50">
+        <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-50">
         <div className="flex gap-4 max-w-[600px] mx-auto">
           {step > 1 && (
             <button onClick={prevStep} disabled={loading}
@@ -602,5 +599,9 @@ export function BecomeCreator() {
         )}
       </div>
     </div>
-  );
+
+      </div>
+
+      {/* Fixed Footer Nav */}
+        );
 }
