@@ -1,5 +1,6 @@
 import { createBrowserRouter, RouteObject, redirect } from "react-router";
 import { Home } from "./screens/home";
+import { BusinessPublicProfile } from "./screens/business-public-profile";
 import { LoginPortal } from "./screens/login-portal";
 import { CreatorLogin } from "./screens/creator-login";
 import { BusinessLogin } from "./screens/business-login";
@@ -149,10 +150,11 @@ const routes: RouteObject[] = [
       { path: "browse-businesses",              Component: BrowseBusinesses,      loader: requireCreator },
       { path: "gig-accepted",                   Component: GigAccepted,           loader: requireCreator },
       { path: "settings",                       Component: Settings,              loader: requireCreator },
-
+  
       // Business routes
       { path: "business/dashboard",             Component: BusinessDashboard,         loader: requireBusiness },
       { path: "business/profile",               Component: BusinessProfile,           loader: requireAuth },
+      { path: "business/:id",                   Component: BusinessPublicProfile,     loader: requireAuth }
       { path: "business/submission-success",    Component: BusinessSubmissionSuccess, loader: requireBusiness },
       { path: "business/campaign/overview/:id", Component: BusinessCampaignOverview,  loader: requireAuth },
       { path: "business/campaign/:id",          Component: BusinessCampaignCreators,  loader: requireAuth },
