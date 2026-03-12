@@ -11,7 +11,17 @@ const LoadingFallback = () => (
   </div>
 );
 
-createRoot(document.getElementById("root")!).render(
+const rootEl = document.getElementById("root")!;
+
+// Reveal root only after all assets load to prevent FOUC
+const revealRoot = () => rootEl.classList.add("loaded");
+if (document.readyState === "complete") {
+  revealRoot();
+} else {
+  window.addEventListener("load", revealRoot);
+}
+
+createRoot(rootEl).render(
   <AuthProvider>
     <RouterProvider 
       router={router} 
