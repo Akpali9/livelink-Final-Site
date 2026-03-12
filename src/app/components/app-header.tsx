@@ -1777,16 +1777,7 @@ export function AppHeader({
         <div className="flex items-center gap-3 relative">
           {showActions && (
             <>
-              {/* ── New Chat Button ── */}
-              <button
-                onClick={() => setShowUserDirectory(true)}
-                className="p-1.5 hover:bg-[#1D1D1D]/5 transition-colors border-2 border-[#1D1D1D] hidden sm:flex items-center gap-1"
-                title="Start new chat"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="text-[9px] font-black uppercase tracking-widest">New Chat</span>
-              </button>
-
+              
               {/* ── Messages button ── */}
               <div className="relative">
                 <button
@@ -1809,7 +1800,28 @@ export function AppHeader({
                 </button>
 
                 {/* ── Messages Dropdown ── */}
-                <AnimatePresence>
+       
+              </div>
+
+              {/* ── Notifications button ── */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowNotifications(!showNotifications);
+                    setShowMessages(false);
+                    setShowProfileMenu(false);
+                  }}
+                  className="relative p-1.5 hover:bg-[#1D1D1D]/5 transition-colors"
+                  aria-label="Notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadNotifications > 0 && (
+                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </div>
+                  )}
+                </button>
+                         <AnimatePresence>
                   {showMessages && (
                     <>
                       <motion.div
@@ -1933,26 +1945,6 @@ export function AppHeader({
                     </>
                   )}
                 </AnimatePresence>
-              </div>
-
-              {/* ── Notifications button ── */}
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    setShowNotifications(!showNotifications);
-                    setShowMessages(false);
-                    setShowProfileMenu(false);
-                  }}
-                  className="relative p-1.5 hover:bg-[#1D1D1D]/5 transition-colors"
-                  aria-label="Notifications"
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadNotifications > 0 && (
-                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]">
-                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                    </div>
-                  )}
-                </button>
 
                 {/* ── Notifications Dropdown ── */}
                 <AnimatePresence>
