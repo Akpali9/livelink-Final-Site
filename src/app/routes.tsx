@@ -1,5 +1,5 @@
 import { createBrowserRouter, RouteObject, redirect } from "react-router";
-import { Suspense } from "react"; // Add this import
+import { Suspense } from "react";
 import { Home } from "./screens/home";
 import { BusinessPublicProfile } from "./screens/business-public-profile";
 import { LoginPortal } from "./screens/login-portal";
@@ -43,14 +43,14 @@ import { AdminDashboard } from "./screens/admin-dashboard";
 import { EditProfile } from "./screens/edit-profile";
 import { supabase } from "./lib/supabase";
 
-// Add HydrateFallback component
+// Hydrate fallback component
 const HydrateFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-white">
     <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent rounded-full animate-spin" />
   </div>
 );
 
-// Add Suspense wrapper for future lazy loading
+// Suspense wrapper for future lazy loading
 const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
   <Suspense fallback={<HydrateFallback />}>
     {children}
@@ -146,7 +146,7 @@ const routes: RouteObject[] = [
     path: "/",
     Component: RootLayout,
     loader: loadUser,
-    hydrateFallbackElement: <HydrateFallback />, // Add this line
+    hydrateFallbackElement: <HydrateFallback />,
     children: [
       { 
         index: true, 
