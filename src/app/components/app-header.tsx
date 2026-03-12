@@ -111,12 +111,13 @@ interface UserDirectoryItem {
 
 interface Notification {
   id: string;
+  user_id: string;
+  type: "offer" | "campaign" | "payment" | "system" | "message" | "call";
   title: string;
   message: string;
-  type: "offer" | "campaign" | "payment" | "system" | "message" | "call";
   is_read: boolean;
-  created_at: string;
   data?: any;
+  created_at: string;
 }
 
 interface Conversation {
@@ -246,13 +247,13 @@ async function resolveParticipant(userId: string): Promise<UserProfile> {
   // Check creator
   const { data: creator } = await supabase
     .from("creator_profiles")
-    .select("id, full_name, avatar_url, username")
+    .select("user_id, full_name, avatar_url, username")
     .eq("user_id", userId)
     .maybeSingle();
   if (creator) {
     return { 
-      id: creator.id,
-      user_id: userId,
+      id: creator.user_id,
+      user_id: creator.user_id,
       name: creator.full_name || "Creator", 
       avatar: creator.avatar_url || "", 
       type: "creator",
@@ -264,14 +265,15 @@ async function resolveParticipant(userId: string): Promise<UserProfile> {
   // Check business
   const { data: business } = await supabase
     .from("businesses")
-    .select("id, business_name, logo_url")
+    .select("user_id, business_name, logo_url, contact_name")
     .eq("user_id", userId)
     .maybeSingle();
+    
   if (business) {
     return { 
-      id: business.id,
-      user_id: userId,
-      name: business.business_name || "Business", 
+      id: business.user_id,
+      user_id: business.user_id,
+      name: business.business_name || business.contact_name || "Business", 
       avatar: business.logo_url || "", 
       type: "business",
       email: '',
@@ -283,7 +285,7 @@ async function resolveParticipant(userId: string): Promise<UserProfile> {
   return { 
     id: userId,
     user_id: userId,
-    name: "Unknown", 
+    name: "User", 
     avatar: "", 
     type: "creator",
     email: ''
@@ -543,7 +545,7 @@ const UserDirectoryModal = ({
         }
       }
 
-      // Fetch admins (for business users)
+      // Fetch admins
       if (userType === 'business' && (filter === 'all' || filter === 'admin')) {
         const { data: admins } = await supabase
           .from('admin_profiles')
@@ -727,7 +729,7 @@ const UserDirectoryModal = ({
   );
 };
 
-// ── Full Chat Modal ── with proper size
+// ── Chat Modal Component ──────────────────────────────────────────────────
 const ChatModal = ({ 
   isOpen, 
   onClose, 
@@ -750,7 +752,6 @@ const ChatModal = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [online, setOnline] = useState(false);
   const [typing, setTyping] = useState(false);
-  const [activeCall, setActiveCall] = useState<CallSession | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -766,120 +767,118 @@ const ChatModal = ({
   }, [messages]);
 
   // Load messages
-  useEffect(() => {
-    if (!isOpen || !participant) return;
-
-   const loadMessages = async () => {
-  if (!participant) return;
-  
-  setLoading(true);
-  try {
-    // Find the conversation
-    const participantIds = [currentUserId, participant.user_id].sort();
+  const loadMessages = async () => {
+    if (!participant) return;
     
-    const { data: convs } = await supabase
-      .from('conversations')
-      .select('id')
-      .contains('participant_ids', participantIds);
+    setLoading(true);
+    try {
+      // Find the conversation
+      const { data: convs } = await supabase
+        .from('conversations')
+        .select('id')
+        .or(`and(participant1_id.eq.${currentUserId},participant2_id.eq.${participant.user_id}),and(participant1_id.eq.${participant.user_id},participant2_id.eq.${currentUserId})`);
 
-    if (!convs || convs.length === 0) {
-      setMessages([]);
+      if (!convs || convs.length === 0) {
+        setMessages([]);
+        setLoading(false);
+        return;
+      }
+
+      const conversationId = convs[0].id;
+
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          reactions:message_reactions(*)
+        `)
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setMessages(data || []);
+
+      // Mark messages as read
+      await supabase
+        .from('messages')
+        .update({ is_read: true, seen: true, read_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+        .eq('receiver_id', currentUserId)
+        .eq('is_read', false);
+
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      toast.error('Failed to load messages');
+    } finally {
       setLoading(false);
-      return;
     }
+  };
 
-    const conversationId = convs[0].id;
+  useEffect(() => {
+    if (isOpen && participant) {
+      loadMessages();
+      
+      // Setup presence
+      const presenceChannel = supabase.channel('online-users')
+        .on('presence', { event: 'sync' }, () => {
+          const state = presenceChannel.presenceState();
+          const online = new Set<string>();
+          Object.values(state).forEach((presence: any) => {
+            presence.forEach((p: any) => online.add(p.user_id));
+          });
+          setOnline(online.has(participant.user_id));
+        })
+        .subscribe();
 
-    const { data, error } = await supabase
-      .from('messages')
-      .select(`
-        *,
-        reactions:message_reactions(*)
-      `)
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-    setMessages(data || []);
-
-    // Mark messages as read
-    await supabase
-      .from('messages')
-      .update({ is_read: true, seen: true, read_at: new Date().toISOString() })
-      .eq('conversation_id', conversationId)
-      .eq('receiver_id', currentUserId)
-      .eq('is_read', false);
-
-  } catch (error) {
-    console.error('Error loading messages:', error);
-    toast.error('Failed to load messages');
-  } finally {
-    setLoading(false);
-  }
-};
-
-    loadMessages();
-
-    // Setup presence
-    const presenceChannel = supabase.channel('online-users')
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        const online = new Set<string>();
-        Object.values(state).forEach((presence: any) => {
-          presence.forEach((p: any) => online.add(p.user_id));
-        });
-        setOnline(online.has(participant.user_id));
-      })
-      .subscribe();
-
-    // Setup typing indicators
-    const typingChannel = supabase.channel('typing-indicators')
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        if (payload.userId === participant.user_id) {
-          setTyping(payload.isTyping);
-          if (payload.isTyping) {
-            setTimeout(() => setTyping(false), 3000);
-          }
-        }
-      })
-      .subscribe();
-
-    // Subscribe to new messages
-    const messagesChannel = supabase
-      .channel(`messages-${participant.user_id}`)
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'messages' }, 
-        (payload) => {
-          const newMsg = payload.new as Message;
-          if (newMsg.sender_id === participant.user_id || newMsg.receiver_id === participant.user_id) {
-            setMessages(prev => [...prev, newMsg]);
-            
-            // Mark as read if received
-            if (newMsg.sender_id === participant.user_id) {
-              supabase
-                .from('messages')
-                .update({ is_read: true, seen: true })
-                .eq('id', newMsg.id);
+      // Setup typing indicators
+      const typingChannel = supabase.channel('typing-indicators')
+        .on('broadcast', { event: 'typing' }, ({ payload }) => {
+          if (payload.userId === participant.user_id) {
+            setTyping(payload.isTyping);
+            if (payload.isTyping) {
+              setTimeout(() => setTyping(false), 3000);
             }
           }
-        }
-      )
-      .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'messages' },
-        (payload) => {
-          const updatedMsg = payload.new as Message;
-          setMessages(prev => 
-            prev.map(msg => msg.id === updatedMsg.id ? updatedMsg : msg)
-          );
-        }
-      )
-      .subscribe();
+        })
+        .subscribe();
 
-    return () => {
-      supabase.removeChannel(presenceChannel);
-      supabase.removeChannel(typingChannel);
-      supabase.removeChannel(messagesChannel);
-    };
+      // Subscribe to new messages
+      const messagesChannel = supabase
+        .channel(`messages-${participant.user_id}`)
+        .on('postgres_changes', 
+          { event: 'INSERT', schema: 'public', table: 'messages' }, 
+          (payload) => {
+            const newMsg = payload.new as Message;
+            if (newMsg.sender_id === participant.user_id || newMsg.receiver_id === participant.user_id) {
+              setMessages(prev => [...prev, newMsg]);
+              
+              // Mark as read if received
+              if (newMsg.sender_id === participant.user_id) {
+                supabase
+                  .from('messages')
+                  .update({ is_read: true, seen: true })
+                  .eq('id', newMsg.id);
+              }
+            }
+          }
+        )
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'messages' },
+          (payload) => {
+            const updatedMsg = payload.new as Message;
+            setMessages(prev => 
+              prev.map(msg => msg.id === updatedMsg.id ? updatedMsg : msg)
+            );
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(presenceChannel);
+        supabase.removeChannel(typingChannel);
+        supabase.removeChannel(messagesChannel);
+      };
+    }
   }, [isOpen, participant, currentUserId]);
 
   const handleTyping = (isTyping: boolean) => {
@@ -937,127 +936,128 @@ const ChatModal = ({
     }
   };
 
- const sendMessage = async () => {
-  if ((!newMessage.trim() && !attachment) || !participant || sending) return;
+  const sendMessage = async () => {
+    if ((!newMessage.trim() && !attachment) || !participant || sending) return;
 
-  setSending(true);
+    setSending(true);
 
-  try {
-    // Check if conversation exists
-    const { data: existingConvs } = await supabase
-      .from('conversations')
-      .select('id')
-      .or(`and(participant1_id.eq.${currentUserId},participant2_id.eq.${participant.user_id}),and(participant1_id.eq.${participant.user_id},participant2_id.eq.${currentUserId})`)
-      .maybeSingle();
-
-    let conversationId;
-
-    if (existingConvs) {
-      conversationId = existingConvs.id;
-    } else {
-      // Create new conversation
-      const { data: newConv, error: convError } = await supabase
+    try {
+      // Check if conversation exists
+      const { data: existingConvs } = await supabase
         .from('conversations')
+        .select('id')
+        .or(`and(participant1_id.eq.${currentUserId},participant2_id.eq.${participant.user_id}),and(participant1_id.eq.${participant.user_id},participant2_id.eq.${currentUserId})`)
+        .maybeSingle();
+
+      let conversationId;
+
+      if (existingConvs) {
+        conversationId = existingConvs.id;
+      } else {
+        // Create new conversation
+        const { data: newConv, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            participant1_id: currentUserId,
+            participant2_id: participant.user_id,
+            last_message_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (convError) throw convError;
+        conversationId = newConv.id;
+      }
+
+      // Upload attachment if exists
+      let attachmentUrl = null;
+      let attachmentType = null;
+      let attachmentName = null;
+      let attachmentSize = null;
+
+      if (attachment) {
+        attachmentUrl = await uploadAttachment(attachment);
+        attachmentType = attachment.type.startsWith('image/') ? 'image' : 
+                        attachment.type.startsWith('video/') ? 'video' :
+                        attachment.type.startsWith('audio/') ? 'audio' : 'file';
+        attachmentName = attachment.name;
+        attachmentSize = attachment.size;
+      }
+
+      const now = new Date().toISOString();
+
+      // Insert message
+      const { error: msgError } = await supabase
+        .from('messages')
         .insert({
-          participant1_id: currentUserId,
-          participant2_id: participant.user_id,
-          last_message_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+          conversation_id: conversationId,
+          sender_id: currentUserId,
+          receiver_id: participant.user_id,
+          content: newMessage,
+          sender_name: 'You',
+          sender_type: userType,
+          is_read: false,
+          seen: false,
+          created_at: now,
+          attachment_url: attachmentUrl,
+          attachment_type: attachmentType,
+          attachment_name: attachmentName,
+          attachment_size: attachmentSize,
+          reply_to_id: replyingTo?.id
+        });
 
-      if (convError) throw convError;
-      conversationId = newConv.id;
-    }
+      if (msgError) throw msgError;
 
-    // Upload attachment if exists
-    let attachmentUrl = null;
-    let attachmentType = null;
-    let attachmentName = null;
-    let attachmentSize = null;
+      // Update conversation's last_message_at
+      await supabase
+        .from('conversations')
+        .update({ last_message_at: now })
+        .eq('id', conversationId);
 
-    if (attachment) {
-      attachmentUrl = await uploadAttachment(attachment);
-      attachmentType = attachment.type.startsWith('image/') ? 'image' : 
-                      attachment.type.startsWith('video/') ? 'video' :
-                      attachment.type.startsWith('audio/') ? 'audio' : 'file';
-      attachmentName = attachment.name;
-      attachmentSize = attachment.size;
-    }
+      // Create notification for the receiver
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: participant.user_id,
+          type: 'message',
+          title: 'New Message',
+          message: `${userType === 'business' ? 'Business' : 'Creator'} sent you a message`,
+          data: { conversation_id: conversationId, sender_id: currentUserId }
+        });
 
-    const now = new Date().toISOString();
-
-    // Insert message
-    const { error: msgError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
+      // Optimistic update
+      const optimisticMessage: Message = {
+        id: `temp-${Date.now()}`,
         sender_id: currentUserId,
         receiver_id: participant.user_id,
         content: newMessage,
         sender_name: 'You',
-        sender_type: userType,
+        sender_type: userType as any,
+        created_at: now,
         is_read: false,
         seen: false,
-        created_at: now,
-        attachment_url: attachmentUrl,
-        attachment_type: attachmentType,
-        attachment_name: attachmentName,
-        attachment_size: attachmentSize,
-        reply_to_id: replyingTo?.id
-      });
+        reactions: [],
+        reply_to_id: replyingTo?.id,
+        attachment_url: attachmentUrl || undefined,
+        attachment_type: attachmentType as any,
+        attachment_name: attachmentName || undefined,
+        attachment_size: attachmentSize || undefined
+      };
 
-    if (msgError) throw msgError;
+      setMessages(prev => [...prev, optimisticMessage]);
+      setNewMessage('');
+      setAttachment(null);
+      setReplyingTo(null);
+      handleTyping(false);
 
-    // Update conversation's last_message_at
-    await supabase
-      .from('conversations')
-      .update({ last_message_at: now, updated_at: now })
-      .eq('id', conversationId);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Failed to send message');
+    } finally {
+      setSending(false);
+    }
+  };
 
-    // Create notification for the receiver
-    await supabase
-      .from('notifications')
-      .insert({
-        user_id: participant.user_id,
-        type: 'message',
-        title: 'New Message',
-        message: `${userType === 'business' ? 'Business' : 'Creator'} sent you a message`,
-        data: { conversation_id: conversationId, sender_id: currentUserId }
-      });
-
-    // Optimistic update
-    const optimisticMessage: Message = {
-      id: `temp-${Date.now()}`,
-      sender_id: currentUserId,
-      receiver_id: participant.user_id,
-      content: newMessage,
-      sender_name: 'You',
-      sender_type: userType as any,
-      created_at: now,
-      is_read: false,
-      seen: false,
-      reactions: [],
-      reply_to_id: replyingTo?.id,
-      attachment_url: attachmentUrl || undefined,
-      attachment_type: attachmentType as any,
-      attachment_name: attachmentName || undefined,
-      attachment_size: attachmentSize || undefined
-    };
-
-    setMessages(prev => [...prev, optimisticMessage]);
-    setNewMessage('');
-    setAttachment(null);
-    setReplyingTo(null);
-    handleTyping(false);
-
-  } catch (error) {
-    console.error('Error sending message:', error);
-    toast.error('Failed to send message');
-  } finally {
-    setSending(false);
-  }
-};
   const addReaction = async (messageId: string, reaction: string) => {
     try {
       const { error } = await supabase
@@ -1088,46 +1088,6 @@ const ChatModal = ({
     } catch (error) {
       console.error('Error removing reaction:', error);
       toast.error('Failed to remove reaction');
-    }
-  };
-
-  const startCall = async (type: 'audio' | 'video') => {
-    try {
-      const { data: session, error } = await supabase
-        .from('call_sessions')
-        .insert({
-          room_id: `call-${Date.now()}`,
-          participants: [{
-            user_id: currentUserId,
-            name: 'You',
-            joined_at: new Date().toISOString(),
-            audio_enabled: true,
-            video_enabled: type === 'video'
-          }],
-          started_at: new Date().toISOString(),
-          status: 'ringing',
-          type
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: participant.user_id,
-          type: 'call',
-          title: `Incoming ${type} call`,
-          message: `${userType === 'business' ? 'Business' : 'Creator'} is calling you`,
-          data: { call_id: session.id, type }
-        });
-
-      setActiveCall(session);
-      toast.success(`Calling ${participant.name}...`);
-    } catch (error) {
-      console.error('Error starting call:', error);
-      toast.error('Failed to start call');
     }
   };
 
@@ -1282,7 +1242,6 @@ const ChatModal = ({
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1290,8 +1249,6 @@ const ChatModal = ({
             className="fixed inset-0 bg-black/50 z-50"
             onClick={onClose}
           />
-          
-          {/* Modal - properly sized */}
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1310,7 +1267,6 @@ const ChatModal = ({
                   <ChevronRight className="w-4 h-4" />
                 </button>
 
-                {/* Avatar */}
                 <div className="relative">
                   <div className="w-10 h-10 border-2 border-[#1D1D1D]/10 overflow-hidden">
                     {participant.avatar ? (
@@ -1332,7 +1288,6 @@ const ChatModal = ({
                   )}
                 </div>
 
-                {/* Info */}
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-black uppercase tracking-widest text-sm">{participant.name}</h3>
@@ -1350,17 +1305,16 @@ const ChatModal = ({
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => startCall('audio')}
+                  onClick={() => {}}
                   className="p-2 hover:bg-[#1D1D1D]/10 transition-colors"
                   title="Voice call"
                 >
                   <Phone className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => startCall('video')}
+                  onClick={() => {}}
                   className="p-2 hover:bg-[#1D1D1D]/10 transition-colors"
                   title="Video call"
                 >
@@ -1396,7 +1350,6 @@ const ChatModal = ({
                 ))
               )}
               
-              {/* Typing indicator */}
               {typing && (
                 <div className="flex justify-start">
                   <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] px-4 py-3">
@@ -1412,7 +1365,6 @@ const ChatModal = ({
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Reply indicator */}
             <AnimatePresence>
               {replyingTo && (
                 <motion.div
@@ -1438,9 +1390,7 @@ const ChatModal = ({
               )}
             </AnimatePresence>
 
-            {/* Input */}
             <div className="p-4 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
-              {/* Attachment preview */}
               {attachment && (
                 <div className="mb-3 p-3 bg-white border-2 border-[#1D1D1D]/10 flex items-center gap-3">
                   {attachment.type.startsWith('image/') ? (
@@ -1584,26 +1534,93 @@ export function AppHeader({
   // Fetch notifications
   const fetchNotifications = async () => {
     if (!user) return;
-    const { count } = await supabase
-      .from("notifications")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("is_read", false);
-    setUnreadNotifications(count || 0);
+    try {
+      const { count, error: countError } = await supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false);
 
-    const { data } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(5);
-    if (data) setNotifications(data);
+      if (countError) throw countError;
+      setUnreadNotifications(count || 0);
+
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      if (data) setNotifications(data);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
   };
 
   // Fetch conversations
-  // Replace the fetchRecentConversations function with this:
+  const fetchRecentConversations = async () => {
+    if (!user) return;
 
-fetchRecentConversations
+    try {
+      const { data: convs, error } = await supabase
+        .from("conversations")
+        .select(`
+          *,
+          messages:messages(
+            id, 
+            content, 
+            created_at, 
+            sender_id, 
+            receiver_id, 
+            is_read, 
+            seen,
+            reactions:message_reactions(*)
+          )
+        `)
+        .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
+        .order("last_message_at", { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      if (!convs) return;
+
+      let totalUnread = 0;
+      const formatted = await Promise.all(
+        convs.map(async (conv: any) => {
+          const otherId = conv.participant1_id === user.id 
+            ? conv.participant2_id 
+            : conv.participant1_id;
+
+          const other = await resolveParticipant(otherId);
+
+          const msgs = conv.messages || [];
+          const lastMsg = msgs[msgs.length - 1];
+          const unread = msgs.filter(
+            (m: any) => m.sender_id !== user.id && !m.is_read
+          ).length;
+          totalUnread += unread;
+
+          return {
+            id: conv.id,
+            participant1_id: conv.participant1_id,
+            participant2_id: conv.participant2_id,
+            last_message_at: conv.last_message_at,
+            created_at: conv.created_at,
+            other_participant: other,
+            last_message: lastMsg,
+            unread_count: unread
+          };
+        })
+      );
+
+      setRecentConversations(formatted);
+      setUnreadMessages(totalUnread);
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
@@ -1659,7 +1676,7 @@ fetchRecentConversations
       notifSub.unsubscribe();
       msgSub.unsubscribe();
     };
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, navigate]);
 
   const handleLogout = async () => {
     try {
@@ -1799,8 +1816,17 @@ fetchRecentConversations
         <div className="flex items-center gap-3 relative">
           {showActions && (
             <>
-              
-              {/* ── Messages button ── */}
+              {/* New Chat Button */}
+              <button
+                onClick={() => setShowUserDirectory(true)}
+                className="p-1.5 hover:bg-[#1D1D1D]/5 transition-colors border-2 border-[#1D1D1D] hidden sm:flex items-center gap-1"
+                title="Start new chat"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-[9px] font-black uppercase tracking-widest">New Chat</span>
+              </button>
+
+              {/* Messages button */}
               <div className="relative">
                 <button
                   onClick={() => {
@@ -1821,29 +1847,8 @@ fetchRecentConversations
                   )}
                 </button>
 
-                {/* ── Messages Dropdown ── */}
-       
-              </div>
-
-              {/* ── Notifications button ── */}
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    setShowNotifications(!showNotifications);
-                    setShowMessages(false);
-                    setShowProfileMenu(false);
-                  }}
-                  className="relative p-1.5 hover:bg-[#1D1D1D]/5 transition-colors"
-                  aria-label="Notifications"
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadNotifications > 0 && (
-                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]">
-                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                    </div>
-                  )}
-                </button>
-                         <AnimatePresence>
+                {/* Messages Dropdown */}
+                <AnimatePresence>
                   {showMessages && (
                     <>
                       <motion.div
@@ -1967,8 +1972,28 @@ fetchRecentConversations
                     </>
                   )}
                 </AnimatePresence>
+              </div>
 
-                {/* ── Notifications Dropdown ── */}
+              {/* Notifications button */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowNotifications(!showNotifications);
+                    setShowMessages(false);
+                    setShowProfileMenu(false);
+                  }}
+                  className="relative p-1.5 hover:bg-[#1D1D1D]/5 transition-colors"
+                  aria-label="Notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadNotifications > 0 && (
+                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </div>
+                  )}
+                </button>
+
+                {/* Notifications Dropdown */}
                 <AnimatePresence>
                   {showNotifications && (
                     <>
@@ -2053,7 +2078,7 @@ fetchRecentConversations
             </>
           )}
 
-          {/* ── Profile Menu ── */}
+          {/* Profile Menu */}
           <div className="relative ml-1">
             <button
               onClick={() => {
@@ -2174,7 +2199,16 @@ fetchRecentConversations
                         )}
                       </Link>
 
-                      
+                      {!isAdmin && (
+                        <Link
+                          to={settingsPath}
+                          onClick={() => setShowProfileMenu(false)}
+                          className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white flex items-center gap-3 transition-colors"
+                        >
+                          <Settings className="w-3.5 h-3.5 text-[#389C9A]" /> Settings
+                        </Link>
+                      )}
+
                       <button
                         onClick={handleLogout}
                         className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white text-red-500 flex items-center gap-3 transition-colors"
