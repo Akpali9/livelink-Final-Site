@@ -1,253 +1,295 @@
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router";
-import { motion } from "framer-motion";
-import {
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  Globe,
-  Instagram,
-  Twitter,
-  Youtube,
-  Video,
-  ChevronLeft,
-  CheckCircle2,
-  Loader2,
-  Users,
-  Eye,
-  EyeOff,
-  X,
-  ArrowRight,
-  Info,
-  LogIn,
-  Upload,
-  AlertCircle,
-} from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router";
 import { supabase } from "../lib/supabase";
-import { toast } from "sonner";
 import { useAuth } from "../lib/contexts/AuthContext";
-
-const PLATFORMS = ["Twitch", "YouTube", "TikTok", "Instagram", "Twitter", "Facebook", "Kick", "Rumble"];
-const NICHES = ["Gaming", "Beauty", "Fashion", "Fitness", "Tech", "Comedy", "Music", "Education", "Travel", "Food", "Sports", "Business"];
-const TOTAL_STEPS = 5;
+import { toast } from "sonner";
 
 export function BecomeCreator() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [step, setStep] = useState(1);
+  // Form state
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState(user?.email || "");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [bio, setBio] = useState("");
+  const [avgConcurrent, setAvgConcurrent] = useState<number>(0);
+  const [followersCount, setFollowersCount] = useState<number>(0);
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  const [bannerPicture, setBannerPicture] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
 
-  const [formData, setFormData] = useState({
-    fullName: "",
-    username: "",
-    email: user?.email || "",
-    phone: "",
-    location: "",
-    bio: "",
-    password: "",
-    platforms: [] as string[],
-    niches: [] as string[],
-    followers: "",
-    avgViewers: "",
-    instagram: "",
-    twitter: "",
-    youtube: "",
-    tiktok: "",
-    website: "",
-    agreeToTerms: false,
-  });
+  // Platforms options
+  const platformOptions = ["YouTube", "Instagram", "TikTok", "Twitch", "Facebook", "Twitter"];
 
-  const update = (field: string, value: any) =>
-    setFormData(prev => ({ ...prev, [field]: value }));
+  // Handle file upload to Supabase Storage
+  const uploadFile = async (file: File, path: string) => {
+    const { data, error } = await supabase.storage
+      .from("creator-assets")
+      .upload(path, file, { upsert: true });
 
-  const togglePlatform = (p: string) =>
-    update("platforms", formData.platforms.includes(p)
-      ? formData.platforms.filter(x => x !== p)
-      : [...formData.platforms, p]);
-
-  const toggleNiche = (n: string) =>
-    update("niches", formData.niches.includes(n)
-      ? formData.niches.filter(x => x !== n)
-      : [...formData.niches, n]);
-
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { toast.error("Image must be less than 2MB"); return; }
-    setAvatarFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setAvatarPreview(reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  const removeAvatar = () => { setAvatarFile(null); setAvatarPreview(null); };
-
-  const uploadAvatar = async (): Promise<string | null> => {
-    if (!avatarFile || !user) return null;
-    try {
-      const fileExt = avatarFile.name.split('.').pop();
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-      const filePath = `creator-avatars/${fileName}`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile);
-      if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-      return data?.publicUrl ?? null;
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
+    if (error) {
+      console.error("Upload error:", error);
+      toast.error("Failed to upload file");
       return null;
     }
-  };
 
-  const validateStep = () => {
-    switch (step) {
-      case 1: return formData.fullName.trim() && formData.username.trim();
-      case 2: return formData.password.length >= 8;
-      case 3: return formData.platforms.length > 0 && formData.niches.length > 0;
-      case 4: return true;
-      case 5: return formData.agreeToTerms;
-      default: return true;
+    // Get public URL
+    const { publicUrl, error: urlError } = supabase.storage
+      .from("creator-assets")
+      .getPublicUrl(path);
+
+    if (urlError) {
+      console.error("URL error:", urlError);
+      toast.error("Failed to get file URL");
+      return null;
     }
+
+    return publicUrl;
   };
 
-  const nextStep = () => {
-    if (!validateStep()) return;
-    setStep(s => Math.min(s + 1, TOTAL_STEPS));
-    window.scrollTo(0, 0);
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  const prevStep = () => {
-    setStep(s => Math.max(s - 1, 1));
-    window.scrollTo(0, 0);
-  };
-
-  const handleSubmit = async () => {
-    if (!formData.fullName || !formData.username || formData.password.length < 8) {
-      toast.error("Please fill all required fields and ensure password is 8+ characters");
+    if (!user) {
+      toast.error("You must be logged in to become a creator");
+      navigate("/login/portal");
       return;
     }
+
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (!fullName || !username || !bio) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    if (platforms.length === 0) {
+      toast.error("Select at least one platform");
+      return;
+    }
+
     setLoading(true);
+
     try {
-      if (user) {
-        const avatarUrl = await uploadAvatar();
-        const creatorProfileData = {
-          user_id: user.id,
-          full_name: formData.fullName,
-          username: formData.username,
-          email: formData.email,
-          phone: formData.phone || null,
-          location: formData.location || null,
-          bio: formData.bio || null,
-          password: formData.password,
-          avatar_url: avatarUrl,
-          platforms: formData.platforms,
-          niches: formData.niches,
-          social_links: {
-            instagram: formData.instagram || null,
-            twitter: formData.twitter || null,
-            youtube: formData.youtube || null,
-            tiktok: formData.tiktok || null,
-            website: formData.website || null
-          },
-          stats: {
-            followers: formData.followers ? parseInt(formData.followers) : 0,
-            avgViewers: formData.avgViewers ? parseInt(formData.avgViewers) : 0
-          },
-          verified: false,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        await supabase.from("creator_profiles").insert(creatorProfileData);
-        await supabase.auth.updateUser({
-          data: { user_type: 'creator', full_name: formData.fullName, avatar_url: avatarUrl }
-        }).catch(e => console.error("Auth update error:", e));
+      // Upload profile and banner pictures
+      let profileUrl = null;
+      let bannerUrl = null;
+
+      if (profilePicture) {
+        profileUrl = await uploadFile(profilePicture, `profile_pictures/${user.id}`);
       }
-      setIsSubmitted(true);
-      window.scrollTo(0, 0);
-    } catch (error) {
-      console.error("Submission error:", error);
-      setIsSubmitted(true);
-      window.scrollTo(0, 0);
+
+      if (bannerPicture) {
+        bannerUrl = await uploadFile(bannerPicture, `banner_pictures/${user.id}`);
+      }
+
+      // Insert into creator_profiles table
+      const { data, error } = await supabase
+        .from("creator_profiles")
+        .upsert({
+          user_id: user.id,
+          full_name: fullName,
+          username,
+          email,
+          bio,
+          avg_concurrent: avgConcurrent,
+          followers_count: followersCount,
+          platforms,
+          profile_picture: profileUrl,
+          banner_picture: bannerUrl,
+          password, // optional: store hashed password if needed
+          created_at: new Date().toISOString(),
+        })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      toast.success("Creator profile successfully created!");
+      navigate("/browse"); // Redirect to Browse page
+    } catch (err) {
+      console.error("Error creating profile:", err);
+      toast.error("Failed to create creator profile");
     } finally {
       setLoading(false);
     }
   };
 
-  const stepLabels = ["Profile", "Password", "Niches", "Socials", "Review"];
-
-  if (isSubmitted) {
-    return (
-      <div className="flex flex-col min-h-screen bg-white items-center justify-center px-8 text-[#1D1D1D]">
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center max-w-md w-full">
-          <div className="w-24 h-24 bg-[#1D1D1D] border-2 border-[#FEDB71] flex items-center justify-center mx-auto mb-8 shadow-2xl">
-            <CheckCircle2 className="w-12 h-12 text-[#389C9A]" />
-          </div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter italic mb-4">Application Submitted!</h1>
-          <p className="text-[#1D1D1D]/60 mb-6 text-sm leading-relaxed italic">
-            Thank you for registering as a creator on LiveLink. Your application is being reviewed.
-          </p>
-          <div className="flex flex-col gap-3">
-            <button onClick={() => navigate("/login/portal")} className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-none italic flex items-center justify-center gap-2">
-              <LogIn className="w-4 h-4" /> Go to Login Portal
-            </button>
-            <Link to="/" className="w-full border-2 border-[#1D1D1D] text-[#1D1D1D] px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-none italic text-center block">
-              Return to Homepage
-            </Link>
-          </div>
-        </motion.div>
-      </div>
+  // Handle platform toggle
+  const togglePlatform = (platform: string) => {
+    setPlatforms(prev => 
+      prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]
     );
-  }
+  };
 
   return (
-    <div className="flex flex-col min-h-screen bg-white pb-32 text-[#1D1D1D]">
+    <div className="min-h-screen bg-[#FDFDFD] flex items-center justify-center py-10 px-4">
+      <form 
+        onSubmit={handleSubmit} 
+        className="w-full max-w-xl bg-white border-2 border-[#1D1D1D] rounded-xl p-8 flex flex-col gap-6"
+      >
+        <h2 className="text-2xl font-black uppercase tracking-tight text-[#1D1D1D]">Become a Creator</h2>
 
-      {/* Header */}
-      <div className="px-8 pt-12 pb-8 border-b-2 border-[#1D1D1D]">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest mb-6 opacity-40 italic">
-          <ChevronLeft className="w-4 h-4" /> Back
+        {/* Full Name */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Full Name*</label>
+          <input
+            type="text"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            className="border-2 border-[#1D1D1D] p-3 rounded-md outline-none"
+            placeholder="John Doe"
+            required
+          />
+        </div>
+
+        {/* Username */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Username*</label>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="border-2 border-[#1D1D1D] p-3 rounded-md outline-none"
+            placeholder="john_doe"
+            required
+          />
+        </div>
+
+        {/* Email */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Email*</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="border-2 border-[#1D1D1D] p-3 rounded-md outline-none bg-gray-100 cursor-not-allowed"
+            disabled
+          />
+        </div>
+
+        {/* Password */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Password*</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="border-2 border-[#1D1D1D] p-3 rounded-md outline-none"
+            placeholder="Enter a strong password"
+            required
+          />
+        </div>
+
+        {/* Confirm Password */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Confirm Password*</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className="border-2 border-[#1D1D1D] p-3 rounded-md outline-none"
+            placeholder="Re-enter password"
+            required
+          />
+        </div>
+
+        {/* Bio */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Bio*</label>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            className="border-2 border-[#1D1D1D] p-3 rounded-md outline-none"
+            placeholder="Tell us about yourself..."
+            rows={4}
+            required
+          />
+        </div>
+
+        {/* Avg Concurrent Viewers */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Average Concurrent Viewers</label>
+          <input
+            type="number"
+            value={avgConcurrent}
+            onChange={(e) => setAvgConcurrent(Number(e.target.value))}
+            className="border-2 border-[#1D1D1D] p-3 rounded-md outline-none"
+            placeholder="1000"
+          />
+        </div>
+
+        {/* Followers Count */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Followers Count</label>
+          <input
+            type="number"
+            value={followersCount}
+            onChange={(e) => setFollowersCount(Number(e.target.value))}
+            className="border-2 border-[#1D1D1D] p-3 rounded-md outline-none"
+            placeholder="5000"
+          />
+        </div>
+
+        {/* Platforms */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Platforms*</label>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {platformOptions.map(platform => (
+              <button
+                type="button"
+                key={platform}
+                onClick={() => togglePlatform(platform)}
+                className={`px-4 py-2 border-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
+                  platforms.includes(platform)
+                    ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
+                    : "bg-white text-[#1D1D1D]/80 border-[#1D1D1D]/20 hover:border-[#1D1D1D]"
+                }`}
+              >
+                {platform}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Profile Picture */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Profile Picture</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setProfilePicture(e.target.files?.[0] || null)}
+          />
+        </div>
+
+        {/* Banner Picture */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-black uppercase tracking-widest">Banner Picture</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setBannerPicture(e.target.files?.[0] || null)}
+          />
+        </div>
+
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={loading}
+          className={`mt-4 py-3 rounded-xl font-black uppercase tracking-widest transition-all ${
+            loading ? "bg-gray-400 cursor-not-allowed" : "bg-[#1D1D1D] text-white hover:bg-[#389C9A]"
+          }`}
+        >
+          {loading ? "Submitting..." : "Create Profile"}
         </button>
-        <h1 className="text-4xl font-black uppercase tracking-tighter italic leading-tight mb-2">Become a Creator on LiveLink</h1>
-      </div>
-
-      {/* Progress Bar */}
-      <div className="px-8 py-6 bg-[#F8F8F8] border-b border-[#1D1D1D]/10 sticky top-0 z-30 flex justify-between items-center overflow-x-auto whitespace-nowrap gap-4">
-        {stepLabels.map((label, i) => {
-          const s = i + 1;
-          return (
-            <div key={s} className="flex items-center gap-2">
-              <div className={`w-8 h-8 flex items-center justify-center text-[10px] font-black transition-all border-2 ${
-                step === s ? 'bg-[#1D1D1D] text-white border-[#1D1D1D]'
-                : step > s ? 'bg-[#389C9A] text-white border-[#389C9A]'
-                : 'bg-white text-[#1D1D1D]/30 border-[#1D1D1D]/10'
-              }`}>
-                {step > s ? <CheckCircle2 className="w-4 h-4" /> : s}
-              </div>
-              {step === s && <span className="text-[10px] font-black uppercase tracking-widest italic">{label}</span>}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Step Container */}
-      <div className="px-8 mt-12 max-w-[600px] mx-auto w-full flex-1">
-        {/* All 5 Steps JSX goes here (copy full Tailwind JSX from your original code) */}
-      </div>
-
-      {/* Footer */}
-      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-50 max-w-[480px] mx-auto flex gap-4">
-        {step > 1 && <button onClick={prevStep} className="px-6 py-3 border">Back</button>}
-        <button onClick={step === TOTAL_STEPS ? handleSubmit : nextStep} className="flex-1 px-6 py-3 bg-black text-white">
-          {step === TOTAL_STEPS ? "Submit" : "Next"}
-        </button>
-      </div>
+      </form>
     </div>
   );
 }
