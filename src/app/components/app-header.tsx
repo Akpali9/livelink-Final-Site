@@ -937,31 +937,30 @@ const ChatModal = ({
     }
   };
 
-  const sendMessage = async () => {
+ const sendMessage = async () => {
   if ((!newMessage.trim() && !attachment) || !participant || sending) return;
 
   setSending(true);
 
   try {
-    // First, find or create a conversation
-    const participantIds = [currentUserId, participant.user_id].sort();
-    
-    let conversationId;
-    
     // Check if conversation exists
     const { data: existingConvs } = await supabase
       .from('conversations')
       .select('id')
-      .contains('participant_ids', participantIds);
+      .or(`and(participant1_id.eq.${currentUserId},participant2_id.eq.${participant.user_id}),and(participant1_id.eq.${participant.user_id},participant2_id.eq.${currentUserId})`)
+      .maybeSingle();
 
-    if (existingConvs && existingConvs.length > 0) {
-      conversationId = existingConvs[0].id;
+    let conversationId;
+
+    if (existingConvs) {
+      conversationId = existingConvs.id;
     } else {
       // Create new conversation
       const { data: newConv, error: convError } = await supabase
         .from('conversations')
         .insert({
-          participant_ids: participantIds,
+          participant1_id: currentUserId,
+          participant2_id: participant.user_id,
           last_message_at: new Date().toISOString()
         })
         .select()
@@ -1013,8 +1012,19 @@ const ChatModal = ({
     // Update conversation's last_message_at
     await supabase
       .from('conversations')
-      .update({ last_message_at: now })
+      .update({ last_message_at: now, updated_at: now })
       .eq('id', conversationId);
+
+    // Create notification for the receiver
+    await supabase
+      .from('notifications')
+      .insert({
+        user_id: participant.user_id,
+        type: 'message',
+        title: 'New Message',
+        message: `${userType === 'business' ? 'Business' : 'Creator'} sent you a message`,
+        data: { conversation_id: conversationId, sender_id: currentUserId }
+      });
 
     // Optimistic update
     const optimisticMessage: Message = {
@@ -1593,76 +1603,7 @@ export function AppHeader({
   // Fetch conversations
   // Replace the fetchRecentConversations function with this:
 
-const fetchRecentConversations = async () => {
-  if (!user) return;
-
-  try {
-    // Get conversations where user is a participant
-    const { data: convs, error } = await supabase
-      .from("conversations")
-      .select(`
-        *,
-        messages:messages(
-          id, 
-          content, 
-          created_at, 
-          sender_id, 
-          receiver_id, 
-          is_read, 
-          seen,
-          reactions:message_reactions(*)
-        )
-      `)
-      .contains('participant_ids', [user.id])
-      .order("last_message_at", { ascending: false })
-      .limit(5);
-
-    if (error) throw error;
-    if (!convs) return;
-
-    let totalUnread = 0;
-    const formatted = await Promise.all(
-      convs.map(async (conv: any) => {
-        // Get the other participant's ID
-        const otherId = conv.participant_ids.find((id: string) => id !== user.id);
-        
-        if (!otherId) return null;
-
-        const other = await resolveParticipant(otherId);
-
-        const msgs = conv.messages || [];
-        const lastMsg = msgs[msgs.length - 1];
-        const unread = msgs.filter(
-          (m: any) => m.sender_id !== user.id && !m.is_read
-        ).length;
-        totalUnread += unread;
-
-        return {
-          id: conv.id,
-          participant1_id: conv.participant_ids[0],
-          participant2_id: conv.participant_ids[1],
-          last_message_at: conv.last_message_at,
-          created_at: conv.created_at,
-          other_participant: other,
-          last_message: lastMsg,
-          unread_count: unread
-        };
-      })
-    );
-
-    // Filter out null values
-    const validConversations = formatted.filter(Boolean);
-    setRecentConversations(validConversations);
-    setUnreadMessages(totalUnread);
-  } catch (error) {
-    console.error('Error fetching conversations:', error);
-    toast.error('Failed to load conversations');
-  }
-};
-    setRecentConversations(formatted);
-    setUnreadMessages(totalUnread);
-  };
-
+fetchRecentConversations
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
