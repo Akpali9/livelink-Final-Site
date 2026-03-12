@@ -2152,16 +2152,7 @@ export function AppHeader({
                         )}
                       </Link>
 
-                      {!isAdmin && (
-                        <Link
-                          to={settingsPath}
-                          onClick={() => setShowProfileMenu(false)}
-                          className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white flex items-center gap-3 transition-colors"
-                        >
-                          <Settings className="w-3.5 h-3.5 text-[#389C9A]" /> Settings
-                        </Link>
-                      )}
-
+                      
                       <button
                         onClick={handleLogout}
                         className="w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white text-red-500 flex items-center gap-3 transition-colors"
