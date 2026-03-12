@@ -1,16 +1,12 @@
 import React from "react";
 import { Link, useLocation } from "react-router";
 import { Home, Search, Bell, User, Briefcase, Building2 } from "lucide-react";
+import { useAuth } from "../lib/contexts/AuthContext";
 
-/**
- * BottomNav
- * @param {{ userType: "creator" | "business" }} props
- *
- * userType="creator"  → Profile tab links to /profile/me   (User icon)
- * userType="business" → Profile tab links to /business/me  (Building2 icon)
- */
-export function BottomNav({ userType = "creator" }) {
+export function BottomNav() {
   const location = useLocation();
+  const { user } = useAuth();
+  const userType = user?.user_metadata?.user_type || "creator";
 
   const profileItem =
     userType === "business"
@@ -18,10 +14,10 @@ export function BottomNav({ userType = "creator" }) {
       : { icon: User,      label: "Profile",  path: "/profile/me"       };
 
   const navItems = [
-    { icon: Home,     label: "Home",          path: "/dashboard"    },
-    { icon: Search,   label: "Browse",        path: "/browse"       },
-    { icon: Briefcase,label: "Campaigns",     path: "/campaigns"    },
-    { icon: Bell,     label: "Notifications", path: "/notifications" },
+    { icon: Home,      label: "Home",          path: userType === "business" ? "/business/dashboard" : "/dashboard" },
+    { icon: Search,    label: "Browse",        path: "/browse"        },
+    { icon: Briefcase, label: "Campaigns",     path: "/campaigns"     },
+    { icon: Bell,      label: "Notifications", path: "/notifications" },
     profileItem,
   ];
 
