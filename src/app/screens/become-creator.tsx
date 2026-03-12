@@ -565,43 +565,42 @@ export function BecomeCreator() {
             </section>
           </motion.div>
         )}
-        <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-50">
-        <div className="flex gap-4 max-w-[600px] mx-auto">
+      </div>
+
+      {/* Fixed Footer Nav */}
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-50 max-w-[480px] mx-auto">
+        <div className="flex gap-4">
           {step > 1 && (
             <button onClick={prevStep} disabled={loading}
-              className="px-6 py-5 border-2 border-[#1D1D1D] text-[#1D1D1D] font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-all italic disabled:opacity-50">
+              className="px-6 py-5 border-2 border-[#1D1D1D] text-[#1D1D1D] font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-all rounded-none italic disabled:opacity-50">
               Back
             </button>
           )}
           <button
             onClick={step === TOTAL_STEPS ? handleSubmit : nextStep}
             disabled={!validateStep() || loading}
-            className={`flex-1 flex items-center justify-between p-6 font-black uppercase tracking-tight transition-all italic ${
+            className={`flex-1 flex items-center justify-between p-6 font-black uppercase tracking-tight transition-all rounded-none italic ${
               validateStep() && !loading ? 'bg-[#1D1D1D] text-white active:scale-[0.98]' : 'bg-[#1D1D1D]/30 text-white/50 cursor-not-allowed'
             }`}
           >
-            <span>{loading ? 'Submitting...' : step === TOTAL_STEPS ? 'Submit Application' : 'Continue'}</span>
+            <span>{loading ? 'Submitting...' : step === TOTAL_STEPS ? 'Submit Registration' : 'Continue'}</span>
             {!loading && step < TOTAL_STEPS && <ArrowRight className="w-5 h-5 text-[#FEDB71]" />}
             {loading && <Loader2 className="w-5 h-5 animate-spin" />}
           </button>
         </div>
         {!validateStep() && step < TOTAL_STEPS && (
-          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center max-w-[600px] mx-auto">
-            {step === 1 ? "Please enter your full name and username to continue"
+          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center">
+            {step === 1 ? "Please fill in all required fields before continuing"
               : step === 2 ? "Please select at least one platform and one niche"
               : "Please fill in all required fields before continuing"}
           </p>
         )}
         {step === TOTAL_STEPS && !formData.agreeToTerms && (
-          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center max-w-[600px] mx-auto">
+          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center">
             You must agree to the terms to submit
           </p>
         )}
       </div>
     </div>
-
-      </div>
-
-      {/* Fixed Footer Nav */}
-        );
+  );
 }
