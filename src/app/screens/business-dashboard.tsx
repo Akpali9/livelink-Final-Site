@@ -34,7 +34,6 @@ export function BusinessDashboard() {
   useEffect(() => {
     if (!user) return;
     const fetchBusiness = async () => {
-      // Email not confirmed — RLS blocks all queries, redirect to confirm screen
       if (!user.email_confirmed_at) {
         navigate("/confirm-email", { state: { email: user.email } });
         return;
