@@ -41,6 +41,7 @@ import { BusinessSettings } from "./screens/business-settings";
 import { BecomeCreator } from "./screens/become-creator";
 import { AdminApplicationQueue } from "./screens/AdminApplicationQueue";
 import { AdminDashboard } from "./screens/admin-dashboard";
+import { AdminLogin } from "./screens/admin-login";
 import { EditProfile } from "./screens/edit-profile";
 import { supabase } from "./lib/supabase";
 
@@ -357,6 +358,10 @@ const routes: RouteObject[] = [
 
       // Admin routes
       { 
+        path: "admin/login",
+        Component: AdminLogin,
+      },
+      {
         path: "admin", 
         Component: AdminDashboard, 
         loader: requireAdmin 
