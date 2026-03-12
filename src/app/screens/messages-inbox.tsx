@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { 
-  Search, 
-  MessageSquare, 
-  Clock, 
+import {
+  Search,
+  MessageSquare,
   CheckCircle2,
-  Users,
   Briefcase,
-  Filter,
   RefreshCw,
-  Loader2
+  Loader2,
+  Shield,
+  Plus
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { BottomNav } from "../components/bottom-nav";
@@ -24,13 +23,65 @@ interface Conversation {
   participant_id: string;
   participant_name: string;
   participant_avatar: string;
+  participant_type: "creator" | "business" | "admin";
   campaign_id?: string;
   campaign_name?: string;
   last_message: string;
   last_message_time: string;
   last_message_sender: string;
   unread_count: number;
-  status?: 'active' | 'pending' | 'completed';
+  status?: "active" | "pending" | "completed";
+}
+
+// Resolve participant display info regardless of their type
+async function resolveParticipant(userId: string): Promise<{
+  name: string;
+  avatar: string;
+  type: "creator" | "business" | "admin";
+}> {
+  // Check admin first
+  const { data: admin } = await supabase
+    .from("admin_profiles")
+    .select("id, full_name, avatar_url")
+    .eq("id", userId)
+    .maybeSingle();
+  if (admin) {
+    return {
+      name: admin.full_name || "Admin",
+      avatar: admin.avatar_url || "",
+      type: "admin",
+    };
+  }
+
+  // Check creator
+  const { data: creator } = await supabase
+    .from("creator_profiles")
+    .select("full_name, avatar_url")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (creator) {
+    return {
+      name: creator.full_name || "Creator",
+      avatar: creator.avatar_url || "",
+      type: "creator",
+    };
+  }
+
+  // Check business
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("business_name, logo_url")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (business) {
+    return {
+      name: business.business_name || "Business",
+      avatar: business.logo_url || "",
+      type: "business",
+    };
+  }
+
+  return { name: "Unknown", avatar: "", type: "creator" };
 }
 
 export function MessagesInbox() {
@@ -38,8 +89,13 @@ export function MessagesInbox() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const role = searchParams.get("role") || "creator";
-  const userType = role === "business" ? "business" : "creator";
-  const backPath = userType === "business" ? "/business/dashboard" : "/dashboard";
+  const userType = role === "business" ? "business" : role === "admin" ? "admin" : "creator";
+  const backPath =
+    userType === "business"
+      ? "/business/dashboard"
+      : userType === "admin"
+      ? "/admin"
+      : "/dashboard";
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +107,6 @@ export function MessagesInbox() {
     if (!user) return;
 
     try {
-      // Get all conversations for the current user
       const { data: conversationsData, error: convError } = await supabase
         .from("conversations")
         .select(`
@@ -71,17 +126,12 @@ export function MessagesInbox() {
       if (conversationsData) {
         const formatted = await Promise.all(
           conversationsData.map(async (conv: any) => {
-            // Determine the other participant
-            const otherParticipantId = conv.participant1_id === user.id 
-              ? conv.participant2_id 
-              : conv.participant1_id;
+            const otherParticipantId =
+              conv.participant1_id === user.id
+                ? conv.participant2_id
+                : conv.participant1_id;
 
-            // Fetch participant details
-            const { data: participantData } = await supabase
-              .from(userType === "business" ? "creator_profiles" : "businesses")
-              .select("*")
-              .eq("user_id", otherParticipantId)
-              .single();
+            const participant = await resolveParticipant(otherParticipantId);
 
             const messages = conv.messages || [];
             const lastMsg = messages[messages.length - 1];
@@ -92,15 +142,16 @@ export function MessagesInbox() {
             return {
               id: conv.id,
               participant_id: otherParticipantId,
-              participant_name: participantData?.full_name || participantData?.business_name || 'Unknown',
-              participant_avatar: participantData?.avatar_url || participantData?.logo_url,
+              participant_name: participant.name,
+              participant_avatar: participant.avatar,
+              participant_type: participant.type,
               campaign_id: conv.campaign_id,
-              campaign_name: conv.campaign_name || 'General',
-              last_message: lastMsg?.content || '',
+              campaign_name: conv.campaign_name || null,
+              last_message: lastMsg?.content || "",
               last_message_time: lastMsg?.created_at || conv.created_at,
-              last_message_sender: lastMsg?.sender_id === user.id ? 'You' : 'Them',
+              last_message_sender: lastMsg?.sender_id === user.id ? "You" : participant.name,
               unread_count: unreadCount,
-              status: conv.status || 'active'
+              status: conv.status || "active",
             };
           })
         );
@@ -119,26 +170,16 @@ export function MessagesInbox() {
   useEffect(() => {
     fetchConversations();
 
-    // Realtime subscription for new messages
     const channel = supabase
-      .channel("conversations")
+      .channel("inbox-messages")
       .on(
         "postgres_changes",
-        { 
-          event: "INSERT", 
-          schema: "public", 
-          table: "messages" 
-        },
-        (payload) => {
-          // Refresh conversations when new message arrives
-          fetchConversations();
-        }
+        { event: "INSERT", schema: "public", table: "messages" },
+        () => fetchConversations()
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   const handleRefresh = () => {
@@ -146,10 +187,10 @@ export function MessagesInbox() {
     fetchConversations();
   };
 
-  const filteredConversations = conversations.filter(conv => {
-    const matchesSearch = conv.participant_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         conv.campaign_name?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+  const filteredConversations = conversations.filter((conv) => {
+    const matchesSearch =
+      conv.participant_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      conv.campaign_name?.toLowerCase().includes(searchQuery.toLowerCase());
     if (filter === "unread") return matchesSearch && conv.unread_count > 0;
     if (filter === "active") return matchesSearch && conv.status === "active";
     return matchesSearch;
@@ -162,18 +203,40 @@ export function MessagesInbox() {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Now';
+    if (diffMins < 1) return "Now";
     if (diffMins < 60) return `${diffMins}m`;
     if (diffHours < 24) return `${diffHours}h`;
     if (diffDays < 7) return `${diffDays}d`;
     return date.toLocaleDateString();
   };
 
+  const getParticipantBadge = (type: string) => {
+    switch (type) {
+      case "admin":
+        return (
+          <span className="flex items-center gap-1 text-[7px] font-black uppercase tracking-widest text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+            <Shield className="w-2.5 h-2.5" /> Admin
+          </span>
+        );
+      case "business":
+        return (
+          <span className="flex items-center gap-1 text-[7px] font-black uppercase tracking-widest text-[#389C9A] bg-[#389C9A]/10 px-2 py-0.5 rounded-full">
+            <Briefcase className="w-2.5 h-2.5" /> Business
+          </span>
+        );
+      default:
+        return (
+          <span className="text-[7px] font-black uppercase tracking-widest text-[#FEDB71] bg-[#FEDB71]/10 px-2 py-0.5 rounded-full">
+            Creator
+          </span>
+        );
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
-        <AppHeader showBack title="Messages" backPath={backPath} userType={userType} />
+        <AppHeader showBack title="Messages" backPath={backPath} />
         <div className="flex items-center justify-center h-[80vh]">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="w-12 h-12 animate-spin text-[#389C9A]" />
@@ -187,7 +250,7 @@ export function MessagesInbox() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px]">
-      <AppHeader showBack title="Messages" backPath={backPath} userType={userType} />
+      <AppHeader showBack title="Messages" backPath={backPath} />
 
       <main className="flex-1 max-w-[480px] mx-auto w-full">
         {/* Search and Filters */}
@@ -208,23 +271,24 @@ export function MessagesInbox() {
               disabled={refreshing}
               className="w-12 h-12 border-2 border-[#1D1D1D]/10 hover:border-[#389C9A] rounded-xl flex items-center justify-center transition-colors disabled:opacity-50"
             >
-              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
             </button>
           </div>
 
           {/* Filter Tabs */}
           <div className="flex gap-2">
             {[
-              { value: "all", label: "All", icon: MessageSquare },
+              { value: "all",    label: "All",    icon: MessageSquare },
               { value: "unread", label: "Unread", icon: CheckCircle2 },
-              { value: "active", label: "Active", icon: Briefcase }
+              { value: "active", label: "Active", icon: Briefcase },
             ].map((f) => {
               const Icon = f.icon;
-              const count = f.value === "unread" 
-                ? conversations.reduce((sum, c) => sum + c.unread_count, 0)
-                : f.value === "active"
-                ? conversations.filter(c => c.status === "active").length
-                : conversations.length;
+              const count =
+                f.value === "unread"
+                  ? conversations.reduce((sum, c) => sum + c.unread_count, 0)
+                  : f.value === "active"
+                  ? conversations.filter((c) => c.status === "active").length
+                  : conversations.length;
 
               return (
                 <button
@@ -239,11 +303,13 @@ export function MessagesInbox() {
                   <Icon className="w-4 h-4" />
                   {f.label}
                   {count > 0 && f.value !== "all" && (
-                    <span className={`text-[7px] px-1.5 py-0.5 rounded-full ${
-                      filter === f.value
-                        ? "bg-white text-[#1D1D1D]"
-                        : "bg-[#1D1D1D] text-white"
-                    }`}>
+                    <span
+                      className={`text-[7px] px-1.5 py-0.5 rounded-full ${
+                        filter === f.value
+                          ? "bg-white text-[#1D1D1D]"
+                          : "bg-[#1D1D1D] text-white"
+                      }`}
+                    >
                       {count}
                     </span>
                   )}
@@ -268,29 +334,42 @@ export function MessagesInbox() {
                   className="flex items-center gap-4 px-6 py-5 border-b border-[#1D1D1D]/5 hover:bg-gray-50 transition-all cursor-pointer group"
                 >
                   {/* Avatar */}
-                  <div className="relative">
-                    <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-[#1D1D1D]/10 bg-[#F8F8F8]">
-                      <ImageWithFallback
-                        src={conv.participant_avatar}
-                        className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
-                      />
-                    </div>
+                  <div className="relative flex-shrink-0">
+                    {conv.participant_type === "admin" ? (
+                      <div className="w-14 h-14 rounded-xl bg-purple-600 flex items-center justify-center border-2 border-purple-200">
+                        <Shield className="w-7 h-7 text-white" />
+                      </div>
+                    ) : (
+                      <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-[#1D1D1D]/10 bg-[#F8F8F8]">
+                        <ImageWithFallback
+                          src={conv.participant_avatar}
+                          className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
+                        />
+                      </div>
+                    )}
                     {conv.unread_count > 0 && (
                       <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#389C9A] rounded-full flex items-center justify-center text-white text-[8px] font-black border-2 border-white">
-                        {conv.unread_count > 9 ? '9+' : conv.unread_count}
+                        {conv.unread_count > 9 ? "9+" : conv.unread_count}
                       </div>
                     )}
                   </div>
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center mb-1">
-                      <h3 className={`font-black text-sm uppercase tracking-tight truncate ${
-                        conv.unread_count > 0 ? 'text-[#1D1D1D]' : 'text-[#1D1D1D]/70'
-                      }`}>
-                        {conv.participant_name}
-                      </h3>
-                      <span className="text-[8px] font-medium text-[#1D1D1D]/30 whitespace-nowrap ml-2">
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3
+                          className={`font-black text-sm uppercase tracking-tight truncate ${
+                            conv.unread_count > 0
+                              ? "text-[#1D1D1D]"
+                              : "text-[#1D1D1D]/70"
+                          }`}
+                        >
+                          {conv.participant_name}
+                        </h3>
+                        {getParticipantBadge(conv.participant_type)}
+                      </div>
+                      <span className="text-[8px] font-medium text-[#1D1D1D]/30 whitespace-nowrap ml-2 flex-shrink-0">
                         {formatTime(conv.last_message_time)}
                       </span>
                     </div>
@@ -301,14 +380,25 @@ export function MessagesInbox() {
                       </p>
                     )}
 
-                    <p className="text-[10px] text-[#1D1D1D]/60 truncate">
-                      {conv.last_message_sender}: {conv.last_message}
+                    <p
+                      className={`text-[10px] truncate ${
+                        conv.unread_count > 0
+                          ? "text-[#1D1D1D] font-bold"
+                          : "text-[#1D1D1D]/50"
+                      }`}
+                    >
+                      {conv.last_message_sender !== "You" ? (
+                        <span className="text-[#1D1D1D]/30">{conv.last_message_sender}: </span>
+                      ) : (
+                        <span className="text-[#1D1D1D]/30">You: </span>
+                      )}
+                      {conv.last_message || "No messages yet"}
                     </p>
                   </div>
 
-                  {/* Status Indicator */}
-                  {conv.status === 'active' && (
-                    <div className="w-2 h-2 bg-[#389C9A] rounded-full animate-pulse" />
+                  {/* Active dot */}
+                  {conv.status === "active" && (
+                    <div className="w-2 h-2 bg-[#389C9A] rounded-full animate-pulse flex-shrink-0" />
                   )}
                 </motion.div>
               ))
@@ -321,7 +411,7 @@ export function MessagesInbox() {
                   No conversations
                 </h3>
                 <p className="text-[10px] text-[#1D1D1D]/40 max-w-[250px]">
-                  {searchQuery 
+                  {searchQuery
                     ? "No matches found. Try a different search."
                     : "Start a conversation by sending an offer or messaging a creator."}
                 </p>
@@ -346,7 +436,7 @@ export function MessagesInbox() {
               </div>
               <div>
                 <p className="text-xl font-black text-green-500">
-                  {conversations.filter(c => c.status === 'active').length}
+                  {conversations.filter((c) => c.status === "active").length}
                 </p>
                 <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Active</p>
               </div>
