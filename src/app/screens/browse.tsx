@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   MapPin,
   Users,
-  Zap,
+  Zap
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
