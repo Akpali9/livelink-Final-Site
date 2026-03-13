@@ -5,7 +5,7 @@ import { Toaster, toast } from "sonner";
 import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 import { useAuth } from "../lib/contexts/AuthContext";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "frame-motion";
 import {
   Megaphone,
   Clock,
