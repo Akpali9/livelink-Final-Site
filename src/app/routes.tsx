@@ -9,7 +9,7 @@ import { Browse } from "./screens/browse";
 import { Profile } from "./screens/profile";
 import { Offers } from "./screens/offers";
 import { Dashboard } from "./screens/dashboard";
-import  BusinessDashboard  from "./screens/business-dashboard";
+import  {BusinessDashboard}  from "./screens/business-dashboard";
 import { BusinessProfile } from "./screens/business-profile";
 import { CampaignCreation } from "./screens/campaign-creation";
 import { CampaignTypeSelection } from "./screens/campaign-type-selection";
