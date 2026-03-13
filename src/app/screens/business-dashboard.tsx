@@ -447,6 +447,3 @@ export function Campaigns() {
     </div>
   );
 }
-
-// Export alias so routes.tsx can import { BusinessDashboard } without changes
-export { Campaigns as BusinessDashboard };
