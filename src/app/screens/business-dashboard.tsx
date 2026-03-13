@@ -1,359 +1,448 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
-import { supabase } from "../lib/supabase";
-import { Toaster, toast } from "sonner";
-import { AppHeader } from "../components/app-header";
-import { BottomNav } from "../components/bottom-nav";
-import { useAuth } from "../lib/contexts/AuthContext";
-import { motion, AnimatePresence } from "motion/react";
-import {
-  Megaphone,
-  Clock,
-  CheckCircle2,
-  X,
-  ArrowRight,
-  Plus,
-  Zap,
+mport React, { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router";
+import { 
+  ArrowLeft, 
+  Search, 
+  Plus, 
+  ChevronRight, 
+  Clock, 
+  CheckCircle2, 
+  AlertCircle,
+  Video as VideoIcon,
   DollarSign,
-  Users,
-  ChevronRight,
+  TrendingUp,
+  Filter,
+  RefreshCw
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { BottomNav } from "../components/bottom-nav";
+import { AppHeader } from "../components/app-header";
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../lib/contexts/AuthContext";
+import { toast } from "sonner";
 
-export function BusinessDashboard() {
+interface Campaign {
+  id: string;
+  business_id: string;
+  name: string;
+  type: string;
+  status: 'Active' | 'Upcoming' | 'Completed' | 'Pending';
+  progress: number;
+  streams_completed: number;
+  streams_target: number;
+  earnings: string;
+  logo: string;
+  business_name: string;
+  start_date?: string;
+  end_date?: string;
+  budget?: number;
+  campaign_creators?: {
+    streams_completed: number;
+    streams_target: number;
+    status: string;
+  }[];
+}
+
+export function Campaigns() {
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  const [businessId, setBusinessId] = useState<string | null>(null);
-  const [businessName, setBusinessName] = useState<string>("");
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [campaignFilter, setCampaignFilter] = useState<"LIVE" | "PENDING" | "COMPLETED">("LIVE");
+  const [refreshing, setRefreshing] = useState(false);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [activeFilter, setActiveFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    upcoming: 0,
+    completed: 0,
+    totalEarnings: 0
+  });
 
-  /* ── Fetch business ── */
   useEffect(() => {
-    if (!user) return;
-    const fetchBusiness = async () => {
-      if (!user.email_confirmed_at) {
-        navigate("/confirm-email", { state: { email: user.email } });
-        return;
-      }
-
-      const { data: business, error: bizError } = await supabase
-        .from("businesses")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (bizError) {
-        console.error("Business fetch error:", bizError);
-        setLoading(false);
-        return;
-      }
-
-      if (business) {
-        setBusinessId(business.id);
-        setBusinessName(business.name || "");
-      } else {
-        navigate("/become-business");
-      }
-    };
-    fetchBusiness();
+    if (user) {
+      fetchCampaigns();
+    }
   }, [user]);
 
-  /* ── Fetch data ── */
-  useEffect(() => {
-    if (!businessId) return;
-    const fetchData = async () => {
+  const fetchCampaigns = async () => {
+    if (!user) return;
+    
+    try {
       setLoading(true);
-      const { data: campaignData } = await supabase
-        .from("campaigns")
-        .select(`*, campaign_creators(id, status)`)
-        .eq("business_id", businessId);
 
-      const { data: offerData } = await supabase
-        .from("offers")
-        .select(`*, creators(id, name, avatar), campaigns(id, name, type)`)
-        .eq("business_id", businessId)
-        .in("status", ["Offer Received", "Negotiating"]);
+      // Get creator profile first to get creator_id if needed
+      const { data: creatorProfile } = await supabase
+        .from("creator_profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
 
-      setCampaigns(campaignData || []);
-      setOffers(offerData || []);
+      // Fetch campaigns where creator is involved
+      const { data: campaignCreators, error: campaignError } = await supabase
+        .from("campaign_creators")
+        .select(`
+          id,
+          streams_completed,
+          streams_target,
+          status,
+          accepted_at,
+          completed_at,
+          campaign:campaigns (
+            id,
+            name,
+            type,
+            status,
+            budget,
+            start_date,
+            end_date,
+            business:businesses (
+              id,
+              business_name,
+              logo_url
+            )
+          )
+        `)
+        .eq("creator_id", creatorProfile?.id || user.id)
+        .order("accepted_at", { ascending: false });
+
+      if (campaignError) throw campaignError;
+
+      if (campaignCreators) {
+        // Transform data to match our interface
+        const formattedCampaigns = campaignCreators.map((item: any) => {
+          const campaign = item.campaign;
+          const streamsCompleted = item.streams_completed || 0;
+          const streamsTarget = item.streams_target || 4;
+          const progress = Math.min(100, Math.round((streamsCompleted / streamsTarget) * 100));
+          
+          // Determine campaign status based on creator's status and dates
+          let status: 'Active' | 'Upcoming' | 'Completed' | 'Pending' = 'Pending';
+          
+          if (item.status === 'COMPLETED' || progress === 100) {
+            status = 'Completed';
+          } else if (item.status === 'ACTIVE') {
+            status = 'Active';
+          } else if (item.status === 'PENDING') {
+            status = 'Upcoming';
+          }
+
+          // Calculate earnings (placeholder - replace with actual earnings logic)
+          const earnings = campaign.budget ? `£${campaign.budget}` : '£0.00';
+
+          return {
+            id: campaign.id,
+            business_id: campaign.business?.id,
+            name: campaign.name,
+            type: campaign.type,
+            status,
+            progress,
+            streams_completed: streamsCompleted,
+            streams_target: streamsTarget,
+            earnings,
+            logo: campaign.business?.logo_url || 'https://via.placeholder.com/100',
+            business_name: campaign.business?.business_name || 'Unknown Brand',
+            start_date: campaign.start_date,
+            end_date: campaign.end_date,
+            budget: campaign.budget,
+            campaign_creators: [item]
+          };
+        });
+
+        setCampaigns(formattedCampaigns);
+
+        // Calculate stats
+        const total = formattedCampaigns.length;
+        const active = formattedCampaigns.filter(c => c.status === 'Active').length;
+        const upcoming = formattedCampaigns.filter(c => c.status === 'Upcoming').length;
+        const completed = formattedCampaigns.filter(c => c.status === 'Completed').length;
+        const totalEarnings = formattedCampaigns
+          .filter(c => c.status === 'Completed')
+          .reduce((sum, c) => sum + (parseFloat(c.earnings.replace('£', '')) || 0), 0);
+
+        setStats({ total, active, upcoming, completed, totalEarnings });
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      toast.error('Failed to load campaigns');
+    } finally {
       setLoading(false);
-    };
-    fetchData();
-  }, [businessId]);
-
-  /* ── Stats ── */
-  const active    = campaigns.filter(c => c.status === "ACTIVE").length;
-  const pending   = campaigns.filter(c => c.status === "PENDING REVIEW").length;
-  const completed = campaigns.filter(c => c.status === "COMPLETED").length;
-  const totalSpent = campaigns.reduce((sum, c) => {
-    return sum + parseInt(c.price?.replace(/[^\d]/g, "") || "0");
-  }, 0);
-
-  /* ── Accept / Reject ── */
-  const acceptOffer = async (offer: any) => {
-    await supabase.from("offers").update({ status: "Accepted" }).eq("id", offer.id);
-    await supabase.from("campaign_creators").insert({
-      campaign_id: offer.campaigns.id,
-      creator_id: offer.creators.id,
-      status: "ACTIVE",
-      streams_target: 4,
-    });
-    toast.success("Offer accepted!");
-    setOffers(prev => prev.filter(o => o.id !== offer.id));
+    }
   };
 
-  const rejectOffer = async (offerId: string) => {
-    await supabase.from("offers").update({ status: "Rejected" }).eq("id", offerId);
-    toast.success("Offer rejected");
-    setOffers(prev => prev.filter(o => o.id !== offerId));
+  const refreshData = async () => {
+    setRefreshing(true);
+    await fetchCampaigns();
+    setRefreshing(false);
+    toast.success('Campaigns updated');
   };
 
-  const filteredCampaigns = campaigns.filter(c => {
-    if (campaignFilter === "LIVE")      return c.status === "ACTIVE" || c.status === "OPEN";
-    if (campaignFilter === "PENDING")   return c.status === "PENDING REVIEW";
-    if (campaignFilter === "COMPLETED") return c.status === "COMPLETED";
-    return false;
+  // Filter campaigns based on search and status filter
+  const filteredCampaigns = campaigns.filter(camp => {
+    const matchesSearch = 
+      camp.business_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      camp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      camp.type.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesFilter = activeFilter === "All" || camp.status === activeFilter;
+    
+    return matchesSearch && matchesFilter;
   });
+
+  const filters = ["All", "Active", "Upcoming", "Completed", "Pending"];
+
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'Active': return 'bg-[#389C9A] text-white border-[#389C9A]';
+      case 'Upcoming': return 'bg-[#FEDB71] text-[#1D1D1D] border-[#1D1D1D]/10';
+      case 'Completed': return 'bg-green-500 text-white border-green-500';
+      case 'Pending': return 'bg-gray-100 text-gray-500 border-gray-200';
+      default: return 'bg-gray-100 text-gray-400 border-gray-200';
+    }
+  };
+
+  const getProgressColor = (status: string) => {
+    switch(status) {
+      case 'Active': return 'bg-[#389C9A]';
+      case 'Upcoming': return 'bg-[#FEDB71]';
+      case 'Completed': return 'bg-green-500';
+      default: return 'bg-gray-300';
+    }
+  };
+
+  const getCampaignLink = (campaign: Campaign) => {
+    if (campaign.status === 'Active') {
+      return `/campaign/live-update/${campaign.id}`;
+    } else if (campaign.status === 'Upcoming') {
+      return `/creator/upcoming-gig/${campaign.id}`;
+    } else {
+      return `/campaign/${campaign.id}/summary`;
+    }
+  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+      <div className="min-h-screen bg-white">
+        <AppHeader showBack title="My Campaigns" />
+        <div className="flex items-center justify-center h-[80vh]">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+            <p className="text-sm text-gray-500">Loading your campaigns...</p>
+          </div>
+        </div>
+        <BottomNav />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
-      <Toaster position="top-center" richColors />
-      <AppHeader showLogo userType="business" subtitle="Business Hub" />
-
-      <main className="max-w-[480px] mx-auto w-full">
-
-        {/* ── Hero Banner ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mx-6 mt-6 bg-[#1D1D1D] text-white p-6"
-        >
-          <p className="text-[9px] font-black uppercase tracking-[0.3em] text-white/40 mb-1">Welcome back</p>
-          <h1 className="text-2xl font-black uppercase tracking-tighter italic leading-tight">
-            {businessName || "Your Business"}
-          </h1>
-          <div className="flex items-center gap-2 mt-3">
-            <span className="w-2 h-2 bg-[#389C9A] animate-pulse" />
-            <span className="text-[9px] font-black uppercase tracking-widest text-white/60 italic">
-              {active} campaign{active !== 1 ? "s" : ""} live
-            </span>
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+      <AppHeader showBack title="My Campaigns" />
+      
+      <div className="px-6 py-6 sticky top-[84px] bg-white z-20 border-b border-[#1D1D1D]/10">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-4 gap-2 mb-6">
+          <div className="text-center">
+            <p className="text-lg font-black text-[#389C9A]">{stats.active}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Active</p>
           </div>
-        </motion.div>
-
-        {/* ── Stats Grid ── */}
-        <div className="grid grid-cols-2 gap-3 px-6 mt-4">
-          {[
-            { label: "Active",    val: active,           sub: "Live Now",    icon: Zap,          color: "text-[#389C9A]" },
-            { label: "Pending",   val: pending,          sub: "Reviewing",   icon: Clock,        color: "text-[#FEDB71]" },
-            { label: "Completed", val: completed,        sub: "Finished",    icon: CheckCircle2, color: "text-[#1D1D1D]/40" },
-            { label: "Spent",     val: `₦${totalSpent.toLocaleString()}`, sub: "Total Budget", icon: DollarSign, color: "text-[#389C9A]" },
-          ].map((s, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07 }}
-              className="border-2 border-[#1D1D1D] p-4 bg-white"
-            >
-              <s.icon className={`w-4 h-4 ${s.color} mb-3`} />
-              <p className="text-2xl font-black italic tracking-tight">{s.val}</p>
-              <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mt-0.5">{s.label}</p>
-              <p className="text-[8px] font-bold uppercase text-[#389C9A] italic">{s.sub}</p>
-            </motion.div>
-          ))}
+          <div className="text-center">
+            <p className="text-lg font-black text-[#FEDB71]">{stats.upcoming}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Upcoming</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-green-500">{stats.completed}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Done</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-black text-[#1D1D1D]">₦{stats.totalEarnings}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Earned</p>
+          </div>
         </div>
 
-        {/* ── Incoming Offers ── */}
-        <AnimatePresence>
-          {offers.length > 0 && (
-            <motion.section
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="px-6 mt-8"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic">
-                  Incoming Offers
-                </h2>
-                <span className="bg-[#FEDB71] border border-[#1D1D1D] px-2 py-0.5 text-[8px] font-black uppercase">
-                  {offers.length} new
-                </span>
-              </div>
+        {/* Find Opportunities Button */}
+        <div className="flex items-center justify-between mb-6">
+          <Link 
+            to="/browse-businesses" 
+            className="w-full bg-[#1D1D1D] text-white py-4 px-6 text-[10px] font-black uppercase italic tracking-widest flex items-center justify-between active:scale-[0.98] transition-all hover:bg-[#389C9A]"
+          >
+            Find New Opportunities
+            <Plus className="w-5 h-5 text-[#FEDB71]" />
+          </Link>
+        </div>
+        
+        {/* Search and Refresh */}
+        <div className="flex gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-20" />
+            <input 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="SEARCH CAMPAIGNS..."
+              className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 py-3 pl-10 pr-4 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#1D1D1D] italic transition-all"
+            />
+          </div>
+          <button
+            onClick={refreshData}
+            disabled={refreshing}
+            className="px-4 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
 
-              <div className="flex flex-col gap-3">
-                {offers.map((o, i) => (
-                  <motion.div
-                    key={o.id}
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 12 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="border-2 border-[#1D1D1D] p-5 bg-white"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <p className="text-[11px] font-black uppercase tracking-tight italic">{o.campaigns?.name}</p>
-                        <p className="text-[9px] font-bold text-[#389C9A] uppercase tracking-widest">{o.creators?.name}</p>
-                      </div>
-                      <span className="text-[10px] font-black italic">{o.amount}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => acceptOffer(o)}
-                        className="flex-1 flex items-center justify-center gap-1.5 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest italic hover:bg-[#389C9A] transition-colors"
-                      >
-                        <CheckCircle2 className="w-3 h-3" /> Accept
-                      </button>
-                      <button
-                        onClick={() => rejectOffer(o.id)}
-                        className="flex-1 flex items-center justify-center gap-1.5 border-2 border-[#1D1D1D] py-2.5 text-[9px] font-black uppercase tracking-widest italic hover:bg-red-50 hover:border-red-400 hover:text-red-500 transition-colors"
-                      >
-                        <X className="w-3 h-3" /> Reject
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
-
-        {/* ── Campaigns ── */}
-        <section className="px-6 mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic">My Campaigns</h2>
+        {/* Status Filters */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+          {filters.map((filter) => (
             <button
-              onClick={() => navigate("/campaign/type")}
-              className="flex items-center gap-1.5 bg-[#389C9A] text-white px-3 py-2 text-[9px] font-black uppercase tracking-widest italic hover:bg-[#1D1D1D] transition-colors"
+              key={filter}
+              onClick={() => setActiveFilter(filter)}
+              className={`whitespace-nowrap px-4 py-2 text-[9px] font-black uppercase tracking-widest italic border-2 transition-all ${
+                activeFilter === filter 
+                ? "bg-[#1D1D1D] text-white border-[#1D1D1D]" 
+                : "bg-white text-[#1D1D1D]/40 border-[#1D1D1D]/10 hover:border-[#1D1D1D]/40"
+              }`}
             >
-              <Plus className="w-3 h-3" /> New
+              {filter} {filter !== 'All' && `(${campaigns.filter(c => c.status === filter).length})`}
             </button>
-          </div>
+          ))}
+        </div>
+      </div>
 
-          {/* Filter Tabs */}
-          <div className="flex gap-1 mb-4 border-2 border-[#1D1D1D] p-1">
-            {(["LIVE", "PENDING", "COMPLETED"] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setCampaignFilter(tab)}
-                className={`flex-1 py-2 text-[9px] font-black uppercase tracking-widest italic transition-colors ${
-                  campaignFilter === tab
-                    ? "bg-[#1D1D1D] text-white"
-                    : "text-[#1D1D1D]/40 hover:text-[#1D1D1D]"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-
-          {/* Campaign List */}
-          <div className="flex flex-col gap-3">
-            {filteredCampaigns.length === 0 ? (
-              <div className="border-2 border-dashed border-[#1D1D1D]/20 p-10 text-center">
-                <Megaphone className="w-8 h-8 text-[#1D1D1D]/20 mx-auto mb-3" />
-                <p className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/30">
-                  No {campaignFilter.toLowerCase()} campaigns
-                </p>
-                {campaignFilter === "LIVE" && (
-                  <button
-                    onClick={() => navigate("/campaign/type")}
-                    className="mt-4 px-4 py-2 bg-[#1D1D1D] text-white text-[9px] font-black uppercase italic hover:bg-[#389C9A] transition-colors"
-                  >
-                    Create Campaign
-                  </button>
-                )}
-              </div>
-            ) : (
-              filteredCampaigns.map((c, i) => (
-                <motion.div
-                  key={c.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  onClick={() => navigate(`/business/campaign/${c.id}`)}
-                  className="border-2 border-[#1D1D1D] p-5 cursor-pointer hover:bg-[#F8F8F8] active:scale-[0.99] transition-all group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 flex-shrink-0 ${
-                          c.status === "ACTIVE"         ? "bg-[#389C9A]" :
-                          c.status === "PENDING REVIEW" ? "bg-[#FEDB71]" :
-                          "bg-[#1D1D1D]/20"
-                        }`} />
-                        <h3 className="text-[12px] font-black uppercase tracking-tight italic truncate">{c.name}</h3>
-                      </div>
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 italic ml-4">{c.type}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-[#1D1D1D]/20 group-hover:text-[#389C9A] flex-shrink-0 ml-2 transition-colors" />
-                  </div>
-
-                  <div className="flex items-center gap-4 mt-4 pt-4 border-t border-[#1D1D1D]/10">
-                    <div className="flex items-center gap-1.5">
-                      <Users className="w-3 h-3 text-[#389C9A]" />
-                      <span className="text-[9px] font-black uppercase italic">
-                        {c.campaign_creators?.length || 0} creator{c.campaign_creators?.length !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                    {c.price && (
-                      <div className="flex items-center gap-1.5">
-                        <DollarSign className="w-3 h-3 text-[#FEDB71]" />
-                        <span className="text-[9px] font-black uppercase italic">{c.price}</span>
-                      </div>
-                    )}
-                    <span className={`ml-auto text-[8px] font-black uppercase px-2 py-0.5 border italic ${
-                      c.status === "ACTIVE"
-                        ? "bg-[#389C9A]/10 border-[#389C9A]/30 text-[#389C9A]"
-                        : c.status === "PENDING REVIEW"
-                        ? "bg-[#FEDB71]/10 border-[#FEDB71]/50 text-[#1D1D1D]"
-                        : "bg-[#F8F8F8] border-[#1D1D1D]/10 text-[#1D1D1D]/40"
-                    }`}>
-                      {c.status}
-                    </span>
-                  </div>
-                </motion.div>
-              ))
+      <main className="max-w-[480px] mx-auto w-full px-6 py-8">
+        {filteredCampaigns.length === 0 ? (
+          <div className="mt-12 p-8 border-2 border-dashed border-[#1D1D1D]/10 flex flex-col items-center text-center">
+            <VideoIcon className="w-12 h-12 opacity-20 mb-4 text-[#389C9A]" />
+            <p className="text-sm font-medium text-[#1D1D1D]/40 leading-relaxed max-w-[220px] italic mb-4">
+              {searchQuery 
+                ? "No campaigns match your search"
+                : "New campaigns appear here once you've been accepted by a brand."}
+            </p>
+            {!searchQuery && (
+              <Link to="/browse-businesses" className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] underline italic">
+                Find Opportunities →
+              </Link>
             )}
           </div>
-        </section>
+        ) : (
+          <div className="flex flex-col gap-6">
+            <AnimatePresence mode="popLayout">
+              {filteredCampaigns.map((camp) => (
+                <motion.div 
+                  key={camp.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  onClick={() => navigate(getCampaignLink(camp))}
+                  className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col gap-6 active:bg-[#F8F8F8] transition-colors cursor-pointer group"
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 border-2 border-[#1D1D1D]/10 grayscale group-hover:grayscale-0 transition-all overflow-hidden">
+                        <ImageWithFallback src={camp.logo} className="w-full h-full object-cover" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-1 group-hover:italic transition-all">
+                          {camp.business_name}
+                        </h3>
+                        <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic">
+                          {camp.name} • {camp.type}
+                        </p>
+                      </div>
+                    </div>
+                    <div className={`px-2 py-1 text-[7px] font-black uppercase tracking-widest border ${getStatusColor(camp.status)}`}>
+                      {camp.status}
+                    </div>
+                  </div>
 
-        {/* ── Quick Actions ── */}
-        <section className="px-6 mt-8 mb-4">
-          <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic mb-4">Quick Actions</h2>
-          <div className="flex flex-col gap-2">
-            {[
-              { label: "Browse Creators",   path: "/browse",            icon: Users },
-              { label: "Create Campaign",   path: "/campaign/type",     icon: Megaphone },
-              { label: "Business Settings", path: "/business/settings", icon: ArrowRight },
-            ].map((action) => (
-              <button
-                key={action.path}
-                onClick={() => navigate(action.path)}
-                className="flex items-center justify-between px-5 py-4 border border-[#1D1D1D]/10 hover:border-[#1D1D1D] hover:bg-[#F8F8F8] transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <action.icon className="w-4 h-4 text-[#389C9A]" />
-                  <span className="text-[10px] font-black uppercase tracking-widest italic">{action.label}</span>
+                  {/* Progress Bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-end text-[9px] font-black uppercase tracking-widest italic">
+                      <span className="opacity-40">Progress</span>
+                      <span className="text-[#389C9A]">
+                        {camp.streams_completed}/{camp.streams_target} Streams
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-[#1D1D1D]/5 w-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-500 ${getProgressColor(camp.status)}`}
+                        style={{ width: `${camp.progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between pt-2">
+                    <div>
+                      <p className="text-[7px] font-black uppercase tracking-widest opacity-30 mb-1 italic">
+                        {camp.status === 'Completed' ? 'Total Earned' : 'Potential Earnings'}
+                      </p>
+                      <p className="text-xl font-black italic leading-none text-[#389C9A]">
+                        {camp.earnings}
+                      </p>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {/* Status-specific indicators */}
+                      {camp.status === 'Active' && (
+                        <div className="flex items-center gap-1 text-[8px] font-black text-[#389C9A]">
+                          <Clock className="w-3 h-3" /> Live
+                        </div>
+                      )}
+                      {camp.status === 'Upcoming' && (
+                        <div className="flex items-center gap-1 text-[8px] font-black text-[#FEDB71]">
+                          <Clock className="w-3 h-3" /> Starts Soon
+                        </div>
+                      )}
+                      {camp.status === 'Completed' && (
+                        <div className="flex items-center gap-1 text-[8px] font-black text-green-500">
+                          <CheckCircle2 className="w-3 h-3" /> Done
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest underline underline-offset-4 decoration-[#389C9A] text-[#1D1D1D]">
+                        Manage <ChevronRight className="w-3 h-3 text-[#FEDB71]" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Campaign Type Badge */}
+                  <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <VideoIcon className="w-12 h-12" />
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {/* Summary Stats */}
+            <div className="mt-8 p-6 bg-[#F8F8F8] border-2 border-[#1D1D1D]">
+              <h4 className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-4">Campaign Summary</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-2xl font-black">{stats.active}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Active Now</p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#1D1D1D]/20 group-hover:text-[#1D1D1D] transition-colors" />
-              </button>
-            ))}
+                <div>
+                  <p className="text-2xl font-black">₦{stats.totalEarnings}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Total Earned</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-black">{stats.completed}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Completed</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-black">{stats.upcoming}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Upcoming</p>
+                </div>
+              </div>
+            </div>
           </div>
-        </section>
-
+        )}
       </main>
+
       <BottomNav />
     </div>
   );
