@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
-import { MapPin, Loader2, Zap, Briefcase, ExternalLink, Users, Eye, Video, CheckCircle2, Edit2 } from "lucide-react";
+import {
+  MapPin,
+  Loader2,
+  Zap,
+  Briefcase,
+  ExternalLink,
+  Users,
+  Eye,
+  Video,
+  CheckCircle2,
+  Edit2
+} from "lucide-react";
+
 import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
@@ -15,8 +27,8 @@ interface CreatorProfile {
   location: string;
   verified: boolean;
   category: string;
-  platforms: any;
-  niches: any;
+  platforms: any[];
+  niches: any[];
   availability: string;
   stats?: {
     followers: number;
@@ -48,84 +60,125 @@ export function Profile() {
   const [loading, setLoading] = useState(true);
   const [isOwn, setIsOwn] = useState(false);
   const [profileType, setProfileType] = useState<"creator" | "business" | null>(null);
+
   const [creator, setCreator] = useState<CreatorProfile | null>(null);
   const [business, setBusiness] = useState<Business | null>(null);
 
   useEffect(() => {
-    const load = async () => {
+    const loadProfile = async () => {
       setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) { 
-        navigate("/"); 
-        return; 
+
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        navigate("/");
+        return;
       }
 
       const targetUserId = id === "me" ? session.user.id : id;
+
       setIsOwn(targetUserId === session.user.id);
 
-      // Check businesses table first
-      const { data: business } = await supabase
+      /* ---------------- BUSINESS ---------------- */
+
+      const { data: businessData } = await supabase
         .from("businesses")
-        .select("*")
+        .select(`
+          user_id,
+          business_name,
+          contact_name,
+          logo_url,
+          location,
+          bio,
+          website,
+          verified,
+          industry,
+          industries,
+          campaign_types,
+          budget_range
+        `)
         .eq("user_id", targetUserId)
         .maybeSingle();
 
-      if (business) {
+      if (businessData) {
         setProfileType("business");
-        setBusiness(business);
+
+        setBusiness({
+          id: businessData.user_id,
+          user_id: businessData.user_id,
+          business_name: businessData.business_name || "Business",
+          contact_name: businessData.contact_name || "",
+          logo_url: businessData.logo_url || "",
+          location: businessData.location || "",
+          bio: businessData.bio || "",
+          website: businessData.website || "",
+          verified: businessData.verified || false,
+          industry: businessData.industry || "",
+          industries: businessData.industries || [],
+          campaign_types: businessData.campaign_types || [],
+          budget_range: businessData.budget_range || ""
+        });
+
         setLoading(false);
         return;
       }
 
-      // Check creator_profiles table (main creator table)
-      const { data: creator } = await supabase
+      /* ---------------- CREATOR ---------------- */
+
+      const { data: creatorData } = await supabase
         .from("creator_profiles")
-        .select("*")
+        .select(`
+          user_id,
+          full_name,
+          avatar_url,
+          username,
+          bio,
+          location,
+          verified,
+          category,
+          platforms,
+          niches,
+          availability
+        `)
         .eq("user_id", targetUserId)
         .maybeSingle();
 
-      if (creator) {
+      if (creatorData) {
         setProfileType("creator");
-        setCreator(creatorProfile);
-        setLoading(false);
-        return;
-      }
 
-      // Fallback to creators table
-      const { data: creatorLegacy } = await supabase
-        .from("creators")
-        .select("*")
-        .eq("user_id", targetUserId)
-        .maybeSingle();
-
-      if (creatorLegacy) {
-        setProfileType("creator");
-        // Map legacy fields to match expected structure
         setCreator({
-          id: creatorLegacy.id,
-          user_id: creatorLegacy.user_id,
-          full_name: creatorLegacy.name,
-          avatar_url: creatorLegacy.avatar,
-          username: creatorLegacy.username,
-          bio: creatorLegacy.bio,
-          location: creatorLegacy.location,
-          verified: creatorLegacy.verified || false,
-          category: creatorLegacy.category,
-          platforms: creatorLegacy.platforms,
-          niches: creatorLegacy.niches,
-          availability: creatorLegacy.availability || "Available for campaigns",
-          stats: creatorLegacy.stats || {
-            followers: creatorLegacy.followers || 0,
-            avgViewers: creatorLegacy.avg_viewers || 0,
-            totalStreams: creatorLegacy.total_streams || 0
+          id: creatorData.user_id,
+          user_id: creatorData.user_id,
+          full_name: creatorData.full_name || "Creator",
+          avatar_url: creatorData.avatar_url || "",
+          username: creatorData.username || "",
+          bio: creatorData.bio || "",
+          location: creatorData.location || "",
+          verified: creatorData.verified || false,
+          category: creatorData.category || "",
+          platforms: creatorData.platforms || [],
+          niches: creatorData.niches || [],
+          availability: creatorData.availability || "Available for campaigns",
+          stats: {
+            followers: 0,
+            avgViewers: 0,
+            totalStreams: 0
           }
         });
+
+        setLoading(false);
+        return;
       }
 
       setLoading(false);
     };
-    load();
+
+    loadProfile();
   }, [id, navigate]);
+
+  /* ---------------- LOADING ---------------- */
 
   if (loading)
     return (
@@ -134,16 +187,17 @@ export function Profile() {
       </div>
     );
 
+  /* ---------------- NO PROFILE ---------------- */
+
   if (!profileType)
     return (
-      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+      <div className="flex flex-col min-h-screen bg-white pb-[80px]">
         <AppHeader showBack title="Profile" backPath="/dashboard" />
-        <div className="flex flex-col items-center justify-center flex-1 px-6 gap-4">
-          <div className="w-16 h-16 bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 flex items-center justify-center">
-            <span className="text-2xl opacity-20">?</span>
-          </div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">No profile found</p>
+
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-gray-400">No profile found</p>
         </div>
+
         <BottomNav />
       </div>
     );
@@ -158,114 +212,155 @@ export function Profile() {
 
       <main className="max-w-[480px] mx-auto w-full">
 
-        {/* ── Hero ─────────────────────────────────────────── */}
+        {/* HERO */}
+
         <section className="px-6 pt-8 pb-6 border-b border-[#1D1D1D]/10">
           <div className="flex items-start gap-5">
 
-            {/* Avatar / Logo */}
-            <div className="w-20 h-20 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center flex-shrink-0">
-              {(profileType === "creator" ? creator?.avatar_url : business?.logo_url) ? (
+            {/* AVATAR */}
+
+            <div className="w-20 h-20 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8]">
+
+              {(profileType === "creator"
+                ? creator?.avatar_url
+                : business?.logo_url) ? (
+
                 <img
-                  src={profileType === "creator" ? creator?.avatar_url : business?.logo_url}
-                  alt="profile"
+                  src={
+                    profileType === "creator"
+                      ? creator?.avatar_url
+                      : business?.logo_url
+                  }
                   className="w-full h-full object-cover"
                 />
+
               ) : (
                 <div className="opacity-20 p-4">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-                    {profileType === "creator"
-                      ? <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>
-                      : <><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 0 0-4 0v2M8 7V5a2 2 0 0 0-4 0v2" /></>
-                    }
-                  </svg>
+                  <Users />
                 </div>
               )}
             </div>
 
-            {/* Name / Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-lg font-black uppercase tracking-tight italic truncate">
-                  {profileType === "creator" 
-                    ? (creator?.full_name || creator?.username || "Creator") 
-                    : (business?.business_name || "Business")}
+            {/* INFO */}
+
+            <div className="flex-1">
+
+              <div className="flex items-center gap-2">
+
+                <h1 className="text-lg font-black uppercase italic">
+
+                  {profileType === "creator"
+                    ? creator?.full_name
+                    : business?.business_name}
+
                 </h1>
+
                 {(creator?.verified || business?.verified) && (
-                  <CheckCircle2 className="w-4 h-4 text-[#389C9A] flex-shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-[#389C9A]" />
                 )}
+
               </div>
 
               {profileType === "creator" && creator?.username && (
-                <p className="text-[10px] font-bold text-[#1D1D1D]/40 italic mb-2">@{creator.username}</p>
-              )}
-              {profileType === "business" && business?.contact_name && (
-                <p className="text-[10px] font-bold text-[#1D1D1D]/40 italic mb-2">{business.contact_name}</p>
+                <p className="text-xs text-gray-400">@{creator.username}</p>
               )}
 
-              {/* Type badge */}
-              <div className={`inline-flex items-center gap-1.5 px-2 py-1 text-[8px] font-black uppercase tracking-widest italic ${
-                profileType === "creator" ? "bg-[#389C9A]/10 text-[#389C9A]" : "bg-[#FEDB71]/20 text-[#D4A800]"
-              }`}>
-                {profileType === "creator" ? <Zap className="w-2.5 h-2.5" /> : <Briefcase className="w-2.5 h-2.5" />}
-                {profileType === "creator" ? "Creator" : "Business"}
+              {profileType === "business" && business?.contact_name && (
+                <p className="text-xs text-gray-400">{business.contact_name}</p>
+              )}
+
+              {/* BADGE */}
+
+              <div className="mt-2">
+
+                {profileType === "creator" ? (
+
+                  <span className="flex items-center gap-1 text-xs text-[#389C9A]">
+                    <Zap size={12} /> Creator
+                  </span>
+
+                ) : (
+
+                  <span className="flex items-center gap-1 text-xs text-[#D4A800]">
+                    <Briefcase size={12} /> Business
+                  </span>
+
+                )}
+
               </div>
+
             </div>
           </div>
 
-          {/* Location */}
+          {/* LOCATION */}
+
           {(creator?.location || business?.location) && (
-            <div className="flex items-center gap-1.5 mt-4 text-[#1D1D1D]/40">
-              <MapPin className="w-3 h-3" />
-              <span className="text-[10px] font-bold italic">
-                {profileType === "creator" ? creator?.location : business?.location}
-              </span>
+            <div className="flex items-center gap-1 mt-3 text-sm text-gray-500">
+              <MapPin size={14} />
+              {profileType === "creator"
+                ? creator?.location
+                : business?.location}
             </div>
           )}
 
-          {/* Bio */}
+          {/* BIO */}
+
           {(creator?.bio || business?.bio) && (
-            <p className="mt-3 text-[12px] leading-relaxed text-[#1D1D1D]/70">
-              {profileType === "creator" ? creator?.bio : business?.bio}
+            <p className="mt-3 text-sm text-gray-600">
+              {profileType === "creator"
+                ? creator?.bio
+                : business?.bio}
             </p>
           )}
 
-          {/* Website (business) */}
+          {/* WEBSITE */}
+
           {profileType === "business" && business?.website && (
             <a
-              href={`https://${business.website.replace(/^https?:\/\//, "")}`}
+              href={`https://${business.website}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 mt-3 text-[10px] font-bold italic text-[#389C9A] hover:underline"
+              className="flex items-center gap-1 mt-3 text-sm text-[#389C9A]"
             >
-              <ExternalLink className="w-3 h-3" />
-              {business.website.replace(/^https?:\/\//, "")}
+              <ExternalLink size={14} />
+              {business.website}
             </a>
           )}
 
-          {/* Edit button — only on own profile */}
+          {/* EDIT */}
+
           {isOwn && (
             <button
               onClick={() => navigate("/profile/edit")}
-              className={`mt-5 w-full flex items-center justify-center gap-2 py-3 border-2 text-[10px] font-black uppercase tracking-widest italic transition-colors ${
-                profileType === "creator"
-                  ? "border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white"
-                  : "border-[#D4A800] text-[#D4A800] hover:bg-[#D4A800] hover:text-white"
-              }`}
+              className="mt-4 w-full border py-2 text-sm"
             >
-              <Edit2 className="w-3.5 h-3.5" />
               Edit Profile
             </button>
           )}
+
         </section>
 
-        {/* ── CREATOR SECTIONS ─────────────────────────────── */}
-        {profileType === "creator" && creator && (
-          <>
-            {/* Availability */}
-            {creator.availability && (
-              <section className="px-6 py-5 border-b border-[#1D1D1D]/10">
-                <Label>Availability</Label>
-                <div className={`inline-flex items-center gap-2 px-3 py-2 border text-[10px] font-black uppercase tracking-widest italic ${
+      </main>
+
+      <BottomNav />
+    </div>
+  );
+}
+
+/* ---------------- HELPERS ---------------- */
+
+function formatNumber(n: string | number): string {
+
+  const num = typeof n === "string" ? parseInt(n) : n;
+
+  if (isNaN(num)) return String(n);
+
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+
+  return String(num);
+            }text-[10px] font-black uppercase tracking-widest italic ${
                   creator.availability === "Available for campaigns"
                     ? "border-[#389C9A]/30 bg-[#389C9A]/5 text-[#389C9A]"
                     : creator.availability === "Limited availability"
