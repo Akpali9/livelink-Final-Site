@@ -78,13 +78,13 @@ export function Profile() {
       }
 
       // Check creator_profiles table (main creator table)
-      const { data: creatorProfile, error: creatorError } = await supabase
+      const { data: creator } = await supabase
         .from("creator_profiles")
         .select("*")
         .eq("user_id", targetUserId)
         .maybeSingle();
 
-      if (creatorProfile) {
+      if (creator) {
         setProfileType("creator");
         setCreator(creatorProfile);
         setLoading(false);
