@@ -36,13 +36,12 @@ export function Profile() {
   const [loading, setLoading] = useState(true);
   const [isOwn, setIsOwn] = useState(false);
   const [creator, setCreator] = useState<CreatorProfile | null>(null);
-  const [authUser, setAuthUser] = useState<any>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
       setLoading(true);
 
-      // 1️⃣ Get the authenticated session
+      // 1️⃣ Get Auth session
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -52,18 +51,45 @@ export function Profile() {
         return;
       }
 
-      setAuthUser(session.user);
-
       const targetUserId = id === "me" ? session.user.id : id;
       setIsOwn(targetUserId === session.user.id);
 
-      // 2️⃣ Try creator_profiles table
-      const { data: creatorData } = await supabase
+      // 2️⃣ Try creator_profiles
+      let { data: creatorData } = await supabase
         .from("creator_profiles")
         .select("*")
         .eq("user_id", targetUserId)
         .maybeSingle();
 
+      // 3️⃣ If not found and it's the current user, create a default profile
+      if (!creatorData && isOwn) {
+        const { data: newProfile, error } = await supabase
+          .from("creator_profiles")
+          .insert([
+            {
+              user_id: session.user.id,
+              full_name: session.user.user_metadata?.full_name || "Creator",
+              avatar_url: "",
+              bio: "",
+              location: "",
+              verified: false,
+              category: "",
+              niches: [],
+            },
+          ])
+          .select()
+          .maybeSingle();
+
+        if (error) {
+          console.error("Error creating profile:", error);
+          setLoading(false);
+          return;
+        }
+
+        creatorData = newProfile;
+      }
+
+      // 4️⃣ If found (or just created), set state
       if (creatorData) {
         setCreator({
           id: creatorData.id,
@@ -81,39 +107,8 @@ export function Profile() {
             totalStreams: creatorData.avg_weekly || 0,
           },
         });
-        setLoading(false);
-        return;
       }
 
-      // 3️⃣ Try legacy creators table
-      const { data: legacy } = await supabase
-        .from("creators")
-        .select("*")
-        .eq("user_id", targetUserId)
-        .maybeSingle();
-
-      if (legacy) {
-        setCreator({
-          id: legacy.id,
-          user_id: legacy.user_id,
-          full_name: legacy.name || "Creator",
-          avatar_url: legacy.avatar || "",
-          bio: legacy.bio || "",
-          location: legacy.location || "",
-          verified: legacy.verified || false,
-          category: legacy.category || "",
-          niches: legacy.niches || [],
-          availability: legacy.availability || "Available for campaigns",
-          stats: {
-            avgViewers: legacy.avg_viewers || 0,
-            totalStreams: legacy.total_streams || 0,
-          },
-        });
-        setLoading(false);
-        return;
-      }
-
-      // 4️⃣ Auth user exists but no profile yet
       setLoading(false);
     };
 
@@ -128,24 +123,13 @@ export function Profile() {
       </div>
     );
 
-  // -------------------- Auth user exists but no profile --------------------
+  // -------------------- Not found (other user) --------------------
   if (!creator)
     return (
-      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+      <div className="flex flex-col min-h-screen bg-white pb-[80px]">
         <AppHeader showBack title="Profile" backPath="/dashboard" />
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
-          <div className="text-center">
-            <Users className="w-16 h-16 opacity-20 mx-auto" />
-            <p className="mt-4 text-gray-500">You don’t have a profile yet.</p>
-          </div>
-          {isOwn && (
-            <button
-              onClick={() => navigate("/profile/create")}
-              className="mt-2 px-6 py-3 bg-[#389C9A] text-white font-bold uppercase tracking-widest rounded"
-            >
-              Create Profile
-            </button>
-          )}
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-gray-400">Profile not found</p>
         </div>
         <BottomNav />
       </div>
