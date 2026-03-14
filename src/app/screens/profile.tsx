@@ -9,17 +9,15 @@ interface CreatorProfile {
   id: string;
   user_id: string;
   full_name: string;
+  email: string;
   avatar_url: string;
   bio: string;
   location: string;
   verified: boolean;
   category: string;
   niches: string[];
-  availability: string;
-  stats?: {
-    avgViewers: number;
-    totalStreams: number;
-  };
+  avg_concurrent: number;
+  avg_weekly: number;
 }
 
 export function Profile() {
@@ -35,7 +33,7 @@ export function Profile() {
       setLoading(true);
 
       try {
-        // 1️⃣ Get the current authenticated user
+        // 1️⃣ Get logged-in user
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if (userError || !userData) {
           navigate("/");
@@ -45,27 +43,36 @@ export function Profile() {
         const targetUserId = id === "me" ? userData.id : id;
         setIsOwn(targetUserId === userData.id);
 
-        // 2️⃣ Try to fetch creator profile
-        let { data: creatorData } = await supabase
+        // 2️⃣ Fetch creator profile from creator_profiles table
+        let { data: creatorData, error: creatorError } = await supabase
           .from("creator_profiles")
           .select("*")
           .eq("user_id", targetUserId)
           .maybeSingle();
 
-        // 3️⃣ If not found and it’s the logged-in user, create default profile
+        if (creatorError) {
+          console.error("Error fetching creator profile:", creatorError);
+          setLoading(false);
+          return;
+        }
+
+        // 3️⃣ If profile doesn't exist and it's the logged-in user, create it
         if (!creatorData && targetUserId === userData.id) {
           const { data: newProfile, error: insertError } = await supabase
             .from("creator_profiles")
             .insert([
               {
                 user_id: userData.id,
-                full_name: userData.user_metadata?.full_name || "Creator",
+                full_name: userData.email || "Creator",
+                email: userData.email || "unknown@example.com",
                 avatar_url: "",
                 bio: "",
                 location: "",
                 verified: false,
                 category: "",
                 niches: [],
+                avg_concurrent: 0,
+                avg_weekly: 0,
               },
             ])
             .select()
@@ -80,25 +87,10 @@ export function Profile() {
           creatorData = newProfile;
         }
 
-        // 4️⃣ Set state if profile exists
         if (creatorData) {
-          setCreator({
-            id: creatorData.id,
-            user_id: creatorData.user_id,
-            full_name: creatorData.full_name || "Creator",
-            avatar_url: creatorData.avatar_url || "",
-            bio: creatorData.bio || "",
-            location: creatorData.location || "",
-            verified: creatorData.verified || false,
-            category: creatorData.category || "",
-            niches: creatorData.niches || [],
-            availability: "Available for campaigns",
-            stats: {
-              avgViewers: creatorData.avg_concurrent || 0,
-              totalStreams: creatorData.avg_weekly || 0,
-            },
-          });
+          setCreator(creatorData);
         }
+
       } catch (err) {
         console.error("Failed to load profile:", err);
       } finally {
