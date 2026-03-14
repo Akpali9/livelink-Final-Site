@@ -1,13 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
-import {
-  MapPin,
-  Loader2,
-  Zap,
-  Users,
-  CheckCircle2,
-  Edit2,
-} from "lucide-react";
+import { MapPin, Loader2, Zap, Users, CheckCircle2, Edit2 } from "lucide-react";
 import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
@@ -42,7 +35,7 @@ export function Profile() {
       setLoading(true);
 
       try {
-        // ✅ Get the authenticated user safely
+        // 1️⃣ Get the current authenticated user
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if (userError || !userData) {
           navigate("/");
@@ -52,14 +45,14 @@ export function Profile() {
         const targetUserId = id === "me" ? userData.id : id;
         setIsOwn(targetUserId === userData.id);
 
-        // 1️⃣ Try creator_profiles table
+        // 2️⃣ Try to fetch creator profile
         let { data: creatorData } = await supabase
           .from("creator_profiles")
           .select("*")
           .eq("user_id", targetUserId)
           .maybeSingle();
 
-        // 2️⃣ If not found and it's the current user, auto-create default profile
+        // 3️⃣ If not found and it’s the logged-in user, create default profile
         if (!creatorData && targetUserId === userData.id) {
           const { data: newProfile, error: insertError } = await supabase
             .from("creator_profiles")
@@ -87,7 +80,7 @@ export function Profile() {
           creatorData = newProfile;
         }
 
-        // 3️⃣ If a profile is found or created, set state
+        // 4️⃣ Set state if profile exists
         if (creatorData) {
           setCreator({
             id: creatorData.id,
@@ -124,7 +117,7 @@ export function Profile() {
       </div>
     );
 
-  // -------------------- Not found (other user) --------------------
+  // -------------------- Not found --------------------
   if (!creator)
     return (
       <div className="flex flex-col min-h-screen bg-white pb-[80px]">
