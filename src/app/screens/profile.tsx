@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   Edit2
 } from "lucide-react";
-
 import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
@@ -35,6 +34,246 @@ interface CreatorProfile {
     avgViewers: number;
     totalStreams: number;
   };
+}
+
+interface Business {
+  id: string;
+  user_id: string;
+  business_name: string;
+  contact_name: string;
+  logo_url: string;
+  location: string;
+  bio: string;
+  website: string;
+  verified: boolean;
+  industry: string;
+  industries: string[];
+  campaign_types: string[];
+  budget_range: string;
+}
+
+export function Profile() {
+  const navigate = useNavigate();
+  const { id } = useParams();
+
+  const [loading, setLoading] = useState(true);
+  const [isOwn, setIsOwn] = useState(false);
+  const [profileType, setProfileType] = useState<"creator" | "business" | null>(null);
+  const [creator, setCreator] = useState<CreatorProfile | null>(null);
+  const [business, setBusiness] = useState<Business | null>(null);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      setLoading(true);
+
+      // Get session
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        navigate("/");
+        return;
+      }
+
+      const targetUserId = id === "me" ? session.user.id : id;
+      setIsOwn(targetUserId === session.user.id);
+
+      // -------------------- BUSINESS --------------------
+      const { data: businessData } = await supabase
+        .from("businesses")
+        .select("*")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+
+      if (businessData) {
+        setProfileType("business");
+        setBusiness({
+          id: businessData.user_id,
+          user_id: businessData.user_id,
+          business_name: businessData.business_name || businessData.name || "Business",
+          contact_name: businessData.contact_name || "",
+          logo_url: businessData.logo_url || businessData.logo || "",
+          location: businessData.location || "",
+          bio: businessData.bio || "",
+          website: businessData.website || "",
+          verified: businessData.verified || false,
+          industry: businessData.industry || "",
+          industries: businessData.industries || [],
+          campaign_types: businessData.campaign_types || [],
+          budget_range: businessData.budget_range || "",
+        });
+        setLoading(false);
+        return;
+      }
+
+      // -------------------- CREATOR --------------------
+      const { data: creatorData } = await supabase
+        .from("creator_profiles")
+        .select("*")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+
+      if (creatorData) {
+        setProfileType("creator");
+        setCreator({
+          id: creatorData.user_id,
+          user_id: creatorData.user_id,
+          full_name: creatorData.full_name || creatorData.name || "Creator",
+          avatar_url: creatorData.avatar_url || creatorData.avatar || "",
+          username: creatorData.username || "",
+          bio: creatorData.bio || "",
+          location: creatorData.location || "",
+          verified: creatorData.verified || false,
+          category: creatorData.category || "",
+          platforms: creatorData.platforms || [],
+          niches: creatorData.niches || [],
+          availability: creatorData.availability || "Available for campaigns",
+          stats: {
+            followers: 0,
+            avgViewers: 0,
+            totalStreams: 0,
+          },
+        });
+        setLoading(false);
+        return;
+      }
+
+      // -------------------- NOT FOUND --------------------
+      setLoading(false);
+    };
+
+    loadProfile();
+  }, [id, navigate]);
+
+  // -------------------- LOADING --------------------
+  if (loading)
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <Loader2 className="w-6 h-6 animate-spin text-[#389C9A]" />
+      </div>
+    );
+
+  // -------------------- NO PROFILE --------------------
+  if (!profileType)
+    return (
+      <div className="flex flex-col min-h-screen bg-white pb-[80px]">
+        <AppHeader showBack title="Profile" backPath="/dashboard" />
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-gray-400">No profile found</p>
+        </div>
+        <BottomNav />
+      </div>
+    );
+
+  // -------------------- PROFILE PAGE --------------------
+  return (
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+      <AppHeader
+        showBack
+        title={profileType === "creator" ? "Creator Profile" : "Business Profile"}
+        backPath={profileType === "business" ? "/business/dashboard" : "/dashboard"}
+      />
+
+      <main className="max-w-[480px] mx-auto w-full">
+        <section className="px-6 pt-8 pb-6 border-b border-[#1D1D1D]/10">
+          <div className="flex items-start gap-5">
+            {/* Avatar / Logo */}
+            <div className="w-20 h-20 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center">
+              {(profileType === "creator" ? creator?.avatar_url : business?.logo_url) ? (
+                <img
+                  src={profileType === "creator" ? creator?.avatar_url : business?.logo_url}
+                  alt="profile"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Users className="w-8 h-8 opacity-20" />
+              )}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-lg font-black uppercase tracking-tight italic truncate">
+                  {profileType === "creator"
+                    ? creator?.full_name
+                    : business?.business_name}
+                </h1>
+                {(creator?.verified || business?.verified) && (
+                  <CheckCircle2 className="w-4 h-4 text-[#389C9A]" />
+                )}
+              </div>
+
+              {profileType === "creator" && creator?.username && (
+                <p className="text-[10px] font-bold text-[#1D1D1D]/40 italic mb-2">
+                  @{creator.username}
+                </p>
+              )}
+              {profileType === "business" && business?.contact_name && (
+                <p className="text-[10px] font-bold text-[#1D1D1D]/40 italic mb-2">
+                  {business.contact_name}
+                </p>
+              )}
+
+              <div
+                className={`inline-flex items-center gap-1.5 px-2 py-1 text-[8px] font-black uppercase tracking-widest italic ${
+                  profileType === "creator"
+                    ? "bg-[#389C9A]/10 text-[#389C9A]"
+                    : "bg-[#FEDB71]/20 text-[#D4A800]"
+                }`}
+              >
+                {profileType === "creator" ? <Zap className="w-2.5 h-2.5" /> : <Briefcase className="w-2.5 h-2.5" />}
+                {profileType === "creator" ? "Creator" : "Business"}
+              </div>
+            </div>
+          </div>
+
+          {/* Location */}
+          {(creator?.location || business?.location) && (
+            <div className="flex items-center gap-1.5 mt-4 text-[#1D1D1D]/40">
+              <MapPin className="w-3 h-3" />
+              <span className="text-[10px] font-bold italic">
+                {profileType === "creator" ? creator?.location : business?.location}
+              </span>
+            </div>
+          )}
+
+          {/* Bio */}
+          {(creator?.bio || business?.bio) && (
+            <p className="mt-3 text-[12px] leading-relaxed text-[#1D1D1D]/70">
+              {profileType === "creator" ? creator?.bio : business?.bio}
+            </p>
+          )}
+
+          {/* Website */}
+          {profileType === "business" && business?.website && (
+            <a
+              href={`https://${business.website.replace(/^https?:\/\//, "")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 mt-3 text-[10px] font-bold italic text-[#389C9A] hover:underline"
+            >
+              <ExternalLink className="w-3 h-3" />
+              {business.website.replace(/^https?:\/\//, "")}
+            </a>
+          )}
+
+          {/* Edit button */}
+          {isOwn && (
+            <button
+              onClick={() => navigate("/profile/edit")}
+              className="mt-5 w-full flex items-center justify-center gap-2 py-3 border-2 text-[10px] font-black uppercase tracking-widest italic border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              Edit Profile
+            </button>
+          )}
+        </section>
+      </main>
+      <BottomNav />
+    </div>
+  );
+}  };
 }
 
 interface Business {
