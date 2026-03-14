@@ -41,75 +41,76 @@ export function Profile() {
     const loadProfile = async () => {
       setLoading(true);
 
-      // 1️⃣ Get Auth session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.user) {
-        navigate("/");
-        return;
-      }
-
-      const targetUserId = id === "me" ? session.user.id : id;
-      setIsOwn(targetUserId === session.user.id);
-
-      // 2️⃣ Try creator_profiles
-      let { data: creatorData } = await supabase
-        .from("creator_profiles")
-        .select("*")
-        .eq("user_id", targetUserId)
-        .maybeSingle();
-
-      // 3️⃣ If not found and it's the current user, create a default profile
-      if (!creatorData && isOwn) {
-        const { data: newProfile, error } = await supabase
-          .from("creator_profiles")
-          .insert([
-            {
-              user_id: session.user.id,
-              full_name: session.user.user_metadata?.full_name || "Creator",
-              avatar_url: "",
-              bio: "",
-              location: "",
-              verified: false,
-              category: "",
-              niches: [],
-            },
-          ])
-          .select()
-          .maybeSingle();
-
-        if (error) {
-          console.error("Error creating profile:", error);
-          setLoading(false);
+      try {
+        // ✅ Get the authenticated user safely
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData) {
+          navigate("/");
           return;
         }
 
-        creatorData = newProfile;
-      }
+        const targetUserId = id === "me" ? userData.id : id;
+        setIsOwn(targetUserId === userData.id);
 
-      // 4️⃣ If found (or just created), set state
-      if (creatorData) {
-        setCreator({
-          id: creatorData.id,
-          user_id: creatorData.user_id,
-          full_name: creatorData.full_name || "Creator",
-          avatar_url: creatorData.avatar_url || "",
-          bio: creatorData.bio || "",
-          location: creatorData.location || "",
-          verified: creatorData.verified || false,
-          category: creatorData.category || "",
-          niches: creatorData.niches || [],
-          availability: "Available for campaigns",
-          stats: {
-            avgViewers: creatorData.avg_concurrent || 0,
-            totalStreams: creatorData.avg_weekly || 0,
-          },
-        });
-      }
+        // 1️⃣ Try creator_profiles table
+        let { data: creatorData } = await supabase
+          .from("creator_profiles")
+          .select("*")
+          .eq("user_id", targetUserId)
+          .maybeSingle();
 
-      setLoading(false);
+        // 2️⃣ If not found and it's the current user, auto-create default profile
+        if (!creatorData && targetUserId === userData.id) {
+          const { data: newProfile, error: insertError } = await supabase
+            .from("creator_profiles")
+            .insert([
+              {
+                user_id: userData.id,
+                full_name: userData.user_metadata?.full_name || "Creator",
+                avatar_url: "",
+                bio: "",
+                location: "",
+                verified: false,
+                category: "",
+                niches: [],
+              },
+            ])
+            .select()
+            .maybeSingle();
+
+          if (insertError) {
+            console.error("Error creating profile:", insertError);
+            setLoading(false);
+            return;
+          }
+
+          creatorData = newProfile;
+        }
+
+        // 3️⃣ If a profile is found or created, set state
+        if (creatorData) {
+          setCreator({
+            id: creatorData.id,
+            user_id: creatorData.user_id,
+            full_name: creatorData.full_name || "Creator",
+            avatar_url: creatorData.avatar_url || "",
+            bio: creatorData.bio || "",
+            location: creatorData.location || "",
+            verified: creatorData.verified || false,
+            category: creatorData.category || "",
+            niches: creatorData.niches || [],
+            availability: "Available for campaigns",
+            stats: {
+              avgViewers: creatorData.avg_concurrent || 0,
+              totalStreams: creatorData.avg_weekly || 0,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load profile:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     loadProfile();
