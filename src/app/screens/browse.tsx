@@ -1,24 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import {
-  Search,
-  Filter,
-  ChevronRight,
-  X,
-  ChevronLeft,
-  CheckCircle2,
-  MapPin,
-  Users,
-  Zap
-} from "lucide-react";
+import { Search, Filter, ChevronRight, X, ChevronLeft, CheckCircle2, MapPin, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
 
 const CATEGORIES = ["All", "Gaming", "Beauty", "Fitness", "Business", "Music", "Comedy"];
-const PLATFORMS  = ["Twitch", "TikTok", "Instagram", "YouTube", "Kick", "Facebook"];
-const COUNTRIES  = ["Any", "Nigeria", "South Africa", "Ghana", "Kenya", "United Kingdom", "United States"];
+const PLATFORMS = ["Twitch", "TikTok", "Instagram", "YouTube", "Kick", "Facebook"];
+const COUNTRIES = ["Any", "Nigeria", "South Africa", "Ghana", "Kenya", "United Kingdom", "United States"];
 
 export function Browse() {
   const navigate = useNavigate();
@@ -31,23 +21,30 @@ export function Browse() {
   const [loading, setLoading] = useState(true);
 
   const togglePlatform = (p: string) => {
-    setSelectedPlatforms(prev =>
-      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
-    );
+    setSelectedPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
   };
 
   const fetchCreators = async () => {
     setLoading(true);
-    let query = supabase.from("creators").select("*");
+    try {
+      let query = supabase.from("creator_profiles").select("*");
 
-    if (activeCategory !== "All") query = query.eq("category", activeCategory);
-    if (selectedCountry !== "Any") query = query.eq("country", selectedCountry);
-    if (selectedPlatforms.length > 0) query = query.overlaps("platforms", selectedPlatforms);
-    if (search.trim()) query = query.ilike("name", `%${search}%`);
+      if (activeCategory !== "All") query = query.eq("category", activeCategory);
+      if (selectedCountry !== "Any") query = query.eq("country", selectedCountry);
+      if (selectedPlatforms.length > 0) query = query.overlaps("platforms", selectedPlatforms);
+      if (search.trim()) query = query.ilike("full_name", `%${search}%`);
 
-    const { data, error } = await query.order("created_at", { ascending: false });
-    if (!error && data) setCreators(data);
-    setLoading(false);
+      const { data, error } = await query.order("created_at", { ascending: false });
+      if (error) {
+        console.error("Error fetching creators:", error);
+      } else if (data) {
+        setCreators(data);
+      }
+    } catch (err) {
+      console.error("Fetch creators failed:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchCreators(); }, [activeCategory, selectedPlatforms, selectedCountry, search]);
@@ -56,12 +53,10 @@ export function Browse() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="px-6 pt-10 pb-4 border-b-2 border-[#1D1D1D] sticky top-0 bg-white z-30">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest mb-4 opacity-40 italic hover:opacity-100 transition-opacity"
-        >
+        <button onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest mb-4 opacity-40 italic hover:opacity-100 transition-opacity">
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
 
@@ -72,12 +67,11 @@ export function Browse() {
               {loading ? "—" : `${creators.length} creators`}
             </p>
           </div>
+
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`relative flex items-center gap-2 px-4 py-2.5 border-2 text-[9px] font-black uppercase tracking-widest italic transition-colors ${
-              showFilters || activeFilters > 0
-                ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
-                : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]"
+              showFilters || activeFilters > 0 ? "bg-[#1D1D1D] text-white border-[#1D1D1D]" : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]"
             }`}
           >
             {showFilters ? <X className="w-3.5 h-3.5" /> : <Filter className="w-3.5 h-3.5" />}
@@ -126,9 +120,7 @@ export function Browse() {
                         key={p}
                         onClick={() => togglePlatform(p)}
                         className={`flex items-center gap-1.5 px-3 py-2 text-[9px] font-black uppercase tracking-widest italic border transition-colors ${
-                          selectedPlatforms.includes(p)
-                            ? "bg-[#389C9A] border-[#389C9A] text-white"
-                            : "border-[#1D1D1D]/20 hover:border-[#389C9A]"
+                          selectedPlatforms.includes(p) ? "bg-[#389C9A] border-[#389C9A] text-white" : "border-[#1D1D1D]/20 hover:border-[#389C9A]"
                         }`}
                       >
                         {selectedPlatforms.includes(p) && <CheckCircle2 className="w-3 h-3" />}
@@ -147,9 +139,7 @@ export function Browse() {
                         key={c}
                         onClick={() => setSelectedCountry(c)}
                         className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest italic border transition-colors ${
-                          selectedCountry === c
-                            ? "bg-[#FEDB71] border-[#1D1D1D] text-[#1D1D1D]"
-                            : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]"
+                          selectedCountry === c ? "bg-[#FEDB71] border-[#1D1D1D] text-[#1D1D1D]" : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]"
                         }`}
                       >
                         {c}
@@ -173,16 +163,14 @@ export function Browse() {
         </AnimatePresence>
       </div>
 
-      {/* ── Categories ── */}
+      {/* Categories */}
       <div className="flex gap-2 px-6 py-3 overflow-x-auto border-b border-[#1D1D1D]/10 scrollbar-hide">
         {CATEGORIES.map(cat => (
           <button
             key={cat}
             onClick={() => setActiveCategory(cat)}
             className={`flex-shrink-0 px-4 py-2 text-[9px] font-black uppercase tracking-widest italic border transition-colors ${
-              activeCategory === cat
-                ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
-                : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]/50"
+              activeCategory === cat ? "bg-[#1D1D1D] text-white border-[#1D1D1D]" : "border-[#1D1D1D]/20 hover:border-[#1D1D1D]/50"
             }`}
           >
             {cat}
@@ -190,7 +178,7 @@ export function Browse() {
         ))}
       </div>
 
-      {/* ── Creator List ── */}
+      {/* Creator List */}
       <div className="flex-1">
         {loading ? (
           <div className="flex flex-col gap-4 p-6">
@@ -228,6 +216,70 @@ export function Browse() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.04 }}
+              >
+                <Link
+                  to={`/profile/${creator.user_id}`}
+                  className="flex items-start gap-4 p-5 border-b border-[#1D1D1D]/10 hover:bg-[#F8F8F8] active:bg-[#F8F8F8] transition-colors group"
+                >
+                  <div className="w-20 h-20 border-2 border-[#1D1D1D] overflow-hidden flex-shrink-0 bg-[#F8F8F8]">
+                    <ImageWithFallback
+                      src={creator.avatar_url}
+                      alt={creator.full_name}
+                      className="w-full h-full object-cover grayscale"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className="text-[13px] font-black uppercase tracking-tight italic truncate">{creator.full_name}</h3>
+                      {creator.verified && <CheckCircle2 className="w-3.5 h-3.5 text-[#389C9A] flex-shrink-0" />}
+                    </div>
+                    <div className="flex gap-1 flex-wrap mb-2">
+                      {(creator.platforms || []).slice(0, 3).map((p: string) => (
+                        <span key={p} className="text-[7px] px-2 py-0.5 bg-[#389C9A]/10 border border-[#389C9A]/20 text-[#389C9A] font-black uppercase italic">{p}</span>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {creator.avg_concurrent && (
+                        <span className="flex items-center gap-1 text-[9px] font-bold uppercase italic text-[#1D1D1D]/50">
+                          <Zap className="w-3 h-3 text-[#389C9A]" />
+                          {creator.avg_concurrent.toLocaleString()} avg
+                        </span>
+                      )}
+                      {creator.location && (
+                        <span className="flex items-center gap-1 text-[9px] font-bold uppercase italic text-[#1D1D1D]/50">
+                          <MapPin className="w-3 h-3" />
+                          {creator.location}
+                        </span>
+                      )}
+                      {creator.niches?.length > 0 && (
+                        <span className="text-[9px] font-bold uppercase italic text-[#1D1D1D]/40 truncate">
+                          {creator.niches.slice(0, 2).join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end justify-between h-full flex-shrink-0 gap-2">
+                    {creator.price && (
+                      <div className="text-right">
+                        <p className="text-[8px] font-bold uppercase italic text-[#1D1D1D]/30">From</p>
+                        <p className="text-[13px] font-black italic text-[#389C9A]">₦{parseInt(creator.price).toLocaleString()}</p>
+                      </div>
+                    )}
+                    <div className="w-7 h-7 border-2 border-[#1D1D1D] flex items-center justify-center group-hover:bg-[#1D1D1D] transition-colors">
+                      <ChevronRight className="w-3.5 h-3.5 group-hover:text-white transition-colors" />
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <BottomNav />
+    </div>
+  );
+        }transition={{ delay: idx * 0.04 }}
               >
                 <Link
                   to={`/profile/${creator.id}`}
