@@ -64,15 +64,15 @@ export function Profile() {
       setIsOwn(targetUserId === session.user.id);
 
       // Check businesses table first
-      const { data: biz, error: bizError } = await supabase
+      const { data: business } = await supabase
         .from("businesses")
         .select("*")
         .eq("user_id", targetUserId)
         .maybeSingle();
 
-      if (biz) {
+      if (business) {
         setProfileType("business");
-        setBusiness(biz);
+        setBusiness(business);
         setLoading(false);
         return;
       }
