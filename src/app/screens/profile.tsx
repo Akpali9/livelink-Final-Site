@@ -1,193 +1,145 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { MapPin, Loader2, Zap, Users, CheckCircle2, Edit2 } from "lucide-react";
-import { AppHeader } from "../components/app-header";
-import { BottomNav } from "../components/bottom-nav";
+import { CheckCircle2, MapPin } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
-interface CreatorProfile {
+interface Creator {
   id: string;
   user_id: string;
   full_name: string;
-  email: string;
-  avatar_url: string;
-  bio: string;
-  location: string;
-  verified: boolean;
-  category: string;
-  niches: string[];
-  avg_concurrent: number;
-  avg_weekly: number;
+  username?: string;
+  avatar_url?: string;
+  bio?: string;
+  location?: string;
+  category?: string;
+  niches?: string[];
+  availability?: string;
+}
+
+interface Business {
+  id: string;
+  user_id: string;
+  business_name: string;
+  contact_name?: string;
+  logo_url?: string;
+  location?: string;
+  website?: string;
 }
 
 export function Profile() {
-  const navigate = useNavigate();
   const { id } = useParams();
-
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [isOwn, setIsOwn] = useState(false);
-  const [creator, setCreator] = useState<CreatorProfile | null>(null);
+  const [profileType, setProfileType] = useState<"creator" | "business" | null>(null);
+  const [creator, setCreator] = useState<Creator | null>(null);
+  const [business, setBusiness] = useState<Business | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
       setLoading(true);
-
-      try {
-        // 1️⃣ Get logged-in user
-        const { data: userData, error: userError } = await supabase.auth.getUser();
-        if (userError || !userData) {
-          navigate("/");
-          return;
-        }
-
-        const targetUserId = id === "me" ? userData.id : id;
-        setIsOwn(targetUserId === userData.id);
-
-        // 2️⃣ Fetch creator profile from creator_profiles table
-        let { data: creatorData, error: creatorError } = await supabase
-          .from("creator_profiles")
-          .select("*")
-          .eq("user_id", targetUserId)
-          .maybeSingle();
-
-        if (creatorError) {
-          console.error("Error fetching creator profile:", creatorError);
-          setLoading(false);
-          return;
-        }
-
-        // 3️⃣ If profile doesn't exist and it's the logged-in user, create it
-        if (!creatorData && targetUserId === userData.id) {
-          const { data: newProfile, error: insertError } = await supabase
-            .from("creator_profiles")
-            .insert([
-              {
-                user_id: userData.id,
-                full_name: userData.email || "Creator",
-                email: userData.email || "unknown@example.com",
-                avatar_url: "",
-                bio: "",
-                location: "",
-                verified: false,
-                category: "",
-                niches: [],
-                avg_concurrent: 0,
-                avg_weekly: 0,
-              },
-            ])
-            .select()
-            .maybeSingle();
-
-          if (insertError) {
-            console.error("Error creating profile:", insertError);
-            setLoading(false);
-            return;
-          }
-
-          creatorData = newProfile;
-        }
-
-        if (creatorData) {
-          setCreator(creatorData);
-        }
-
-      } catch (err) {
-        console.error("Failed to load profile:", err);
-      } finally {
-        setLoading(false);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        navigate("/");
+        return;
       }
+
+      const userId = id === "me" ? session.user.id : id;
+
+      // Check business first
+      const { data: businessData, error: businessError } = await supabase
+        .from("businesses")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (businessData) {
+        setProfileType("business");
+        setBusiness(businessData);
+        setLoading(false);
+        return;
+      }
+
+      // Check creators
+      const { data: creatorData, error: creatorError } = await supabase
+        .from("creators")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (creatorData) {
+        setProfileType("creator");
+        setCreator({
+          id: creatorData.id,
+          user_id: creatorData.user_id,
+          full_name: creatorData.name,
+          username: creatorData.username,
+          avatar_url: creatorData.avatar_url,
+          bio: creatorData.bio,
+          location: creatorData.location,
+          category: creatorData.category,
+          niches: creatorData.niches || [],
+          availability: creatorData.availability || "Available for campaigns"
+        });
+        setLoading(false);
+        return;
+      }
+
+      setLoading(false);
     };
 
     loadProfile();
   }, [id, navigate]);
 
-  // -------------------- Loading --------------------
-  if (loading)
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <Loader2 className="w-6 h-6 animate-spin text-[#389C9A]" />
-      </div>
-    );
+  if (loading) return <div className="flex justify-center items-center h-screen">Loading...</div>;
+  if (!profileType) return <div className="flex justify-center items-center h-screen">No profile found</div>;
 
-  // -------------------- Not found --------------------
-  if (!creator)
-    return (
-      <div className="flex flex-col min-h-screen bg-white pb-[80px]">
-        <AppHeader showBack title="Profile" backPath="/dashboard" />
-        <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-gray-400">Profile not found</p>
-        </div>
-        <BottomNav />
-      </div>
-    );
-
-  // -------------------- Profile exists --------------------
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
-      <AppHeader showBack title="Creator Profile" backPath="/dashboard" />
+    <div className="max-w-md mx-auto p-6">
+      {/* Avatar / Logo */}
+      <div className="w-28 h-28 rounded-full overflow-hidden bg-gray-100 mb-4 flex items-center justify-center">
+        {profileType === "creator" ? (
+          creator?.avatar_url ? <img src={creator.avatar_url} alt="avatar" className="w-full h-full object-cover" /> : <span>?</span>
+        ) : (
+          business?.logo_url ? <img src={business.logo_url} alt="logo" className="w-full h-full object-cover" /> : <span>?</span>
+        )}
+      </div>
 
-      <main className="max-w-[480px] mx-auto w-full">
-        <section className="px-6 pt-8 pb-6 border-b border-[#1D1D1D]/10">
-          <div className="flex items-start gap-5">
-            {/* Avatar */}
-            <div className="w-20 h-20 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] flex items-center justify-center">
-              {creator.avatar_url ? (
-                <img
-                  src={creator.avatar_url}
-                  alt="profile"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <Users className="w-8 h-8 opacity-20" />
-              )}
-            </div>
+      {/* Name */}
+      <h1 className="text-2xl font-bold mb-1">
+        {profileType === "creator" ? creator?.full_name : business?.business_name}
+        {(creator?.username || business?.contact_name) && <CheckCircle2 className="inline w-5 h-5 text-teal-500 ml-2" />}
+      </h1>
 
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-lg font-black uppercase tracking-tight italic truncate">
-                  {creator.full_name}
-                </h1>
-                {creator.verified && <CheckCircle2 className="w-4 h-4 text-[#389C9A]" />}
-              </div>
+      {/* Username / Contact */}
+      {profileType === "creator" && creator?.username && <p className="text-sm text-gray-500 mb-2">@{creator.username}</p>}
+      {profileType === "business" && business?.contact_name && <p className="text-sm text-gray-500 mb-2">{business.contact_name}</p>}
 
-              <div
-                className="inline-flex items-center gap-1.5 px-2 py-1 text-[8px] font-black uppercase tracking-widest italic bg-[#389C9A]/10 text-[#389C9A]"
-              >
-                <Zap className="w-2.5 h-2.5" />
-                Creator
-              </div>
-            </div>
-          </div>
+      {/* Location */}
+      {(creator?.location || business?.location) && (
+        <div className="flex items-center text-gray-500 mb-2 gap-1">
+          <MapPin className="w-4 h-4" />
+          <span>{profileType === "creator" ? creator?.location : business?.location}</span>
+        </div>
+      )}
 
-          {/* Location */}
-          {creator.location && (
-            <div className="flex items-center gap-1.5 mt-4 text-[#1D1D1D]/40">
-              <MapPin className="w-3 h-3" />
-              <span className="text-[10px] font-bold italic">{creator.location}</span>
-            </div>
-          )}
+      {/* Bio */}
+      {creator?.bio && <p className="text-gray-700 mb-4">{creator.bio}</p>}
 
-          {/* Bio */}
-          {creator.bio && (
-            <p className="mt-3 text-[12px] leading-relaxed text-[#1D1D1D]/70">
-              {creator.bio}
-            </p>
-          )}
+      {/* Niches / Category */}
+      {creator?.niches?.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {creator.niches.map((niche, idx) => (
+            <span key={idx} className="px-2 py-1 bg-yellow-200 text-gray-800 text-xs font-bold rounded">{niche}</span>
+          ))}
+        </div>
+      )}
 
-          {/* Edit button */}
-          {isOwn && (
-            <button
-              onClick={() => navigate("/profile/edit")}
-              className="mt-5 w-full flex items-center justify-center gap-2 py-3 border-2 text-[10px] font-black uppercase tracking-widest italic border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-              Edit Profile
-            </button>
-          )}
-        </section>
-      </main>
-      <BottomNav />
+      {/* Website for Business */}
+      {profileType === "business" && business?.website && (
+        <a href={business.website} target="_blank" rel="noopener noreferrer" className="text-teal-500 underline mb-4 block">
+          {business.website}
+        </a>
+      )}
     </div>
   );
 }
