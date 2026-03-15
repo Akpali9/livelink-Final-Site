@@ -45,8 +45,8 @@ export function Profile() {
 
       const userId = id === "me" ? session.user.id : id;
 
-      // Check business first
-      const { data: businessData, error: businessError } = await supabase
+      // 1️⃣ Try business first
+      const { data: businessData } = await supabase
         .from("businesses")
         .select("*")
         .eq("user_id", userId)
@@ -59,8 +59,8 @@ export function Profile() {
         return;
       }
 
-      // Check creators
-      const { data: creatorData, error: creatorError } = await supabase
+      // 2️⃣ Try creators
+      const { data: creatorData } = await supabase
         .from("creators")
         .select("*")
         .eq("user_id", userId)
@@ -84,6 +84,31 @@ export function Profile() {
         return;
       }
 
+      // 3️⃣ Fallback: use auth.users if no creator/business exists
+      const { data: authUser } = await supabase
+        .from("users") // <-- use "auth.users" if using direct SQL
+        .select("id, email, raw_user_meta_data")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (authUser) {
+        setProfileType("creator"); // default to creator
+        setCreator({
+          id: authUser.id,
+          user_id: authUser.id,
+          full_name: authUser.raw_user_meta_data?.full_name || "Creator",
+          username: authUser.raw_user_meta_data?.username,
+          avatar_url: authUser.raw_user_meta_data?.avatar_url,
+          bio: "",
+          location: "",
+          category: "",
+          niches: [],
+          availability: "Available for campaigns"
+        });
+        setLoading(false);
+        return;
+      }
+
       setLoading(false);
     };
 
@@ -95,7 +120,6 @@ export function Profile() {
 
   return (
     <div className="max-w-md mx-auto p-6">
-      {/* Avatar / Logo */}
       <div className="w-28 h-28 rounded-full overflow-hidden bg-gray-100 mb-4 flex items-center justify-center">
         {profileType === "creator" ? (
           creator?.avatar_url ? <img src={creator.avatar_url} alt="avatar" className="w-full h-full object-cover" /> : <span>?</span>
@@ -104,17 +128,14 @@ export function Profile() {
         )}
       </div>
 
-      {/* Name */}
       <h1 className="text-2xl font-bold mb-1">
         {profileType === "creator" ? creator?.full_name : business?.business_name}
         {(creator?.username || business?.contact_name) && <CheckCircle2 className="inline w-5 h-5 text-teal-500 ml-2" />}
       </h1>
 
-      {/* Username / Contact */}
       {profileType === "creator" && creator?.username && <p className="text-sm text-gray-500 mb-2">@{creator.username}</p>}
       {profileType === "business" && business?.contact_name && <p className="text-sm text-gray-500 mb-2">{business.contact_name}</p>}
 
-      {/* Location */}
       {(creator?.location || business?.location) && (
         <div className="flex items-center text-gray-500 mb-2 gap-1">
           <MapPin className="w-4 h-4" />
@@ -122,10 +143,8 @@ export function Profile() {
         </div>
       )}
 
-      {/* Bio */}
       {creator?.bio && <p className="text-gray-700 mb-4">{creator.bio}</p>}
 
-      {/* Niches / Category */}
       {creator?.niches?.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
           {creator.niches.map((niche, idx) => (
@@ -134,7 +153,6 @@ export function Profile() {
         </div>
       )}
 
-      {/* Website for Business */}
       {profileType === "business" && business?.website && (
         <a href={business.website} target="_blank" rel="noopener noreferrer" className="text-teal-500 underline mb-4 block">
           {business.website}
