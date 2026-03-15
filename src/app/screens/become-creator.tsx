@@ -96,10 +96,41 @@ age--;
 return age < 18;
 };
 
-const onSubmit = (data: any) => {
-console.log("Form Data:", data);
-setIsSubmitted(true);
-window.scrollTo(0, 0);
+const onSubmit = async (data: CreatorFormData) => {
+  try {
+    // Insert into Supabase
+    const { error } = await supabase.from("creators").insert([
+      {
+        full_name: data.fullName,
+        dob: data.dob,
+        email: data.email,
+        password: data.password, // hash in production!
+        phone_number: data.phoneNumber,
+        country: data.country,
+        city: data.city,
+        platforms: data.platforms, // JSON column
+        frequency: data.frequency,
+        duration: data.duration,
+        days: data.days, // JSON column
+        time_of_day: data.timeOfDay,
+        avg_concurrent: Number(data.avgConcurrent) || 0,
+        avg_peak: Number(data.avgPeak) || 0,
+        avg_weekly: Number(data.avgWeekly) || 0,
+        categories: data.categories, // JSON column
+        audience_bio: data.audienceBio,
+        referral: data.referral || null,
+        status: "Pending"
+      }
+    ]);
+
+    if (error) throw error;
+
+    setIsSubmitted(true);
+    window.scrollTo(0, 0);
+  } catch (err: any) {
+    console.error("Error inserting data:", err.message || err);
+    alert("Failed to submit application. Check console for details.");
+  }
 };
 
 const nextStep = () => setStep(s => Math.min(s + 1, 5));
