@@ -37,15 +37,52 @@ export function Browse() {
 
   const fetchCreators = async () => {
     setLoading(true);
-    let query = supabase.from("creators").select("*");
 
-    if (activeCategory !== "All") query = query.eq("category", activeCategory);
-    if (selectedCountry !== "Any") query = query.eq("country", selectedCountry);
-    if (selectedPlatforms.length > 0) query = query.overlaps("platforms", selectedPlatforms);
-    if (search.trim()) query = query.ilike("name", `%${search}%`);
+    // 1️⃣ Get creators from the creators table
+    let { data: creatorsData, error: creatorsError } = await supabase
+      .from("creators")
+      .select("*");
 
-    const { data, error } = await query.order("created_at", { ascending: false });
-    if (!error && data) setCreators(data);
+    if (creatorsError) console.error("Error fetching creators:", creatorsError);
+
+    // 2️⃣ Get users from auth.users who are NOT in creators yet
+    let { data: authUsers, error: authError } = await supabase
+      .from("auth.users")
+      .select("id, email, raw_user_meta_data")
+      .not("id", "in", `(${(creatorsData || []).map(c => `'${c.user_id}'`).join(",")})`);
+
+    if (authError) console.error("Error fetching auth users:", authError);
+
+    // 3️⃣ Map auth users to the same structure as creators
+    const fallbackCreators = (authUsers || []).map(u => ({
+      id: u.id,
+      user_id: u.id,
+      name: u.raw_user_meta_data?.full_name || "Creator",
+      avatar: u.raw_user_meta_data?.avatar_url || "",
+      username: u.raw_user_meta_data?.username || "",
+      bio: "",
+      location: "",
+      city: "",
+      category: "",
+      platforms: [],
+      niches: [],
+      price: 0,
+      avg_viewers: 0,
+      verified: false
+    }));
+
+    // 4️⃣ Merge both arrays
+    const allCreators = [...(creatorsData || []), ...fallbackCreators];
+
+    // 5️⃣ Apply filters (category, country, platforms, search)
+    let filtered = allCreators;
+
+    if (activeCategory !== "All") filtered = filtered.filter(c => c.category === activeCategory);
+    if (selectedCountry !== "Any") filtered = filtered.filter(c => c.country === selectedCountry);
+    if (selectedPlatforms.length > 0) filtered = filtered.filter(c => c.platforms?.some((p: string) => selectedPlatforms.includes(p)));
+    if (search.trim()) filtered = filtered.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+
+    setCreators(filtered);
     setLoading(false);
   };
 
@@ -310,4 +347,4 @@ export function Browse() {
       <BottomNav />
     </div>
   );
-  }
+}
