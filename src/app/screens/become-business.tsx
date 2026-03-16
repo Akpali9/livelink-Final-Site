@@ -1,41 +1,27 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router";
+import { useForm, useFieldArray } from "react-hook-form";
+import { motion } from "motion/react";
 import { 
   ChevronLeft, 
-  ChevronRight, 
   Plus, 
   X, 
   Eye, 
   EyeOff, 
   Upload, 
   CheckCircle2, 
-  Instagram, 
-  Youtube, 
-  Facebook, 
-  MessageSquare,
   ArrowRight,
   Info,
-  Calendar,
-  Lock,
+  Briefcase,
   Mail,
   Smartphone,
   Globe,
-  Briefcase,
-  Target,
-  Image as LucideImageIcon,
-  Twitter,
-  Linkedin,
-  AlertCircle,
-  LogIn
+  AlertCircle
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { useForm, useFieldArray } from "react-hook-form";
-import { useBusinessRegistration } from "../hooks/useBusinessRegistration";
-import { AppHeader } from "../components/app-header";
-import { toast } from "sonner";
+import { supabase } from "../lib/supabase";
+import { toast, Toaster } from "sonner";
 
 type BusinessFormData = {
-  // Step 1
   fullName: string;
   jobTitle: string;
   email: string;
@@ -43,7 +29,6 @@ type BusinessFormData = {
   confirmPassword: string;
   phoneNumber: string;
   phoneCountryCode: string;
-  // Step 2
   businessName: string;
   businessType: string;
   industry: string;
@@ -54,7 +39,6 @@ type BusinessFormData = {
   city: string;
   postcode: string;
   operatingTime: string;
-  // Step 3
   goals: string[];
   campaignType: string;
   budget: string;
@@ -62,7 +46,6 @@ type BusinessFormData = {
   ageMax: number;
   gender: string[];
   targetLocation: string;
-  // Step 5
   referral: string;
   agreeToTerms: boolean;
 };
@@ -75,18 +58,17 @@ export function BecomeBusiness() {
   const [idFile, setIdFile] = useState<File | null>(null);
   const [idPreview, setIdPreview] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [registeredEmail, setRegisteredEmail] = useState<string>("");
-  
-  const { submitRegistration, loading, error } = useBusinessRegistration();
+  const [loading, setLoading] = useState(false);
+  const [emailForResend, setEmailForResend] = useState<string>("");
 
-  const { register, handleSubmit, watch, control, formState: { errors, isValid } } = useForm<BusinessFormData>({
+  const { register, handleSubmit, watch, control, setValue, formState: { errors } } = useForm<BusinessFormData>({
     defaultValues: {
       socials: [{ platform: "Instagram", handle: "" }],
       goals: [],
       gender: [],
       ageMin: 18,
       ageMax: 65,
-      phoneCountryCode: "+44",
+      phoneCountryCode: "+234",
       agreeToTerms: false
     },
     mode: "onChange"
@@ -116,14 +98,12 @@ export function BecomeBusiness() {
     setUploadError(null);
     
     if (file) {
-      // Validate file type
       const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
       if (!allowedTypes.includes(file.type)) {
         setUploadError('Please upload a JPG, PNG, or PDF file');
         return;
       }
       
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         setUploadError('File size must be less than 5MB');
         return;
@@ -131,7 +111,6 @@ export function BecomeBusiness() {
       
       setIdFile(file);
       
-      // Create preview for images
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -139,7 +118,6 @@ export function BecomeBusiness() {
         };
         reader.readAsDataURL(file);
       } else {
-        // For PDFs, show a PDF icon
         setIdPreview('/pdf-icon.png');
       }
     }
@@ -150,43 +128,127 @@ export function BecomeBusiness() {
     setIdPreview(null);
   };
 
+  const handleResendVerification = async () => {
+    if (!emailForResend) return;
+    
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: emailForResend,
+    });
+
+    if (error) {
+      toast.error('Failed to resend verification email');
+    } else {
+      toast.success('Verification email resent! Please check your inbox.');
+    }
+  };
+
+  const uploadIDFile = async (userId: string, file: File) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${userId}/id-verification.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('business-verification')
+      .upload(fileName, file);
+
+    if (uploadError) throw uploadError;
+    
+    const { data: urlData } = supabase.storage
+      .from('business-verification')
+      .getPublicUrl(fileName);
+      
+    return urlData.publicUrl;
+  };
+
   const onSubmit = async (data: BusinessFormData) => {
     if (!idFile) {
-      setUploadError('Please upload a government ID for verification');
+      setUploadError("Please upload a government ID for verification");
       return;
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(data.email)) {
-      setUploadError('Please enter a valid email address');
+    if (!data.agreeToTerms) {
+      toast.error("Please agree to the Terms of Service and Privacy Policy");
       return;
     }
 
-    // Validate password match
-    if (data.password !== data.confirmPassword) {
-      setUploadError('Passwords do not match');
-      return;
-    }
+    setLoading(true);
+    setUploadError(null);
 
-    // Validate password length
-    if (data.password.length < 6) {
-      setUploadError('Password must be at least 6 characters');
-      return;
-    }
+    try {
+      // 1. Sign up the user with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            full_name: data.fullName,
+            user_type: 'business',
+            job_title: data.jobTitle,
+            phone: `${data.phoneCountryCode}${data.phoneNumber}`,
+          },
+          emailRedirectTo: `${window.location.origin}/confirm-email`,
+        }
+      });
 
-    setRegisteredEmail(data.email);
-    const result = await submitRegistration(data, idFile);
-    
-    if (result.success) {
+      if (authError) throw new Error(authError.message);
+      if (!authData.user) throw new Error("No user returned from signup");
+
+      // 2. Upload ID file to storage
+      const idFileUrl = await uploadIDFile(authData.user.id, idFile);
+
+      // 3. Insert business data into the businesses table
+      const { error: insertError } = await supabase
+        .from('businesses')
+        .insert([
+          {
+            user_id: authData.user.id,
+            full_name: data.fullName,
+            job_title: data.jobTitle,
+            email: data.email,
+            phone_number: `${data.phoneCountryCode}${data.phoneNumber}`,
+            business_name: data.businessName,
+            business_type: data.businessType,
+            industry: data.industry,
+            description: data.description || null,
+            website: data.website || null,
+            socials: data.socials,
+            country: data.country,
+            city: data.city,
+            postcode: data.postcode || null,
+            operating_time: data.operatingTime || null,
+            goals: data.goals,
+            campaign_type: data.campaignType,
+            budget: data.budget,
+            age_min: data.ageMin,
+            age_max: data.ageMax,
+            gender: data.gender,
+            target_location: data.targetLocation || null,
+            referral_code: data.referral || null,
+            agreed_to_terms: data.agreeToTerms,
+            id_verification_url: idFileUrl,
+            status: 'pending_verification'
+          }
+        ]);
+
+      if (insertError) throw new Error(insertError.message);
+
+      // 4. Success!
+      setEmailForResend(data.email);
       setIsSubmitted(true);
       window.scrollTo(0, 0);
-      toast.success("Registration submitted successfully! Redirecting to login...");
+      toast.success("Registration submitted! Please check your email to verify your account.");
+
+    } catch (err: any) {
+      console.error("Registration error:", err);
       
-      // Redirect to login portal after 3 seconds
-      setTimeout(() => {
-        navigate("/login/portal");
-      }, 3000);
+      // If auth succeeded but something else failed, try to clean up
+      if (err.message.includes("Failed to insert")) {
+        toast.error("Account created but failed to save business data. Please contact support.");
+      } else {
+        toast.error(err.message || "Failed to register. Please try again.");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -211,6 +273,8 @@ export function BecomeBusiness() {
     if (validateStep()) {
       setStep(s => Math.min(s + 1, 5));
       window.scrollTo(0, 0);
+    } else {
+      toast.error("Please fill in all required fields");
     }
   };
 
@@ -219,61 +283,64 @@ export function BecomeBusiness() {
     window.scrollTo(0, 0);
   };
 
-  const goToLogin = () => {
-    navigate("/login/portal");
-  };
-
   if (isSubmitted) {
     return (
       <div className="flex flex-col min-h-screen bg-white items-center justify-center px-8 text-[#1D1D1D]">
+        <Toaster position="top-center" richColors />
         <motion.div 
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className="text-center max-w-md"
         >
-          <div className="w-24 h-24 bg-[#1D1D1D] rounded-none border-2 border-[#FEDB71] flex items-center justify-center mx-auto mb-8 shadow-2xl">
+          <div className="w-24 h-24 bg-[#1D1D1D] rounded-none border-2 border-[#FEDB71] flex items-center justify-center mx-auto mb-8">
             <CheckCircle2 className="w-12 h-12 text-[#389C9A]" />
           </div>
           <h1 className="text-4xl font-black uppercase tracking-tighter italic mb-4">Application Submitted!</h1>
-          <p className="text-[#1D1D1D]/60 mb-6 text-sm leading-relaxed italic">
-            Thank you for registering your business on LiveLink. Your application is being reviewed.
-          </p>
           
-          <div className="bg-[#F8F8F8] border border-[#1D1D1D]/10 p-6 mb-8 text-left">
-            <p className="text-[10px] font-black uppercase tracking-widest mb-3 opacity-40 italic">What happens next:</p>
-            <ul className="space-y-3">
-              <li className="flex items-start gap-3 text-sm">
-                <span className="text-[#389C9A] font-black">1.</span>
-                <span className="text-xs">Our team reviews your business information and ID (usually within 48 hours)</span>
-              </li>
-              <li className="flex items-start gap-3 text-sm">
-                <span className="text-[#389C9A] font-black">2.</span>
-                <span className="text-xs">You'll receive an email at <span className="font-bold">{registeredEmail}</span> once approved</span>
-              </li>
-              <li className="flex items-start gap-3 text-sm">
-                <span className="text-[#389C9A] font-black">3.</span>
-                <span className="text-xs">Login to access your dashboard and launch campaigns</span>
-              </li>
-            </ul>
+          {/* Email verification notice */}
+          <div className="bg-[#389C9A]/10 border-2 border-[#389C9A] p-6 mb-8 text-left">
+            <h2 className="text-[10px] font-black uppercase tracking-widest mb-2 text-[#389C9A] flex items-center gap-2">
+              <Mail className="w-4 h-4" /> Important: Verify Your Email
+            </h2>
+            <p className="text-sm font-medium italic mb-4">
+              We've sent a verification email to <span className="font-black break-all">{email}</span>. 
+              You must verify your email address before our team can review your application.
+            </p>
+            <div className="bg-white p-4 text-[9px] font-black uppercase tracking-widest text-[#1D1D1D]/60">
+              <p>📧 Check your inbox (and spam folder) for the verification link</p>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={goToLogin}
-              className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-none italic flex items-center justify-center gap-2"
-            >
-              <LogIn className="w-4 h-4" />
-              Go to Login Portal
-            </button>
-            
-            <Link to="/" className="w-full border-2 border-[#1D1D1D] text-[#1D1D1D] px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-none italic text-center">
-              Return to Homepage
-            </Link>
-          </div>
-          
-          <p className="text-[9px] font-medium opacity-40 uppercase tracking-widest mt-6">
-            Questions? Contact business@livelink.com
+          <p className="text-[#1D1D1D]/60 mb-8 text-sm leading-relaxed italic">
+            Once you verify your email, our team will review your application and verify your account holder ID within 48 hours.
           </p>
+
+          <div className="mb-8">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6 opacity-40 italic">What happens next</h3>
+            <div className="relative flex flex-col gap-6 text-left">
+              {[
+                { step: "01", text: "Verify your email address (check your inbox now)", highlight: true },
+                { step: "02", text: "Our team reviews your business information and uploaded ID" },
+                { step: "03", text: "You receive an approval or feedback email within 48 hours" },
+              ].map((item, i) => (
+                <div key={i} className={`flex gap-4 items-start ${item.highlight ? 'bg-[#FEDB71]/10 p-3 -mx-3' : ''}`}>
+                  <span className={`font-black italic ${item.highlight ? 'text-[#FEDB71]' : 'text-[#389C9A]'}`}>{item.step}</span>
+                  <p className="text-sm font-bold uppercase tracking-tight italic">{item.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={handleResendVerification}
+            className="border-2 border-[#1D1D1D] p-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#F8F8F8] transition-all italic w-full mb-4"
+          >
+            Resend Verification Email
+          </button>
+
+          <Link to="/" className="inline-block bg-[#1D1D1D] text-white px-12 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all w-full rounded-none italic text-center">
+            Return to Homepage
+          </Link>
         </motion.div>
       </div>
     );
@@ -281,31 +348,36 @@ export function BecomeBusiness() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white pb-32 text-[#1D1D1D]">
+      <Toaster position="top-center" richColors />
      
       {/* Header */}
       <div className="px-8 pt-12 pb-8 border-b-2 border-[#1D1D1D]">
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest mb-6 opacity-40 italic">
-          <ChevronLeft className="w-4 h-4 text-[#1D1D1D]" /> Back
+          <ChevronLeft className="w-4 h-4" /> Back
         </button>
         <h1 className="text-4xl font-black uppercase tracking-tighter italic leading-tight mb-2">
-          Register Your Business on LiveLink
+          Register Your Business
         </h1>
         <p className="text-[#1D1D1D]/60 text-sm font-medium mb-6 italic">
-          Connect your brand with live creators and reach real audiences in real time. Complete your registration below and our team will review your application within 48 hours.
+          Connect your brand with live creators. Complete your registration below and our team will review your application within 48 hours.
         </p>
         <div className="bg-[#FEDB71]/10 border border-[#FEDB71] p-4 flex gap-3">
           <Info className="w-5 h-5 flex-shrink-0 text-[#389C9A]" />
           <p className="text-[10px] font-bold uppercase tracking-widest leading-relaxed">
-            All business accounts are manually reviewed and approved by our team before going live. You will be notified by email once your application has been assessed.
+            All business accounts are manually reviewed before going live. You will be notified by email once your application has been assessed.
           </p>
         </div>
       </div>
 
       {/* Progress Bar */}
-      <div className="px-8 py-6 bg-[#F8F8F8] border-b border-[#1D1D1D]/10 sticky top-[84px] z-30 flex justify-between items-center overflow-x-auto whitespace-nowrap gap-4 scrollbar-hide">
+      <div className="px-8 py-6 bg-[#F8F8F8] border-b border-[#1D1D1D]/10 sticky top-[84px] z-30 flex justify-between items-center overflow-x-auto whitespace-nowrap gap-4">
         {[1, 2, 3, 4, 5].map(s => (
           <div key={s} className="flex items-center gap-2">
-            <div className={`w-8 h-8 flex items-center justify-center text-[10px] font-black transition-all rounded-none border-2 ${step === s ? 'bg-[#1D1D1D] text-white border-[#1D1D1D]' : step > s ? 'bg-[#389C9A] text-white border-[#389C9A]' : 'bg-white text-[#1D1D1D]/30 border-[#1D1D1D]/10'}`}>
+            <div className={`w-8 h-8 flex items-center justify-center text-[10px] font-black transition-all rounded-none border-2 ${
+              step === s ? 'bg-[#1D1D1D] text-white border-[#1D1D1D]' : 
+              step > s ? 'bg-[#389C9A] text-white border-[#389C9A]' : 
+              'bg-white text-[#1D1D1D]/30 border-[#1D1D1D]/10'
+            }`}>
               {step > s ? <CheckCircle2 className="w-4 h-4" /> : s}
             </div>
             {step === s && (
@@ -318,18 +390,14 @@ export function BecomeBusiness() {
       </div>
 
       {/* Error Message */}
-      {(error || uploadError) && (
+      {(uploadError) && (
         <div className="px-8 mt-4">
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-red-50 border border-red-200 p-4 flex gap-3"
-          >
+          <div className="bg-red-50 border border-red-200 p-4 flex gap-3">
             <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
             <p className="text-[10px] font-bold uppercase tracking-widest text-red-600">
-              {error || uploadError}
+              {uploadError}
             </p>
-          </motion.div>
+          </div>
         </div>
       )}
 
@@ -348,7 +416,7 @@ export function BecomeBusiness() {
                   <input 
                     {...register("fullName", { required: true })}
                     placeholder="The name of the person managing this account"
-                    className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all placeholder:opacity-30 rounded-none italic"
+                    className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all rounded-none italic"
                   />
                 </div>
 
@@ -357,11 +425,11 @@ export function BecomeBusiness() {
                     Job Title / Role <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30" />
                     <input 
                       {...register("jobTitle", { required: true })}
-                      placeholder="e.g. Owner, Marketing Manager, Brand Director"
-                      className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all placeholder:opacity-30 rounded-none italic"
+                      placeholder="e.g. Owner, Marketing Manager"
+                      className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all rounded-none italic"
                     />
                   </div>
                 </div>
@@ -371,12 +439,12 @@ export function BecomeBusiness() {
                     Email Address <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30" />
                     <input 
                       type="email"
                       {...register("email", { required: true })}
                       placeholder="This will be your login email"
-                      className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all placeholder:opacity-30 rounded-none italic"
+                      className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all rounded-none italic"
                     />
                   </div>
                 </div>
@@ -432,13 +500,13 @@ export function BecomeBusiness() {
                       {...register("phoneCountryCode")}
                       className="bg-white border border-[#1D1D1D]/10 border-r-0 p-5 text-xs font-black uppercase tracking-tight outline-none rounded-none"
                     >
-                      <option value="+44">+44</option>
-                      <option value="+1">+1</option>
-                      <option value="+33">+33</option>
-                      <option value="+49">+49</option>
+                      <option value="+234">+234</option>
+                      <option value="+263">+263</option>
+                      <option value="+27">+27</option>
+                      <option value="+233">+233</option>
                     </select>
                     <div className="relative flex-1">
-                      <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                      <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30" />
                       <input 
                         type="tel"
                         {...register("phoneNumber", { required: true })}
@@ -447,13 +515,13 @@ export function BecomeBusiness() {
                       />
                     </div>
                   </div>
-                  <p className="text-[9px] font-medium opacity-40 mt-1 italic">Used for account security and important notifications only.</p>
                 </div>
               </div>
             </section>
           </motion.div>
         )}
 
+        {/* Step 2 - Business Info */}
         {step === 2 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
             <section>
@@ -472,51 +540,31 @@ export function BecomeBusiness() {
                   />
                 </div>
 
-                <div className="flex flex-col gap-4">
-                  <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">
-                    Business Type <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      { val: "Sole Trader", sub: "I run my business independently" },
-                      { val: "Limited Company", sub: "Registered as a Ltd company" },
-                      { val: "Partnership", sub: "Run by two or more people" },
-                      { val: "Other / Not Registered", sub: "Informal or early stages" }
-                    ].map(type => (
-                      <label key={type.val} className="cursor-pointer group">
-                        <input type="radio" {...register("businessType", { required: true })} value={type.val} className="peer hidden" />
-                        <div className="p-4 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#1D1D1D] peer-checked:text-white transition-all rounded-none">
-                          <p className="text-[10px] font-black uppercase tracking-widest mb-1 italic">{type.val}</p>
-                          <p className="text-[8px] font-medium uppercase opacity-40 peer-checked:opacity-60 italic">{type.sub}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">
-                      Industry / Category <span className="text-red-500">*</span>
+                      Business Type <span className="text-red-500">*</span>
                     </label>
-                    <select {...register("industry", { required: true })} className="w-full bg-white border-2 border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none rounded-none italic">
-                      <option value="">Select Category</option>
-                      <option>Food & Drink</option>
-                      <option>Health & Fitness</option>
-                      <option>Beauty & Cosmetics</option>
-                      <option>Fashion & Clothing</option>
-                      <option>Technology</option>
-                      <option>Gaming</option>
+                    <select {...register("businessType", { required: true })} className="w-full bg-white border-2 border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none rounded-none italic">
+                      <option value="">Select Type</option>
+                      <option value="Sole Trader">Sole Trader</option>
+                      <option value="Limited Company">Limited Company</option>
+                      <option value="Partnership">Partnership</option>
+                      <option value="Other">Other</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Operating Since</label>
-                    <select {...register("operatingTime")} className="w-full bg-white border-2 border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none rounded-none italic">
-                      <option>Less than 6 months</option>
-                      <option>6 months to 1 year</option>
-                      <option>1 to 3 years</option>
-                      <option>3 to 5 years</option>
-                      <option>Over 5 years</option>
+                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">
+                      Industry <span className="text-red-500">*</span>
+                    </label>
+                    <select {...register("industry", { required: true })} className="w-full bg-white border-2 border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none rounded-none italic">
+                      <option value="">Select Industry</option>
+                      <option value="Food & Drink">Food & Drink</option>
+                      <option value="Health & Fitness">Health & Fitness</option>
+                      <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
+                      <option value="Fashion">Fashion</option>
+                      <option value="Technology">Technology</option>
+                      <option value="Gaming">Gaming</option>
                     </select>
                   </div>
                 </div>
@@ -526,72 +574,32 @@ export function BecomeBusiness() {
                   <textarea 
                     {...register("description")}
                     rows={4}
-                    placeholder="Tell us what your business does, what you sell, and who your typical customer is."
+                    placeholder="Tell us what your business does..."
                     className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] rounded-none resize-none italic"
                   />
-                  <p className="text-right text-[8px] font-bold opacity-30 italic">MAX 200 WORDS</p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Business Website</label>
                   <div className="relative">
-                    <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                    <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30" />
                     <input 
                       {...register("website")}
                       placeholder="e.g. www.yourbusiness.com"
                       className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-none italic"
                     />
                   </div>
-                  <p className="text-[9px] font-medium opacity-40 mt-1 italic">If you don't have a website, leave this blank.</p>
                 </div>
 
-                {/* Socials */}
-                <div className="flex flex-col gap-4">
-                  <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Social Media Handles</label>
-                  <div className="flex flex-col gap-3">
-                    {fields.map((field, index) => (
-                      <div key={field.id} className="flex gap-2">
-                        <select 
-                          {...register(`socials.${index}.platform` as const)}
-                          className="bg-white border-2 border-[#1D1D1D]/10 p-5 text-[10px] font-black uppercase tracking-tight outline-none rounded-none italic"
-                        >
-                          <option>Instagram</option>
-                          <option>TikTok</option>
-                          <option>Facebook</option>
-                          <option>Twitter/X</option>
-                        </select>
-                        <input 
-                          {...register(`socials.${index}.handle` as const)}
-                          placeholder="@yourbusiness"
-                          className="flex-1 bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] rounded-none italic"
-                        />
-                        {fields.length > 1 && (
-                          <button onClick={() => remove(index)} className="p-5 bg-red-50 text-red-500 border border-red-200">
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {fields.length < 4 && (
-                      <button 
-                        onClick={() => append({ platform: "Instagram", handle: "" })}
-                        className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest opacity-40 hover:opacity-100 transition-all italic text-[#389C9A]"
-                      >
-                        <Plus className="w-3 h-3" /> Add Another Handle
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-8 border-t-2 border-[#1D1D1D]/10">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Country</label>
                     <select {...register("country", { required: true })} className="w-full bg-white border-2 border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none rounded-none italic">
-                      <option value="">Select Country</option>
-                      <option value="United Kingdom">United Kingdom</option>
-                      <option value="United States">United States</option>
-                      <option value="Canada">Canada</option>
-                      <option value="France">France</option>
+                      <option value="">Select</option>
+                      <option value="Nigeria">Nigeria</option>
+                      <option value="South Africa">South Africa</option>
+                      <option value="Ghana">Ghana</option>
+                      <option value="Kenya">Kenya</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -599,7 +607,7 @@ export function BecomeBusiness() {
                     <input {...register("city")} className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] rounded-none italic" />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Postcode / ZIP</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Postcode</label>
                     <input {...register("postcode")} className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] rounded-none italic" />
                   </div>
                 </div>
@@ -608,20 +616,22 @@ export function BecomeBusiness() {
           </motion.div>
         )}
 
+        {/* Step 3 - Goals */}
         {step === 3 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-16">
             <section>
               <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Your Advertising Goals</h2>
-              <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-12 italic">Help us understand what you want to achieve so we can match you with the right creators.</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-12 italic">Help us understand what you want to achieve.</p>
 
               <div className="flex flex-col gap-12">
                 <div className="flex flex-col gap-6">
                   <label className="text-[10px] font-black uppercase tracking-widest italic">
-                    Primary Advertising Goals <span className="text-red-500">*</span>
+                    Primary Goals <span className="text-red-500">*</span>
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {[
-                      "Brand Awareness", "Drive Website Traffic", "Promote a Product", "Promote a Service", "Grow Social Media", "Drive Footfall", "Launch Product", "Promote Event", "Direct Sales", "Other"
+                      "Brand Awareness", "Drive Website Traffic", "Promote a Product", 
+                      "Promote a Service", "Grow Social Media", "Direct Sales"
                     ].map(goal => (
                       <label key={goal} className="cursor-pointer">
                         <input type="checkbox" {...register("goals")} value={goal} className="peer hidden" />
@@ -634,23 +644,20 @@ export function BecomeBusiness() {
                 </div>
 
                 <div className="flex flex-col gap-6">
-                  <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">
-                    Campaign Type Interests <span className="text-red-500">*</span>
+                  <label className="text-[10px] font-black uppercase tracking-widest italic">
+                    Campaign Type <span className="text-red-500">*</span>
                   </label>
                   <div className="grid grid-cols-1 gap-4">
                     {[
-                      { val: "Banner Advertising", icon: "📺", sub: "My branded banner appears on creator live streams" },
-                      { val: "Promo Code Promotion", icon: "🎟️", sub: "Creators share my discount code with their audience" },
-                      { val: "Banner + Promo Code", icon: "⭐", sub: "Maximum exposure combining both options. Recommended" }
+                      { val: "Banner Advertising", sub: "My branded banner appears on creator live streams" },
+                      { val: "Promo Code Promotion", sub: "Creators share my discount code" },
+                      { val: "Banner + Promo Code", sub: "Maximum exposure combining both options" }
                     ].map(opt => (
                       <label key={opt.val} className="cursor-pointer">
                         <input type="radio" {...register("campaignType", { required: true })} value={opt.val} className="peer hidden" />
-                        <div className="p-8 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#1D1D1D] peer-checked:text-white transition-all flex items-center gap-6 rounded-none">
-                          <span className="text-3xl">{opt.icon}</span>
-                          <div>
-                            <p className="text-[11px] font-black uppercase tracking-widest mb-1 italic">{opt.val}</p>
-                            <p className="text-[9px] font-medium uppercase tracking-widest opacity-40 peer-checked:opacity-60 italic">{opt.sub}</p>
-                          </div>
+                        <div className="p-6 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#1D1D1D] peer-checked:text-white transition-all rounded-none">
+                          <p className="text-[11px] font-black uppercase tracking-widest mb-1 italic">{opt.val}</p>
+                          <p className="text-[9px] font-medium uppercase opacity-40 peer-checked:opacity-60 italic">{opt.sub}</p>
                         </div>
                       </label>
                     ))}
@@ -659,48 +666,20 @@ export function BecomeBusiness() {
 
                 <div className="flex flex-col gap-6">
                   <label className="text-[10px] font-black uppercase tracking-widest italic">
-                    Estimated Monthly Budget <span className="text-red-500">*</span>
+                    Monthly Budget <span className="text-red-500">*</span>
                   </label>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {[
-                      "Under ₦100k", "₦100k to ₦300k", "₦300k to ₦500k", "₦500k to ₦1000k", "Over ₦1000k", "Not sure yet"
+                      "Under ₦100k", "₦100k to ₦300k", "₦300k to ₦500k", 
+                      "₦500k to ₦1000k", "Over ₦1000k", "Not sure yet"
                     ].map(opt => (
                       <label key={opt} className="cursor-pointer">
                         <input type="radio" {...register("budget", { required: true })} value={opt} className="peer hidden" />
-                        <div className="p-5 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] transition-all text-center rounded-none italic">
-                          <p className="text-[10px] font-black uppercase tracking-widest">{opt}</p>
+                        <div className="p-4 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] transition-all text-center rounded-none italic">
+                          <p className="text-[9px] font-black uppercase tracking-widest">{opt}</p>
                         </div>
                       </label>
                     ))}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-8 bg-white border-2 border-[#1D1D1D] p-8 rounded-none">
-                  <label className="text-[10px] font-black uppercase tracking-widest underline decoration-[#389C9A] decoration-2 underline-offset-4 italic">Target Audience</label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div className="flex flex-col gap-4">
-                      <label className="text-[9px] font-black uppercase tracking-widest italic opacity-40">Age Range</label>
-                      <div className="flex items-center gap-4">
-                        <input type="number" {...register("ageMin")} placeholder="18" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-3 text-xs font-bold rounded-none" />
-                        <span className="font-black italic">TO</span>
-                        <input type="number" {...register("ageMax")} placeholder="65" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-3 text-xs font-bold rounded-none" />
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-4">
-                      <label className="text-[9px] font-black uppercase tracking-widest italic opacity-40">Gender</label>
-                      <div className="flex gap-2">
-                        {["M", "F", "All"].map(g => (
-                          <label key={g} className="flex-1 cursor-pointer">
-                            <input type="checkbox" {...register("gender")} value={g} className="peer hidden" />
-                            <div className="p-3 border border-[#1D1D1D]/10 bg-[#F8F8F8] peer-checked:bg-[#1D1D1D] peer-checked:text-white transition-all text-center text-[10px] font-black rounded-none">{g}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-4">
-                      <label className="text-[9px] font-black uppercase tracking-widest italic opacity-40">Location</label>
-                      <input {...register("targetLocation")} placeholder="e.g. UK, Nationwide" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-3 text-xs font-bold rounded-none italic" />
-                    </div>
                   </div>
                 </div>
               </div>
@@ -708,6 +687,7 @@ export function BecomeBusiness() {
           </motion.div>
         )}
 
+        {/* Step 4 - Verification */}
         {step === 4 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
             <section>
@@ -770,11 +750,12 @@ export function BecomeBusiness() {
           </motion.div>
         )}
 
+        {/* Step 5 - Review */}
         {step === 5 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
             <section>
               <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Review Registration</h2>
-              <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please confirm your details are correct before submitting for review.</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please confirm your details are correct before submitting.</p>
               
               <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-8 rounded-none flex flex-col gap-6">
                 <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
@@ -804,15 +785,21 @@ export function BecomeBusiness() {
                   <input 
                     type="checkbox" 
                     {...register("agreeToTerms")}
-                    className="peer hidden" 
+                    className="hidden"
                   />
-                  <div className={`mt-1 w-5 h-5 border-2 flex items-center justify-center transition-all rounded-none ${
-                    agreeToTerms ? 'bg-[#389C9A] border-[#389C9A]' : 'border-[#1D1D1D] bg-white'
-                  }`}>
+                  <div 
+                    onClick={() => {
+                      const current = agreeToTerms;
+                      setValue("agreeToTerms", !current, { shouldValidate: true });
+                    }}
+                    className={`mt-1 w-5 h-5 border-2 flex items-center justify-center transition-all rounded-none cursor-pointer ${
+                      agreeToTerms ? 'bg-[#389C9A] border-[#389C9A]' : 'border-[#1D1D1D] bg-white'
+                    }`}
+                  >
                     {agreeToTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
                   </div>
                   <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
-                    I agree to LiveLink's Terms of Service and Privacy Policy. I confirm that I am authorized to advertise on behalf of this business. <span className="text-red-500">*</span>
+                    I agree to LiveLink's Terms of Service and Privacy Policy. <span className="text-red-500">*</span>
                   </span>
                 </label>
               </div>
@@ -822,44 +809,44 @@ export function BecomeBusiness() {
       </div>
 
       {/* Footer Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-50 max-w-[480px] mx-auto">
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-[#1D1D1D] z-50 max-w-[480px] mx-auto">
         <div className="flex gap-4">
           {step > 1 && (
             <button 
               onClick={prevStep}
-              disabled={loading}
-              className="px-6 py-5 border-2 border-[#1D1D1D] text-[#1D1D1D] font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-all rounded-none italic disabled:opacity-50"
+              className="px-6 py-4 border-2 border-[#1D1D1D] text-[#1D1D1D] font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-all rounded-none italic"
             >
               Back
             </button>
           )}
-          <button 
-            onClick={step === 5 ? handleSubmit(onSubmit) : nextStep}
-            disabled={!validateStep() || loading}
-            className={`flex-1 flex items-center justify-between p-6 font-black uppercase tracking-tight transition-all rounded-none italic ${
-              validateStep() && !loading
-                ? 'bg-[#1D1D1D] text-white active:scale-[0.98]' 
-                : 'bg-[#1D1D1D]/30 text-white/50 cursor-not-allowed'
-            }`}
-          >
-            <span>
-              {loading ? 'Submitting...' : (step === 5 ? 'Submit Registration' : 'Continue')}
-            </span>
-            {!loading && step < 5 && <ArrowRight className="w-5 h-5 text-[#FEDB71]" />}
-          </button>
+          {step < 5 ? (
+            <button 
+              onClick={nextStep}
+              disabled={!validateStep()}
+              className={`flex-1 py-4 font-black uppercase tracking-widest text-[10px] transition-all rounded-none italic ${
+                validateStep() 
+                  ? 'bg-[#1D1D1D] text-white active:scale-[0.98]' 
+                  : 'bg-[#1D1D1D]/30 text-white/50 cursor-not-allowed'
+              }`}
+            >
+              Continue
+            </button>
+          ) : (
+            <button
+              disabled={!agreeToTerms || loading}
+              onClick={handleSubmit(onSubmit)}
+              className={`flex-1 py-4 font-black uppercase tracking-widest text-[10px] transition-all rounded-none italic flex items-center justify-center gap-2 ${
+                agreeToTerms && !loading
+                  ? 'bg-[#1D1D1D] text-white active:scale-[0.98]' 
+                  : 'bg-[#1D1D1D]/30 text-white/50 cursor-not-allowed'
+              }`}
+            >
+              {loading ? "Submitting..." : "Submit Registration"}
+              {!loading && <ArrowRight className="w-4 h-4" />}
+            </button>
+          )}
         </div>
         
-        {/* Step validation message */}
-        {!validateStep() && step < 5 && (
-          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center">
-            Please fill in all required fields before continuing
-          </p>
-        )}
-        {step === 4 && !idFile && (
-          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center">
-            Please upload your ID document to continue
-          </p>
-        )}
         {step === 5 && !agreeToTerms && (
           <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center">
             You must agree to the terms to submit
