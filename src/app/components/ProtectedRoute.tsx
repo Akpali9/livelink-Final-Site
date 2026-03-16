@@ -1,36 +1,30 @@
 
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { useAuth } from '../hooks/useAuth';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
+  redirectTo?: string;
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const [loading, setLoading] = useState(true);
+export function ProtectedRoute({ children, redirectTo = '/login' }: ProtectedRouteProps) {
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkUser = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        // Not logged in → redirect to home
-        navigate("/");
-      } else {
-        setLoading(false);
-      }
-    };
-
-    checkUser();
-  }, [navigate]);
+    if (!loading && !user) {
+      navigate(redirectTo);
+    }
+  }, [user, loading, navigate, redirectTo]);
 
   if (loading) {
-    return <p>Loading...</p>; // or a spinner
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+      </div>
+    );
   }
 
-  return <>{children}</>;
+  return user ? <>{children}</> : null;
 }
