@@ -1,40 +1,35 @@
-import React from "react";
-import { Navigate, useLocation } from "react-router";
-import { useAuth } from "../lib/contexts/AuthContext";
+
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  userType?: "creator" | "business" | "both";
 }
 
-export function ProtectedRoute({ children, userType = "both" }: ProtectedRouteProps) {
-  const { user, isLoading, isAuthenticated } = useAuth();
-  const location = useLocation();
+export function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
-      </div>
-    );
-  }
+  useEffect(() => {
+    const checkUser = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  if (!isAuthenticated) {
-    // Redirect to login portal if not authenticated
-    return <Navigate to="/login/portal" state={{ from: location }} replace />;
-  }
+      if (!session) {
+        // Not logged in → redirect to home
+        navigate("/");
+      } else {
+        setLoading(false);
+      }
+    };
 
-  // Check user type if needed
-  if (userType !== "both") {
-    // You'll need to determine the user type from your user metadata or a separate field
-    // This is just an example - adjust based on your user structure
-    const actualUserType = user?.user_metadata?.type || "creator";
-    
-    if (actualUserType !== userType) {
-      // Redirect to appropriate dashboard if wrong user type
-      const redirectPath = actualUserType === "business" ? "/business/dashboard" : "/dashboard";
-      return <Navigate to={redirectPath} replace />;
-    }
+    checkUser();
+  }, [navigate]);
+
+  if (loading) {
+    return <p>Loading...</p>; // or a spinner
   }
 
   return <>{children}</>;
