@@ -68,6 +68,53 @@ export function Profile() {
     };
     fetchCreator();
   }, [id]);
+  // Correct way to fetch creator with related data
+const fetchCreatorWithDetails = async (creatorId: string) => {
+  try {
+    // Fetch main profile
+    const { data: profile, error: profileError } = await supabase
+      .from('creator_profiles')
+      .select('*')
+      .eq('id', creatorId)
+      .maybeSingle();
+
+    if (profileError) throw profileError;
+
+    if (profile) {
+      // Fetch platforms separately
+      const { data: platforms } = await supabase
+        .from('creator_platforms')
+        .select('*')
+        .eq('creator_id', creatorId);
+
+      // Fetch stats separately
+      const { data: stats } = await supabase
+        .from('creator_stats')
+        .select('*')
+        .eq('creator_id', creatorId)
+        .maybeSingle();
+
+      // Fetch recent streams
+      const { data: recentStreams } = await supabase
+        .from('stream_updates')
+        .select('id, stream_number, stream_date, duration, viewer_count')
+        .eq('creator_id', creatorId)
+        .order('stream_date', { ascending: false })
+        .limit(5);
+
+      return {
+        ...profile,
+        platforms: platforms || [],
+        stats: stats || null,
+        recent_streams: recentStreams || []
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching creator:', error);
+    throw error;
+  }
+};
 
   const handleSendOffer = async () => {
     if (!creator || !customOffer.streams || !customOffer.rate) {
