@@ -199,14 +199,19 @@ export function Browse() {
                     <span className="font-bold text-lg">
                       {creator.name}
                     </span>
-                    {creator.platforms?.map((p: string) => (
-                      <span
-                        key={p}
-                        className="text-[8px] px-2 py-1 bg-gray-100 border"
-                      >
-                        {p}
-                      </span>
-                    ))}
+                    {creator.platforms?.map((p: any, i: number) => {
+                      // platforms may be stored as strings OR as { url, type, username } objects
+                      const label = typeof p === 'string' ? p : (p?.type || p?.platform_type || '');
+                      if (!label) return null;
+                      return (
+                        <span
+                          key={i}
+                          className="text-[8px] px-2 py-1 bg-gray-100 border"
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
                   </div>
 
                   <div className="flex gap-3 mt-2 text-xs">
@@ -218,7 +223,7 @@ export function Browse() {
                   </div>
 
                   <div className="flex gap-2 mt-2">
-                    {creator.tags?.map((tag: string) => (
+                    {creator.tags?.filter((tag: any) => typeof tag === 'string').map((tag: string) => (
                       <span
                         key={tag}
                         className="text-[8px] px-2 py-1 bg-gray-50 border"
