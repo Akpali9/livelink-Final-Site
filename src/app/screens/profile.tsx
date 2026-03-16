@@ -356,5 +356,4 @@ export function Profile() {
         </a>
       )}
     </div>
-  );
-}
+  )
