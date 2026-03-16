@@ -3,6 +3,13 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 
+interface Business {
+  id: string;
+  business_name: string;
+  logo_url?: string;
+  email?: string;
+}
+
 interface Campaign {
   id: string;
   name: string;
@@ -10,21 +17,19 @@ interface Campaign {
   budget: number;
   description: string;
   business_id: string;
-  business?: {
-    id: string;
-    business_name: string;
-    logo_url?: string;
-  };
+  status: string;
+  created_at: string;
 }
 
 interface CampaignApplication {
   id: string;
+  campaign_id: string;
+  creator_id: string;
   status: 'pending' | 'approved' | 'rejected' | 'completed';
   proposed_amount: number;
   created_at: string;
-  campaign_id: string;
-  creator_id: string;
-  campaign?: Campaign;
+  updated_at?: string;
+  campaign?: Campaign & { business?: Business };
 }
 
 export function useCampaignApplications() {
@@ -34,20 +39,22 @@ export function useCampaignApplications() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       fetchApplications();
     }
-  }, [user]);
+  }, [user?.id]);
 
   const fetchApplications = async () => {
+    if (!user?.id) return;
+
     try {
       setLoading(true);
 
-      // First, get all applications
+      // First get all applications for this creator
       const { data: applicationsData, error: appsError } = await supabase
         .from('campaign_applications')
         .select('*')
-        .eq('creator_id', user?.id)
+        .eq('creator_id', user.id)
         .order('created_at', { ascending: false });
 
       if (appsError) throw appsError;
@@ -56,36 +63,34 @@ export function useCampaignApplications() {
         // Get unique campaign IDs
         const campaignIds = [...new Set(applicationsData.map(app => app.campaign_id))];
 
-        // Fetch campaign details separately
+        // Fetch campaign details
         const { data: campaignsData, error: campaignsError } = await supabase
           .from('campaigns')
-          .select(`
-            id,
-            name,
-            type,
-            budget,
-            description,
-            business_id
-          `)
+          .select('*')
           .in('id', campaignIds);
 
         if (campaignsError) throw campaignsError;
 
-        // Get unique business IDs
+        // Get unique business IDs from campaigns
         const businessIds = [...new Set(campaignsData?.map(c => c.business_id) || [])];
 
-        // Fetch business details
-        const { data: businessesData, error: businessesError } = await supabase
-          .from('businesses')
-          .select('id, business_name, logo_url')
-          .in('id', businessIds);
+        // Fetch business details if there are business IDs
+        let businessesData: Business[] = [];
+        if (businessIds.length > 0) {
+          const { data, error: businessesError } = await supabase
+            .from('businesses')
+            .select('id, business_name, logo_url, email')
+            .in('id', businessIds);
 
-        if (businessesError) throw businessesError;
+          if (!businessesError) {
+            businessesData = data || [];
+          }
+        }
 
         // Combine all data
         const applicationsWithDetails = applicationsData.map(app => {
           const campaign = campaignsData?.find(c => c.id === app.campaign_id);
-          const business = businessesData?.find(b => b.id === campaign?.business_id);
+          const business = businessesData.find(b => b.id === campaign?.business_id);
           
           return {
             ...app,
@@ -110,12 +115,14 @@ export function useCampaignApplications() {
   };
 
   const applyToCampaign = async (campaignId: string, proposedAmount: number) => {
+    if (!user?.id) throw new Error('User not authenticated');
+
     try {
       const { data, error } = await supabase
         .from('campaign_applications')
         .insert([{
           campaign_id: campaignId,
-          creator_id: user?.id,
+          creator_id: user.id,
           proposed_amount: proposedAmount,
           status: 'pending',
           created_at: new Date().toISOString()
@@ -125,29 +132,10 @@ export function useCampaignApplications() {
 
       if (error) throw error;
       
-      // Refresh applications
       await fetchApplications();
       return data;
     } catch (err) {
       console.error('Error applying to campaign:', err);
-      throw err;
-    }
-  };
-
-  const withdrawApplication = async (applicationId: string) => {
-    try {
-      const { error } = await supabase
-        .from('campaign_applications')
-        .delete()
-        .eq('id', applicationId)
-        .eq('creator_id', user?.id);
-
-      if (error) throw error;
-      
-      // Refresh applications
-      await fetchApplications();
-    } catch (err) {
-      console.error('Error withdrawing application:', err);
       throw err;
     }
   };
@@ -157,7 +145,6 @@ export function useCampaignApplications() {
     loading,
     error,
     refresh: fetchApplications,
-    applyToCampaign,
-    withdrawApplication
+    applyToCampaign
   };
 }
