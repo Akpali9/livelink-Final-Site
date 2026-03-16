@@ -3,37 +3,59 @@ import { Link, useNavigate } from "react-router";
 import { useOutletContext } from 'react-router';
 import type { User } from '@supabase/supabase-js';
 import type { Tables } from '../lib/supabase';
-import { useCreator } from '../hooks/useCreator';
-import { useCampaignApplications } from '../hooks/useCampaignApplications';
-import { useEarnings } from '../hooks/useEarnings';
+i// src/app/components/ChatWindow.tsx or src/app/screens/messages.tsx
+import { useMessages } from '../hooks/useMessages';
+import { useAuth } from '../hooks/useAuth';
+import { useState } from 'react';
 
-export function CreatorDashboard() {
+interface ChatWindowProps {
+  receiverId: string; // The user you're chatting with
+}
+
+export function ChatWindow({ receiverId }: ChatWindowProps) {
   const { user } = useAuth();
-  const { 
-    profile, 
-    platforms, 
-    stats, 
-    recentStreams, 
-    loading: creatorLoading 
-  } = useCreator(user?.id);
+  const [newMessage, setNewMessage] = useState('');
   
   const { 
-    applications, 
-    loading: appsLoading 
-  } = useCampaignApplications();
-  
-  const { 
-    earnings, 
-    totalEarned, 
-    pendingEarnings, 
-    loading: earningsLoading 
-  } = useEarnings();
+    messages, 
+    loading, 
+    sendMessage 
+  } = useMessages(receiverId);
 
-  if (creatorLoading || appsLoading || earningsLoading) {
-    return <div>Loading...</div>;
-  }
+  const handleSend = async () => {
+    if (newMessage.trim()) {
+      await sendMessage(newMessage, receiverId);
+      setNewMessage('');
+    }
+  };
 
+  if (loading) return <div>Loading messages...</div>;
 
+  return (
+    <div className="chat-window">
+      <div className="messages-list">
+        {messages.map(message => (
+          <div 
+            key={message.id} 
+            className={`message ${message.sender_id === user?.id ? 'sent' : 'received'}`}
+          >
+            <p>{message.content}</p>
+            <small>{new Date(message.created_at).toLocaleString()}</small>
+          </div>
+        ))}
+      </div>
+      
+      <div className="message-input">
+        <input 
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+        />
+        <button onClick={handleSend}>Send</button>
+      </div>
+    </div>
+  );
+}
 type AuthContext = {
   user: User | null;
   profile: Tables['creator_profiles'] | Tables['business_profiles'] | null;
