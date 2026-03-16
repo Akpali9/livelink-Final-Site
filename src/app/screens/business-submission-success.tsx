@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";  // Corrected import path
+import { useNavigate } from "react-router";
 import {
   CheckCircle2,
   ArrowRight,
@@ -9,25 +9,24 @@ import {
   LayoutDashboard,
   Search,
 } from "lucide-react";
-import { motion } from "framer-motion"; // Corrected import
+import { motion } from "motion/react";
 import { AppHeader } from "../components/app-header";
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabase"; 
 
 export function BusinessSubmissionSuccess() {
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState<any>(null);
 
-  const user = supabase.auth.user();  // Ensure supabase is correctly initialized
+  const user = supabase.auth.user();
 
   useEffect(() => {
     const fetchLatestCampaign = async () => {
       if (!user) return;
-
       const { data, error } = await supabase
         .from("business_campaigns")
         .select("*")
-        .eq("business_id", user.id)  // Corrected field for filtering
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .single();

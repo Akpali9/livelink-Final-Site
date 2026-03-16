@@ -4,7 +4,7 @@ import { ArrowRight, Check, Lock, AlertTriangle, CreditCard, Info } from "lucide
 import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
 
-export function CampaignConfirm() {
+export function CampaignConfirm({ campaignId }: { campaignId: string }) {
   const navigate = useNavigate();
   const [agreed, setAgreed] = useState(false);
 

@@ -36,7 +36,7 @@ import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { BottomNav } from "../components/bottom-nav";
 import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
-import { useAuth } from "../hooks/useAuth"; // Changed from "../lib/contexts/AuthContext"
+import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface Creator {
@@ -101,13 +101,7 @@ interface Package {
 export function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/login/portal');
-    }
-  }, [user, authLoading, navigate]);
+  const { user } = useAuth();
 
   const [creator, setCreator] = useState<Creator | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,7 +199,7 @@ export function Profile() {
             .from("businesses")
             .select("*")
             .eq("user_id", user.id)
-            .maybeSingle(); // Changed from .single() to .maybeSingle() to avoid errors
+            .single();
 
           if (business) {
             setIsBusiness(true);
@@ -225,7 +219,7 @@ export function Profile() {
   }, [id, user]);
 
   const getPlatformIcon = (platform: string) => {
-    switch(platform?.toLowerCase()) {
+    switch(platform.toLowerCase()) {
       case 'twitch': return Twitch;
       case 'youtube': return Youtube;
       case 'instagram': return Instagram;
@@ -312,9 +306,6 @@ export function Profile() {
       });
       setSelectedPackage(null);
 
-      // Auto-hide success message after 3 seconds
-      setTimeout(() => setOfferSent(false), 3000);
-
     } catch (error) {
       console.error("Error sending offer:", error);
       toast.error("Failed to send offer");
@@ -333,7 +324,7 @@ export function Profile() {
   };
 
   const getPlatformIconComponent = (platformName: string) => {
-    switch(platformName?.toLowerCase()) {
+    switch(platformName.toLowerCase()) {
       case 'twitch': return <Twitch className="w-4 h-4" />;
       case 'youtube': return <Youtube className="w-4 h-4" />;
       case 'instagram': return <Instagram className="w-4 h-4" />;
@@ -354,7 +345,7 @@ export function Profile() {
         <AppHeader showBack title="Creator Profile" />
         <div className="flex items-center justify-center h-[80vh]">
           <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
             <p className="text-sm text-gray-500">Loading profile...</p>
           </div>
         </div>
