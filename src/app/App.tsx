@@ -3,7 +3,6 @@ import { Dashboard } from './screens/dashboard';
 import { LoginPortal } from '../app/screens/login-portal';
 import { Settings } from './screens/settings';
 import { ProtectedRoute } from '../app/components/ProtectedRoute';
-
 export const router = createBrowserRouter([
   {
     path: "/",
