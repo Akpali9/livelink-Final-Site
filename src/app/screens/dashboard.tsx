@@ -3,10 +3,12 @@ import { Link, useNavigate } from "react-router";
 import { useOutletContext } from 'react-router';
 import type { User } from '@supabase/supabase-js';
 import type { Tables } from '../lib/supabase';
-i// src/app/components/ChatWindow.tsx or src/app/screens/messages.tsx
 import { useMessages } from '../hooks/useMessages';
 import { useAuth } from '../hooks/useAuth';
 import { useState } from 'react';
+export function Dashboard() {
+  const { user, profile, loading } = useAuth();
+
 
 interface ChatWindowProps {
   receiverId: string; // The user you're chatting with
