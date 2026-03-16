@@ -29,12 +29,18 @@ import { supabase } from "../lib/supabase";
 import { useDashboardData } from "../hooks/useDashboardData";
 import type { IncomingRequest } from "../types/dashboard";
 
+// Define types
 type AuthContext = {
   user: User | null;
   profile: Tables['creator_profiles'] | Tables['business_profiles'] | null;
   userType: 'creator' | 'business' | null;
 };
 
+interface ChatWindowProps {
+  receiverId: string;
+}
+
+// Skeleton Component
 function SectionSkeleton({ rows = 2 }: { rows?: number }) {
   return (
     <div className="flex flex-col gap-3 animate-pulse">
@@ -45,6 +51,7 @@ function SectionSkeleton({ rows = 2 }: { rows?: number }) {
   );
 }
 
+// Error Component
 function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="border-2 border-red-200 bg-red-50 p-4 flex items-center justify-between">
@@ -61,6 +68,7 @@ function SectionError({ message, onRetry }: { message: string; onRetry: () => vo
   );
 }
 
+// Main Dashboard Component
 export function Dashboard() {
   const { user, userType } = useAuth();
   const navigate = useNavigate();
@@ -628,11 +636,7 @@ export function Dashboard() {
   );
 }
 
-// Move ChatWindow to a separate file or keep it here but outside Dashboard
-interface ChatWindowProps {
-  receiverId: string;
-}
-
+// ChatWindow Component - Moved outside and properly exported
 export function ChatWindow({ receiverId }: ChatWindowProps) {
   const { user } = useAuth();
   const [newMessage, setNewMessage] = useState('');
