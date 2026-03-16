@@ -1,72 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Link, useNavigate } from "react-router";
-import { useOutletContext } from 'react-router';
+import { Link, useNavigate, useOutletContext } from "react-router";
 import type { User } from '@supabase/supabase-js';
 import type { Tables } from '../lib/supabase';
 import { useMessages } from '../hooks/useMessages';
 import { useAuth } from '../hooks/useAuth';
-import { useState } from 'react';
-export function Dashboard() {
-  const { user, profile, loading } = useAuth();
-
-
-interface ChatWindowProps {
-  receiverId: string; // The user you're chatting with
-}
-
-export function ChatWindow({ receiverId }: ChatWindowProps) {
-  const { user } = useAuth();
-  const [newMessage, setNewMessage] = useState('');
-  
-  const { 
-    messages, 
-    loading, 
-    sendMessage 
-  } = useMessages(receiverId);
-
-  const handleSend = async () => {
-    if (newMessage.trim()) {
-      await sendMessage(newMessage, receiverId);
-      setNewMessage('');
-    }
-  };
-
-  if (loading) return <div>Loading messages...</div>;
-
-  return (
-    <div className="chat-window">
-      <div className="messages-list">
-        {messages.map(message => (
-          <div 
-            key={message.id} 
-            className={`message ${message.sender_id === user?.id ? 'sent' : 'received'}`}
-          >
-            <p>{message.content}</p>
-            <small>{new Date(message.created_at).toLocaleString()}</small>
-          </div>
-        ))}
-      </div>
-      
-      <div className="message-input">
-        <input 
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-        />
-        <button onClick={handleSend}>Send</button>
-      </div>
-    </div>
-  );
-}
-type AuthContext = {
-  user: User | null;
-  profile: Tables['creator_profiles'] | Tables['business_profiles'] | null;
-  userType: 'creator' | 'business' | null;
-};
-
-export function useAuth() {
-  return useOutletContext<AuthContext>();
-}
 import { 
   ArrowUpRight, 
   Inbox, 
@@ -91,6 +28,12 @@ import { DeclineOfferModal } from "../components/decline-offer-modal";
 import { supabase } from "../lib/supabase";
 import { useDashboardData } from "../hooks/useDashboardData";
 import type { IncomingRequest } from "../types/dashboard";
+
+type AuthContext = {
+  user: User | null;
+  profile: Tables['creator_profiles'] | Tables['business_profiles'] | null;
+  userType: 'creator' | 'business' | null;
+};
 
 function SectionSkeleton({ rows = 2 }: { rows?: number }) {
   return (
@@ -119,7 +62,7 @@ function SectionError({ message, onRetry }: { message: string; onRetry: () => vo
 }
 
 export function Dashboard() {
-    const { user, userType } = useAuth();
+  const { user, userType } = useAuth();
   const navigate = useNavigate();
   const earningsRef = useRef<HTMLDivElement>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
@@ -681,6 +624,56 @@ export function Dashboard() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// Move ChatWindow to a separate file or keep it here but outside Dashboard
+interface ChatWindowProps {
+  receiverId: string;
+}
+
+export function ChatWindow({ receiverId }: ChatWindowProps) {
+  const { user } = useAuth();
+  const [newMessage, setNewMessage] = useState('');
+  
+  const { 
+    messages, 
+    loading, 
+    sendMessage 
+  } = useMessages(receiverId);
+
+  const handleSend = async () => {
+    if (newMessage.trim()) {
+      await sendMessage(newMessage, receiverId);
+      setNewMessage('');
+    }
+  };
+
+  if (loading) return <div>Loading messages...</div>;
+
+  return (
+    <div className="chat-window">
+      <div className="messages-list">
+        {messages.map(message => (
+          <div 
+            key={message.id} 
+            className={`message ${message.sender_id === user?.id ? 'sent' : 'received'}`}
+          >
+            <p>{message.content}</p>
+            <small>{new Date(message.created_at).toLocaleString()}</small>
+          </div>
+        ))}
+      </div>
+      
+      <div className="message-input">
+        <input 
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+        />
+        <button onClick={handleSend}>Send</button>
+      </div>
     </div>
   );
 }
