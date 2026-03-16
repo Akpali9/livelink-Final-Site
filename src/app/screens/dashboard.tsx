@@ -601,7 +601,7 @@ export function Dashboard() {
               </span>
             </button>
             <button
-              onClick={() => navigate("/profile")}
+              onClick={() => navigate("/profile/1")}
               className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 active:bg-[#1D1D1D] active:text-white transition-all group"
             >
               <div className="p-3 bg-[#F8F8F8] rounded-none group-active:bg-white/20">
