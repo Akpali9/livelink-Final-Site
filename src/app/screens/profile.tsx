@@ -101,7 +101,13 @@ interface Package {
 export function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login/portal');
+    }
+  }, [user, authLoading, navigate]);
 
   const [creator, setCreator] = useState<Creator | null>(null);
   const [loading, setLoading] = useState(true);
