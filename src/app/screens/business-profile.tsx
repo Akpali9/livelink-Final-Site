@@ -21,12 +21,7 @@ import {
   Twitter,
   Linkedin,
   Youtube,
-  Facebook,
-  Upload,
-  FileText,
-  Download,
-  Eye,
-  Clock
+  Facebook
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AppHeader } from "../components/app-header";
@@ -47,16 +42,6 @@ interface BusinessProfileData {
   taxId?: string;
   yearFounded?: string;
   employeeCount?: string;
-}
-
-interface VerificationDocument {
-  id: string;
-  name: string;
-  type: string;
-  url: string;
-  status: 'pending' | 'approved' | 'rejected';
-  uploadedAt: string;
-  size?: number;
 }
 
 export function BusinessProfile() {
@@ -83,18 +68,7 @@ export function BusinessProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'unverified' | 'rejected'>('unverified');
-  const [verificationDocuments, setVerificationDocuments] = useState<VerificationDocument[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
-  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
-  
-  // Track unsaved changes
-  const [initialFormData, setInitialFormData] = useState<BusinessProfileData>(formData);
-  const [initialSocialLinks, setInitialSocialLinks] = useState<{platform: string, url: string}[]>([]);
-  const [hasChanges, setHasChanges] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'unverified'>('unverified');
 
   const industryOptions = [
     "E-commerce",
@@ -121,24 +95,7 @@ export function BusinessProfile() {
     other: Share2
   };
 
-  // Check for unsaved changes
-  useEffect(() => {
-    const formChanged = JSON.stringify(formData) !== JSON.stringify(initialFormData);
-    const socialChanged = JSON.stringify(socialLinks) !== JSON.stringify(initialSocialLinks);
-    setHasChanges(formChanged || socialChanged);
-  }, [formData, socialLinks, initialFormData, initialSocialLinks]);
-
-  // Auto-hide upload success message after 5 seconds
-  useEffect(() => {
-    if (uploadSuccess) {
-      const timer = setTimeout(() => {
-        setUploadSuccess(false);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [uploadSuccess]);
-
-  // Fetch profile and documents from Supabase on mount
+  // Fetch profile from Supabase on mount
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user) {
@@ -147,68 +104,34 @@ export function BusinessProfile() {
       }
 
       try {
-        // Fetch business profile
-        const { data: businessData, error: businessError } = await supabase
+        const { data, error } = await supabase
           .from("businesses")
           .select("*")
           .eq("user_id", user.id)
           .single();
 
-        if (businessError && businessError.code !== 'PGRST116') {
-          console.error("Fetch profile error:", businessError.message);
+        if (error && error.code !== 'PGRST116') {
+          console.error("Fetch profile error:", error.message);
         }
 
-        if (businessData) {
-          const fetchedFormData = {
-            businessName: businessData.business_name || "",
-            yourName: businessData.contact_name || "",
-            contactNumber: businessData.contact_phone || "",
-            email: businessData.contact_email || "",
-            website: businessData.website || "",
-            industry: businessData.industry || "E-commerce",
-            country: businessData.country || "",
-            bio: businessData.description || "",
-            registrationNumber: businessData.registration_number || "",
-            taxId: businessData.tax_id || "",
-            yearFounded: businessData.year_founded || "",
-            employeeCount: businessData.employee_count || ""
-          };
-          
-          setFormData(fetchedFormData);
-          setInitialFormData(fetchedFormData);
-          
-          const fetchedSocialLinks = businessData.social_links || [];
-          setSocialLinks(fetchedSocialLinks);
-          setInitialSocialLinks(fetchedSocialLinks);
-          
-          setVerificationStatus(businessData.verification_status || 'unverified');
-          setRejectionReason(businessData.rejection_reason || null);
-          setLastSaved(new Date(businessData.updated_at || Date.now()));
+        if (data) {
+          setFormData({
+            businessName: data.business_name || "",
+            yourName: data.contact_name || "",
+            contactNumber: data.contact_phone || "",
+            email: data.contact_email || "",
+            website: data.website || "",
+            industry: data.industry || "E-commerce",
+            country: data.country || "",
+            bio: data.description || "",
+            registrationNumber: data.registration_number || "",
+            taxId: data.tax_id || "",
+            yearFounded: data.year_founded || "",
+            employeeCount: data.employee_count || ""
+          });
+          setSocialLinks(data.social_links || []);
+          setVerificationStatus(data.verification_status || 'unverified');
         }
-
-        // Fetch verification documents
-        const { data: docsData, error: docsError } = await supabase
-          .from("verification_documents")
-          .select("*")
-          .eq("business_id", businessData?.id)
-          .order("uploaded_at", { ascending: false });
-
-        if (docsError) {
-          console.error("Fetch documents error:", docsError.message);
-        }
-
-        if (docsData) {
-          setVerificationDocuments(docsData.map(doc => ({
-            id: doc.id,
-            name: doc.file_name,
-            type: doc.document_type,
-            url: doc.file_url,
-            status: doc.status,
-            uploadedAt: doc.uploaded_at,
-            size: doc.file_size
-          })));
-        }
-
       } catch (error) {
         console.error("Error fetching profile:", error);
       } finally {
@@ -278,21 +201,9 @@ export function BusinessProfile() {
 
       if (error) throw error;
 
-      // Update initial states to reflect saved data
-      setInitialFormData(formData);
-      setInitialSocialLinks(socialLinks);
-      
       setSaved(true);
-      setHasChanges(false);
-      setLastSaved(new Date());
+      toast.success("Profile saved successfully!");
       
-      // Show success toast with more detail
-      toast.success("All changes saved successfully!", {
-        icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
-        duration: 3000
-      });
-      
-      // Visual indicator on button
       setTimeout(() => setSaved(false), 3000);
 
     } catch (error: any) {
@@ -303,270 +214,23 @@ export function BusinessProfile() {
     }
   };
 
-  // Handle file upload for verification documents
-  const handleDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0 || !user) return;
-
-    // Check file sizes (max 10MB per file)
-    for (let i = 0; i < files.length; i++) {
-      if (files[i].size > 10 * 1024 * 1024) {
-        toast.error(`File "${files[i].name}" exceeds 10MB limit`);
-        return;
-      }
-    }
-
-    setUploading(true);
-    setUploadSuccess(false);
-
-    // Initialize progress for each file
-    const initialProgress: Record<string, number> = {};
-    for (let i = 0; i < files.length; i++) {
-      initialProgress[files[i].name] = 0;
-    }
-    setUploadProgress(initialProgress);
-
-    try {
-      // Get the business ID first
-      const { data: businessData, error: businessError } = await supabase
-        .from("businesses")
-        .select("id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (businessError) throw businessError;
-      if (!businessData) throw new Error("Business profile not found. Please save your profile first.");
-
-      let uploadSuccess = false;
-      const uploadedFiles: string[] = [];
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${businessData.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const filePath = `verification-docs/${fileName}`;
-
-        // Update progress for this file
-        setUploadProgress(prev => ({ ...prev, [file.name]: 30 }));
-
-        // Upload file to storage
-        const { error: uploadError } = await supabase.storage
-          .from('verification-documents')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error("Upload error:", uploadError);
-          toast.error(`Failed to upload ${file.name}: ${uploadError.message}`);
-          setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
-          continue;
-        }
-
-        setUploadProgress(prev => ({ ...prev, [file.name]: 70 }));
-
-        // Get public URL
-        const { data: urlData } = supabase.storage
-          .from('verification-documents')
-          .getPublicUrl(filePath);
-
-        // Save document record in database
-        const { error: dbError } = await supabase
-          .from("verification_documents")
-          .insert({
-            business_id: businessData.id,
-            file_name: file.name,
-            file_url: urlData.publicUrl,
-            file_size: file.size,
-            document_type: 'business_registration',
-            status: 'pending',
-            uploaded_at: new Date().toISOString()
-          });
-
-        if (dbError) {
-          console.error("Database error:", dbError);
-          toast.error(`Failed to save ${file.name} record`);
-          setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
-          continue;
-        }
-
-        setUploadProgress(prev => ({ ...prev, [file.name]: 100 }));
-        uploadedFiles.push(file.name);
-        uploadSuccess = true;
-      }
-
-      if (uploadSuccess) {
-        // Update business verification status to pending
-        await supabase
-          .from("businesses")
-          .update({ 
-            verification_status: 'pending',
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", businessData.id);
-
-        setVerificationStatus('pending');
-        setUploadSuccess(true);
-        
-        // Show success message with file count
-        toast.success(
-          <div className="flex flex-col">
-            <span className="font-bold">{files.length} document(s) uploaded successfully!</span>
-            <span className="text-xs opacity-90">Pending admin review</span>
-          </div>, 
-          {
-            icon: <CheckCircle2 className="w-5 h-5 text-green-500" />,
-            duration: 5000
-          }
-        );
-        
-        // Refresh documents list
-        const { data: docsData } = await supabase
-          .from("verification_documents")
-          .select("*")
-          .eq("business_id", businessData.id)
-          .order("uploaded_at", { ascending: false });
-
-        if (docsData) {
-          setVerificationDocuments(docsData.map(doc => ({
-            id: doc.id,
-            name: doc.file_name,
-            type: doc.document_type,
-            url: doc.file_url,
-            status: doc.status,
-            uploadedAt: doc.uploaded_at,
-            size: doc.file_size
-          })));
-        }
-      }
-
-    } catch (error: any) {
-      console.error("Upload error:", error);
-      toast.error(error.message || "Failed to upload documents");
-      setUploadSuccess(false);
-    } finally {
-      setUploading(false);
-      // Clear progress after a delay
-      setTimeout(() => {
-        setUploadProgress({});
-      }, 3000);
-      // Clear the input
-      event.target.value = '';
-    }
+  const addSocialLink = () => {
+    setSocialLinks([...socialLinks, { platform: "other", url: "" }]);
   };
 
-  const handleDeleteDocument = async (documentId: string) => {
-    if (!confirm("Are you sure you want to delete this document?")) return;
-
-    try {
-      // Get document details first
-      const docToDelete = verificationDocuments.find(doc => doc.id === documentId);
-      
-      // Delete from database
-      const { error: dbError } = await supabase
-        .from("verification_documents")
-        .delete()
-        .eq("id", documentId);
-
-      if (dbError) throw dbError;
-
-      // Try to delete from storage (optional - don't throw if fails)
-      if (docToDelete) {
-        const filePath = docToDelete.url.split('/').pop();
-        if (filePath) {
-          await supabase.storage
-            .from('verification-documents')
-            .remove([`verification-docs/${filePath}`]);
-        }
-      }
-
-      // Update local state
-      setVerificationDocuments(prev => prev.filter(doc => doc.id !== documentId));
-      
-      // Show deletion success
-      toast.success("Document deleted successfully", {
-        icon: <Trash2 className="w-4 h-4 text-red-500" />,
-        duration: 3000
-      });
-      
-      // If no documents left, reset verification status
-      if (verificationDocuments.length <= 1) {
-        const { data: businessData } = await supabase
-          .from("businesses")
-          .select("id")
-          .eq("user_id", user?.id)
-          .single();
-
-        if (businessData) {
-          await supabase
-            .from("businesses")
-            .update({ 
-              verification_status: 'unverified',
-              rejection_reason: null 
-            })
-            .eq("id", businessData.id);
-          
-          setVerificationStatus('unverified');
-          setRejectionReason(null);
-        }
-      }
-
-    } catch (error: any) {
-      console.error("Delete error:", error);
-      toast.error(error.message || "Failed to delete document");
-    }
+  const updateSocialLink = (index: number, field: 'platform' | 'url', value: string) => {
+    const newLinks = [...socialLinks];
+    newLinks[index][field] = value;
+    setSocialLinks(newLinks);
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return <span className="px-2 py-1 bg-green-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3" /> Approved
-        </span>;
-      case 'rejected':
-        return <span className="px-2 py-1 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Rejected</span>;
-      default:
-        return <span className="px-2 py-1 bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Pending Review</span>;
-    }
+  const removeSocialLink = (index: number) => {
+    setSocialLinks(socialLinks.filter((_, i) => i !== index));
   };
 
-  const getOverallStatusBadge = () => {
-    switch (verificationStatus) {
-      case 'verified':
-        return <span className="px-3 py-1 bg-green-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3" /> Verified
-        </span>;
-      case 'rejected':
-        return <span className="px-3 py-1 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Rejected</span>;
-      case 'pending':
-        return <span className="px-3 py-1 bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Pending Review</span>;
-      default:
-        return <span className="px-3 py-1 bg-gray-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">Not Verified</span>;
-    }
-  };
-
-  const formatFileSize = (bytes?: number) => {
-    if (!bytes) return '';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-
-  const formatLastSaved = () => {
-    if (!lastSaved) return '';
-    return lastSaved.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
-
-  const getDocumentCount = () => {
-    const pending = verificationDocuments.filter(doc => doc.status === 'pending').length;
-    const approved = verificationDocuments.filter(doc => doc.status === 'approved').length;
-    const rejected = verificationDocuments.filter(doc => doc.status === 'rejected').length;
-    return { pending, approved, rejected, total: verificationDocuments.length };
+  const getPlatformIcon = (platform: string) => {
+    const Icon = platformIcons[platform.toLowerCase()] || Share2;
+    return typeof Icon === 'function' ? Icon() : <Icon className="w-4 h-4" />;
   };
 
   if (loading) {
@@ -583,8 +247,6 @@ export function BusinessProfile() {
     );
   }
 
-  const docCount = getDocumentCount();
-
   return (
     <div className="flex flex-col min-h-screen bg-white pb-44 text-[#1D1D1D]">
       <AppHeader showBack userType="business" title="Settings" />
@@ -597,136 +259,14 @@ export function BusinessProfile() {
         </h1>
       </div>
 
-      {/* Unsaved Changes Banner - Only shows when there are unsaved changes and not saving and not just saved */}
-      <AnimatePresence>
-        {hasChanges && !saving && !saved && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mx-8 mt-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
-                <AlertCircle className="w-4 h-4 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-sm font-black text-amber-800">You have unsaved changes</p>
-                <p className="text-[10px] text-amber-600 mt-0.5">
-                  Your profile information hasn't been saved yet
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all active:scale-95 disabled:opacity-50"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-3 h-3" />
-                  Save Now
-                </>
-              )}
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Upload Success Banner */}
-      <AnimatePresence>
-        {uploadSuccess && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mx-8 mt-6 p-4 bg-green-50 border-2 border-green-200 rounded-xl flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm font-black text-green-800">Documents Uploaded Successfully!</p>
-                <p className="text-[10px] text-green-600 mt-0.5 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  Pending admin review • {docCount.pending} document(s) waiting
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setUploadSuccess(false)}
-              className="p-1.5 hover:bg-green-200 rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4 text-green-600" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Verification Status Banner */}
-      {verificationStatus !== 'verified' && verificationStatus !== 'unverified' && verificationStatus !== 'pending' && (
-        <div className={`mx-8 mt-6 p-4 border-2 rounded-xl flex items-start gap-3 ${
-          verificationStatus === 'rejected' 
-            ? 'bg-red-50 border-red-200' 
-            : 'bg-amber-50 border-amber-200'
-        }`}>
-          <AlertCircle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-            verificationStatus === 'rejected' ? 'text-red-500' : 'text-amber-500'
-          }`} />
-          <div>
-            <p className={`text-sm font-black mb-1 ${
-              verificationStatus === 'rejected' ? 'text-red-700' : 'text-amber-700'
-            }`}>
-              {verificationStatus === 'rejected' ? 'Verification Rejected' : 'Verification Required'}
-            </p>
-            <p className={`text-xs ${
-              verificationStatus === 'rejected' ? 'text-red-600' : 'text-amber-600'
-            }`}>
-              {verificationStatus === 'rejected' 
-                ? `Your documents were rejected: ${rejectionReason || 'Please upload valid business documents'}`
-                : 'Complete your profile and upload verification documents to start creating campaigns.'
-              }
-            </p>
-          </div>
-        </div>
-      )}
-
-      {verificationStatus === 'pending' && (
+      {verificationStatus !== 'verified' && (
         <div className="mx-8 mt-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-start gap-3">
-          <Clock className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm font-black text-amber-700 mb-1">Verification in Progress</p>
-            <p className="text-xs text-amber-600">
-              Your documents are under review. This usually takes 1-2 business days.
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <div className="h-1.5 flex-1 bg-amber-200 rounded-full overflow-hidden">
-                <motion.div 
-                  initial={{ width: "0%" }}
-                  animate={{ width: "100%" }}
-                  transition={{ duration: 2, repeat: Infinity, repeatType: "reverse" }}
-                  className="h-full bg-amber-500 rounded-full"
-                />
-              </div>
-              <span className="text-[8px] font-black text-amber-600">Reviewing</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {verificationStatus === 'unverified' && (
-        <div className="mx-8 mt-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-black text-blue-700 mb-1">Verification Required</p>
-            <p className="text-xs text-blue-600">
-              Complete your profile and upload verification documents to start creating campaigns and receiving payments.
+            <p className="text-sm font-black text-amber-700 mb-1">Verification Required</p>
+            <p className="text-xs text-amber-600">
+              Complete your profile and upload verification documents to start creating campaigns.
             </p>
           </div>
         </div>
@@ -752,7 +292,7 @@ export function BusinessProfile() {
                   className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all ${
                     errors.yourName ? 'border-red-500' : 'border-[#1D1D1D]/10'
                   }`}
-                  placeholder="Your Full Name"
+                  placeholder="John Doe"
                 />
                 {errors.yourName && (
                   <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.yourName}</p>
@@ -874,9 +414,9 @@ export function BusinessProfile() {
               </label>
               <div className="relative">
                 <select
+                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none appearance-none cursor-pointer rounded-xl pr-12"
                   value={formData.industry}
                   onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none appearance-none cursor-pointer rounded-xl pr-12"
                 >
                   {industryOptions.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -967,7 +507,7 @@ export function BusinessProfile() {
                       <select
                         value={link.platform}
                         onChange={(e) => updateSocialLink(i, 'platform', e.target.value)}
-                        className="absolute left-12 top-1/2 -translate-y-1/2 bg-transparent text-[8px] font-black uppercase tracking-widest outline-none cursor-pointer"
+                        className="absolute left-12 top-1/2 -translate-y-1/2 bg-transparent text-[8px] font-black uppercase tracking-widest outline-none"
                       >
                         <option value="instagram">Instagram</option>
                         <option value="twitter">Twitter</option>
@@ -997,7 +537,7 @@ export function BusinessProfile() {
                 </AnimatePresence>
               </div>
               <button
-                onClick={() => setSocialLinks([...socialLinks, { platform: "instagram", url: "" }])}
+                onClick={addSocialLink}
                 className="flex items-center justify-center gap-2 border-2 border-[#1D1D1D] p-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl italic"
               >
                 <Plus className="w-4 h-4 text-[#389C9A]" /> Add Social Link
@@ -1027,170 +567,30 @@ export function BusinessProfile() {
         {/* Verification Documents */}
         <section className="pt-8 border-t border-[#1D1D1D]/10">
           <h2 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6 text-[#1D1D1D]/40 italic">
-            Verification Documents
+            Verification
           </h2>
           
           <div className="bg-[#F8F8F8] p-6 rounded-xl border-2 border-dashed border-[#1D1D1D]/20">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm font-black mb-1">Business Verification</p>
-                <p className="text-[9px] opacity-40">Upload your business registration documents for admin approval</p>
+                <p className="text-[9px] opacity-40">Upload your business registration documents</p>
               </div>
-              {getOverallStatusBadge()}
+              {verificationStatus === 'verified' ? (
+                <span className="px-3 py-1 bg-green-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">
+                  Verified
+                </span>
+              ) : (
+                <span className="px-3 py-1 bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest rounded-full">
+                  Pending
+                </span>
+              )}
             </div>
-
-            {/* Document Stats */}
-            {verificationDocuments.length > 0 && (
-              <div className="mb-4 grid grid-cols-3 gap-2">
-                <div className="bg-white p-3 rounded-xl border border-[#1D1D1D]/10 text-center">
-                  <p className="text-lg font-black text-[#389C9A]">{docCount.total}</p>
-                  <p className="text-[6px] font-black uppercase tracking-widest opacity-40">Total</p>
-                </div>
-                <div className="bg-white p-3 rounded-xl border border-[#1D1D1D]/10 text-center">
-                  <p className="text-lg font-black text-amber-500">{docCount.pending}</p>
-                  <p className="text-[6px] font-black uppercase tracking-widest opacity-40">Pending</p>
-                </div>
-                <div className="bg-white p-3 rounded-xl border border-[#1D1D1D]/10 text-center">
-                  <p className="text-lg font-black text-green-500">{docCount.approved}</p>
-                  <p className="text-[6px] font-black uppercase tracking-widest opacity-40">Approved</p>
-                </div>
-              </div>
-            )}
-
-            {/* Document List */}
-            {verificationDocuments.length > 0 && (
-              <div className="mb-6 space-y-3">
-                {verificationDocuments.map((doc) => (
-                  <motion.div 
-                    key={doc.id} 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white p-4 rounded-xl border border-[#1D1D1D]/10 flex items-start justify-between"
-                  >
-                    <div className="flex items-start gap-3">
-                      <FileText className="w-5 h-5 text-[#389C9A] flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-bold mb-1">{doc.name}</p>
-                        <div className="flex items-center gap-2 text-[8px] text-[#1D1D1D]/40">
-                          <span>{formatFileSize(doc.size)}</span>
-                          <span>•</span>
-                          <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
-                        </div>
-                        <div className="mt-2">
-                          {getStatusBadge(doc.status)}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={doc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 hover:bg-[#1D1D1D]/5 rounded-lg transition-colors"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </a>
-                      <a
-                        href={doc.url}
-                        download={doc.name}
-                        className="p-2 hover:bg-[#1D1D1D]/5 rounded-lg transition-colors"
-                      >
-                        <Download className="w-4 h-4" />
-                      </a>
-                      {doc.status === 'pending' && (
-                        <button
-                          onClick={() => handleDeleteDocument(doc.id)}
-                          className="p-2 hover:bg-red-50 text-red-500 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-
-            {/* Upload Progress Indicators */}
-            {uploading && Object.keys(uploadProgress).length > 0 && (
-              <div className="mb-6 space-y-2">
-                <p className="text-[8px] font-black uppercase tracking-widest text-[#389C9A]">Uploading...</p>
-                {Object.entries(uploadProgress).map(([fileName, progress]) => (
-                  <div key={fileName} className="bg-white p-3 rounded-xl border border-[#1D1D1D]/10">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[8px] font-bold truncate max-w-[150px]">{fileName}</span>
-                      <span className="text-[8px] font-black text-[#389C9A]">{progress}%</span>
-                    </div>
-                    <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: "0%" }}
-                        animate={{ width: `${progress}%` }}
-                        className="h-full bg-[#389C9A] rounded-full"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Upload Section - Only show if not verified */}
+            
             {verificationStatus !== 'verified' && (
-              <div>
-                <input
-                  type="file"
-                  id="document-upload"
-                  multiple
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={handleDocumentUpload}
-                  className="hidden"
-                  disabled={uploading}
-                />
-                <label
-                  htmlFor="document-upload"
-                  className={`w-full py-4 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-2 cursor-pointer ${
-                    uploading ? 'opacity-50 pointer-events-none' : ''
-                  }`}
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4" />
-                      {verificationDocuments.length > 0 ? 'Upload Additional Documents' : 'Upload Documents'}
-                    </>
-                  )}
-                </label>
-                <p className="text-[8px] text-center mt-3 text-[#1D1D1D]/40">
-                  Accepted formats: PDF, JPG, PNG, DOC (Max 10MB per file)
-                </p>
-                <p className="text-[8px] text-center mt-1 text-[#1D1D1D]/40">
-                  Upload business registration, tax documents, or proof of address
-                </p>
-              </div>
-            )}
-
-            {/* Rejection Message */}
-            {verificationStatus === 'rejected' && rejectionReason && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-[10px] font-black text-red-700 mb-1">Rejection Reason:</p>
-                <p className="text-xs text-red-600">{rejectionReason}</p>
-                <p className="text-[8px] text-red-500 mt-2">
-                  Please upload new documents addressing the issues above.
-                </p>
-              </div>
-            )}
-
-            {/* Info message for verified status */}
-            {verificationStatus === 'verified' && (
-              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-                <p className="text-xs text-green-700 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Your business is verified. You can now create campaigns and receive payments.
-                </p>
-              </div>
+              <button className="w-full py-3 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors">
+                Upload Documents
+              </button>
             )}
           </div>
         </section>
@@ -1209,96 +609,24 @@ export function BusinessProfile() {
         </section>
       </div>
 
-      {/* Sticky Bottom Save Button with Enhanced Indicators */}
+      {/* Sticky Bottom Save Button */}
       <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-[#1D1D1D]/10 z-50 max-w-[480px] mx-auto">
-        <div className="relative">
-          {/* Saving Progress Bar */}
-          {saving && (
-            <motion.div 
-              initial={{ width: "0%" }}
-              animate={{ width: "100%" }}
-              transition={{ duration: 2, ease: "linear" }}
-              className="absolute bottom-full left-0 h-1 bg-[#389C9A] rounded-t-xl"
-            />
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full flex items-center justify-between bg-[#1D1D1D] text-white p-6 font-black uppercase tracking-tight active:scale-[0.98] transition-all rounded-xl border-2 border-[#1D1D1D] hover:bg-[#389C9A] disabled:opacity-50"
+        >
+          <span className="flex items-center gap-2">
+            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            {saving ? "Saving..." : saved ? "Changes Saved!" : "Save All Changes"}
+          </span>
+          {saved ? (
+            <CheckCircle2 className="w-5 h-5 text-[#FEDB71]" />
+          ) : (
+            <ArrowRight className="w-5 h-5 text-[#FEDB71]" />
           )}
-          
-          <button
-            onClick={handleSave}
-            disabled={saving || !hasChanges}
-            className={`w-full flex items-center justify-between p-6 font-black uppercase tracking-tight active:scale-[0.98] transition-all rounded-xl border-2 ${
-              saved 
-                ? 'bg-green-500 border-green-500 text-white' 
-                : hasChanges 
-                  ? 'bg-[#1D1D1D] border-[#1D1D1D] text-white hover:bg-[#389C9A]' 
-                  : 'bg-gray-200 border-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              {saving ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Saving Changes...
-                </>
-              ) : saved ? (
-                <>
-                  <CheckCircle2 className="w-5 h-5" />
-                  All Changes Saved!
-                </>
-              ) : hasChanges ? (
-                <>
-                  <Save className="w-5 h-5" />
-                  Save All Changes
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-5 h-5" />
-                  No Changes to Save
-                </>
-              )}
-            </span>
-            
-            {/* Right side indicators */}
-            {saving && (
-              <span className="text-[8px] opacity-70">Please wait...</span>
-            )}
-            {saved && (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="flex items-center gap-1"
-              >
-                <span className="text-[8px]">✓ Saved</span>
-              </motion.div>
-            )}
-            {!saving && !saved && hasChanges && (
-              <span className="text-[8px] text-[#FEDB71]">{Object.keys(formData).length} fields</span>
-            )}
-          </button>
-
-          {/* Last Saved Timestamp */}
-          {!hasChanges && !saving && lastSaved && (
-            <p className="text-[8px] text-center mt-2 text-[#1D1D1D]/30">
-              Last saved at {formatLastSaved()}
-            </p>
-          )}
-        </div>
+        </button>
       </div>
     </div>
   );
-
-  // Helper functions for social links
-  function updateSocialLink(index: number, field: 'platform' | 'url', value: string) {
-    const newLinks = [...socialLinks];
-    newLinks[index][field] = value;
-    setSocialLinks(newLinks);
-  }
-
-  function removeSocialLink(index: number) {
-    setSocialLinks(socialLinks.filter((_, i) => i !== index));
-  }
-
-  function getPlatformIcon(platform: string) {
-    const Icon = platformIcons[platform.toLowerCase()] || Share2;
-    return typeof Icon === 'function' ? Icon() : <Icon className="w-4 h-4" />;
-  }
 }

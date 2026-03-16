@@ -1,46 +1,34 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import {
-  Bell,
-  ArrowUpRight,
-  Inbox,
-  Clock,
-  CheckCircle2,
-  Check,
-  X,
-  ChevronDown,
-  ChevronUp,
-  Briefcase,
-  Wallet,
-  User,
-  List,
-  Monitor,
-  RefreshCw,
-  TrendingUp,
-  DollarSign,
-  Calendar,
-  Star,
-  Award,
-  AlertCircle,
+  ArrowLeft,
+  PoundSterling as Pound,
   MessageSquare,
-  HelpCircle,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  Target,
+  Bell,
+  Calendar,
+  DollarSign,
+  Users,
+  Briefcase,
+  Star,
+  Gift,
   Zap,
   Shield,
-  Gift,
-  Target,
-  AlertTriangle,
+  Award,
+  Trash2,
   CheckCheck,
   Loader2,
-  Info,
-  Trash2,
-  Users
+  Info
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { toast, Toaster } from "sonner";
-import { useAuth } from "../lib/contexts/AuthContext";
 import { supabase } from "../lib/supabase";
-import { BottomNav } from "../components/bottom-nav";
+import { useAuth } from "../lib/contexts/AuthContext";
+import { toast } from "sonner";
 import { AppHeader } from "../components/app-header";
+import { BottomNav } from "../components/bottom-nav";
 
 type NotificationType =
   | "earnings"
@@ -78,6 +66,7 @@ export function Notifications() {
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<string>("all");
 
+  // Fetch notifications
   useEffect(() => {
     if (!user) return;
 
@@ -91,6 +80,7 @@ export function Notifications() {
 
         if (error) throw error;
 
+        // Group notifications
         const grouped = data?.map(n => ({
           ...n,
           grouping: getGrouping(n.created_at)
@@ -107,13 +97,14 @@ export function Notifications() {
 
     fetchNotifications();
 
+    // Realtime subscription
     const channel = supabase
       .channel("notifications")
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
+        { 
+          event: "INSERT", 
+          schema: "public", 
           table: "notifications",
           filter: `user_id=eq.${user.id}`
         },
@@ -122,9 +113,10 @@ export function Notifications() {
             ...payload.new,
             grouping: getGrouping(payload.new.created_at)
           } as Notification;
-
+          
           setNotifications((prev) => [newNotif, ...prev]);
-
+          
+          // Show toast for new notification
           toast.info(newNotif.title, {
             description: newNotif.message,
             icon: getIcon(newNotif.type),
@@ -155,6 +147,7 @@ export function Notifications() {
 
   const markAllRead = async () => {
     if (!user) return;
+
     try {
       const { error } = await supabase
         .from("notifications")
@@ -163,6 +156,7 @@ export function Notifications() {
         .eq("is_read", false);
 
       if (error) throw error;
+
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       toast.success("All notifications marked as read");
     } catch (error) {
@@ -173,6 +167,7 @@ export function Notifications() {
 
   const clearAll = async () => {
     if (!user) return;
+
     try {
       const { error } = await supabase
         .from("notifications")
@@ -180,6 +175,7 @@ export function Notifications() {
         .eq("user_id", user.id);
 
       if (error) throw error;
+
       setNotifications([]);
       toast.success("All notifications cleared");
     } catch (error) {
@@ -196,6 +192,7 @@ export function Notifications() {
         .eq("id", id);
 
       if (error) throw error;
+
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
@@ -206,6 +203,7 @@ export function Notifications() {
 
   const deleteNotification = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+
     try {
       const { error } = await supabase
         .from("notifications")
@@ -213,6 +211,7 @@ export function Notifications() {
         .eq("id", id);
 
       if (error) throw error;
+
       setNotifications((prev) => prev.filter((n) => n.id !== id));
       toast.success("Notification deleted");
     } catch (error) {
@@ -274,6 +273,7 @@ export function Notifications() {
   const handleNotificationClick = (notification: Notification) => {
     markAsRead(notification.id);
 
+    // Navigate based on notification type and data
     if (notification.data?.campaignId) {
       navigate(`/campaign/${notification.data.campaignId}`);
     } else if (notification.data?.offerId) {
@@ -289,19 +289,20 @@ export function Notifications() {
     }
   };
 
-  const filteredNotifications = selectedType === "all"
-    ? notifications
+  const filteredNotifications = selectedType === "all" 
+    ? notifications 
     : notifications.filter(n => n.type === selectedType);
 
   const notificationTypes = [
-    { value: "all",      label: "All",      icon: Bell },
-    { value: "offer",    label: "Offers",   icon: Zap },
-    { value: "message",  label: "Messages", icon: MessageSquare },
-    { value: "payment",  label: "Payments", icon: DollarSign },
-    { value: "campaign", label: "Campaigns",icon: Briefcase },
-    { value: "system",   label: "System",   icon: Info }
+    { value: "all", label: "All", icon: Bell },
+    { value: "offer", label: "Offers", icon: Zap },
+    { value: "message", label: "Messages", icon: MessageSquare },
+    { value: "payment", label: "Payments", icon: DollarSign },
+    { value: "campaign", label: "Campaigns", icon: Briefcase },
+    { value: "system", label: "System", icon: Info }
   ];
 
+  // Group notifications
   const groupedNotifications = filteredNotifications.reduce((acc, n) => {
     if (!acc[n.grouping]) acc[n.grouping] = [];
     acc[n.grouping].push(n);
@@ -369,10 +370,10 @@ export function Notifications() {
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             {notificationTypes.map((type) => {
               const Icon = type.icon;
-              const count = type.value === "all"
-                ? notifications.length
+              const count = type.value === "all" 
+                ? notifications.length 
                 : notifications.filter(n => n.type === type.value).length;
-
+              
               return (
                 <button
                   key={type.value}
@@ -428,10 +429,12 @@ export function Notifications() {
                           !notification.is_read ? 'bg-[#389C9A]/5' : ''
                         }`}
                       >
+                        {/* Icon */}
                         <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${getTypeColor(notification.type)}`}>
                           {getIcon(notification.type)}
                         </div>
 
+                        {/* Content */}
                         <div className="flex-1 min-w-0 pr-8">
                           <div className="flex justify-between items-start mb-1">
                             <h4 className={`text-sm font-black uppercase tracking-tight truncate ${
@@ -440,9 +443,9 @@ export function Notifications() {
                               {notification.title}
                             </h4>
                             <span className="text-[8px] font-medium text-[#1D1D1D]/30 whitespace-nowrap ml-2">
-                              {new Date(notification.created_at).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit'
+                              {new Date(notification.created_at).toLocaleTimeString([], { 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
                               })}
                             </span>
                           </div>
@@ -451,10 +454,12 @@ export function Notifications() {
                           </p>
                         </div>
 
+                        {/* Unread Indicator */}
                         {!notification.is_read && (
                           <div className="absolute right-4 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#389C9A] rounded-full" />
                         )}
 
+                        {/* Delete Button */}
                         <button
                           onClick={(e) => deleteNotification(notification.id, e)}
                           className="absolute right-2 top-2 p-1 opacity-0 group-hover:opacity-100 hover:bg-red-50 rounded-lg transition-all"
