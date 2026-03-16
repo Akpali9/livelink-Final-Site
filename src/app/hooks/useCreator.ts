@@ -14,32 +14,39 @@ interface CreatorProfile {
   created_at: string;
   updated_at?: string;
   reviewed_at?: string;
-  user_id?: string;
+  bio?: string;
+  avatar_url?: string;
 }
 
 interface CreatorPlatform {
   id: string;
+  creator_id: string;
   platform_name: string;
   username: string;
   followers: number;
   verified: boolean;
+  created_at: string;
 }
 
 interface CreatorStats {
   id: string;
+  creator_id: string;
   total_earnings: number;
   total_campaigns: number;
   avg_rating: number;
   completed_campaigns: number;
+  updated_at: string;
 }
 
 interface StreamUpdate {
   id: string;
+  creator_id: string;
   stream_number: number;
   stream_date: string;
   duration: number;
   viewer_count: number;
   title?: string;
+  created_at: string;
 }
 
 export function useCreator(creatorId?: string) {
@@ -65,7 +72,7 @@ export function useCreator(creatorId?: string) {
     try {
       setLoading(true);
       
-      // Fetch profile separately to avoid relationship errors
+      // Fetch all data in parallel
       await Promise.all([
         fetchProfile(),
         fetchPlatforms(),
@@ -82,48 +89,16 @@ export function useCreator(creatorId?: string) {
   };
 
   const fetchProfile = async () => {
+    if (!targetId) return;
+
     try {
-      // Try to get from creator_profiles first
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('creator_profiles')
         .select('*')
         .eq('id', targetId)
         .maybeSingle();
 
       if (error) throw error;
-
-      if (!data) {
-        // Try with user_id field if id doesn't work
-        ({ data, error } = await supabase
-          .from('creator_profiles')
-          .select('*')
-          .eq('user_id', targetId)
-          .maybeSingle());
-      }
-
-      if (!data) {
-        // Check if there's a pending application
-        const { data: application } = await supabase
-          .from('creator_applications')
-          .select('*')
-          .eq('user_id', targetId)
-          .maybeSingle();
-
-        if (application) {
-          data = {
-            id: targetId,
-            full_name: application.full_name,
-            email: application.email,
-            category: application.category,
-            platform: application.platform,
-            followers: application.followers,
-            status: 'pending',
-            created_at: application.created_at,
-            user_id: targetId
-          };
-        }
-      }
-
       setProfile(data);
     } catch (err) {
       console.error('Error fetching profile:', err);
@@ -131,6 +106,8 @@ export function useCreator(creatorId?: string) {
   };
 
   const fetchPlatforms = async () => {
+    if (!targetId) return;
+
     try {
       const { data, error } = await supabase
         .from('creator_platforms')
@@ -141,11 +118,12 @@ export function useCreator(creatorId?: string) {
       setPlatforms(data || []);
     } catch (err) {
       console.error('Error fetching platforms:', err);
-      // Don't throw, just log
     }
   };
 
   const fetchStats = async () => {
+    if (!targetId) return;
+
     try {
       const { data, error } = await supabase
         .from('creator_stats')
@@ -157,22 +135,16 @@ export function useCreator(creatorId?: string) {
       setStats(data);
     } catch (err) {
       console.error('Error fetching stats:', err);
-      // Set default stats if none exist
-      setStats({
-        id: targetId,
-        total_earnings: 0,
-        total_campaigns: 0,
-        avg_rating: 0,
-        completed_campaigns: 0
-      });
     }
   };
 
   const fetchRecentStreams = async () => {
+    if (!targetId) return;
+
     try {
       const { data, error } = await supabase
         .from('stream_updates')
-        .select('id, stream_number, stream_date, duration, viewer_count, title')
+        .select('*')
         .eq('creator_id', targetId)
         .order('stream_date', { ascending: false })
         .limit(5);
@@ -184,27 +156,6 @@ export function useCreator(creatorId?: string) {
     }
   };
 
-  const applyToBeCreator = async (applicationData: Partial<CreatorProfile>) => {
-    try {
-      const { data, error } = await supabase
-        .from('creator_applications')
-        .insert([{
-          user_id: targetId,
-          ...applicationData,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    } catch (err) {
-      console.error('Error applying to be creator:', err);
-      throw err;
-    }
-  };
-
   return {
     profile,
     platforms,
@@ -213,7 +164,6 @@ export function useCreator(creatorId?: string) {
     loading,
     error,
     refresh: fetchAllCreatorData,
-    applyToBeCreator,
     isCreator: !!profile,
     isApproved: profile?.status === 'approved',
     isPending: profile?.status === 'pending'
