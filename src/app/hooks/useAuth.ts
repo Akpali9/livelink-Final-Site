@@ -24,7 +24,7 @@ interface AuthState {
   error: Error | null;
 }
 
-export function useAuth(requireAuth: boolean = false) {
+export function useAuth() {
   const [state, setState] = useState<AuthState>({
     user: null,
     profile: null,
@@ -32,15 +32,15 @@ export function useAuth(requireAuth: boolean = false) {
     error: null
   });
 
-  // Don't use useNavigate here - it causes errors outside Router context
-  // We'll handle navigation in the components instead
-
   useEffect(() => {
-    // Get initial session
+    let mounted = true;
+
     const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
+        if (!mounted) return;
+
         if (session?.user) {
           setState(prev => ({ ...prev, user: session.user }));
           await fetchUserProfile(session.user.id);
@@ -48,6 +48,7 @@ export function useAuth(requireAuth: boolean = false) {
           setState(prev => ({ ...prev, loading: false }));
         }
       } catch (error) {
+        if (!mounted) return;
         setState(prev => ({ 
           ...prev, 
           error: error instanceof Error ? error : new Error('Auth error'),
@@ -56,10 +57,77 @@ export function useAuth(requireAuth: boolean = false) {
       }
     };
 
+    const fetchUserProfile = async (userId: string) => {
+      try {
+        // Try admin_profiles first
+        const { data: adminData } = await supabase
+          .from('admin_profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (!mounted) return;
+
+        if (adminData) {
+          setState(prev => ({ 
+            ...prev, 
+            profile: { ...adminData, role: 'admin' },
+            loading: false 
+          }));
+          return;
+        }
+
+        // Try creator_profiles
+        const { data: creatorData } = await supabase
+          .from('creator_profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (!mounted) return;
+
+        if (creatorData) {
+          setState(prev => ({ 
+            ...prev, 
+            profile: { ...creatorData, role: 'creator' },
+            loading: false 
+          }));
+          return;
+        }
+
+        // Try business_profiles
+        const { data: businessData } = await supabase
+          .from('business_profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (!mounted) return;
+
+        if (businessData) {
+          setState(prev => ({ 
+            ...prev, 
+            profile: { ...businessData, role: 'business' },
+            loading: false 
+          }));
+          return;
+        }
+
+        // No profile found
+        setState(prev => ({ ...prev, loading: false }));
+
+      } catch (error) {
+        if (!mounted) return;
+        console.error('Error fetching profile:', error);
+        setState(prev => ({ ...prev, loading: false }));
+      }
+    };
+
     initializeAuth();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
       if (event === 'SIGNED_IN' && session?.user) {
         setState(prev => ({ ...prev, user: session.user }));
         await fetchUserProfile(session.user.id);
@@ -73,67 +141,11 @@ export function useAuth(requireAuth: boolean = false) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
-
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      // Try admin_profiles first
-      const { data: adminData } = await supabase
-        .from('admin_profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (adminData) {
-        setState(prev => ({ 
-          ...prev, 
-          profile: { ...adminData, role: 'admin' },
-          loading: false 
-        }));
-        return;
-      }
-
-      // Try creator_profiles
-      const { data: creatorData } = await supabase
-        .from('creator_profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (creatorData) {
-        setState(prev => ({ 
-          ...prev, 
-          profile: { ...creatorData, role: 'creator' },
-          loading: false 
-        }));
-        return;
-      }
-
-      // Try business_profiles
-      const { data: businessData } = await supabase
-        .from('business_profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (businessData) {
-        setState(prev => ({ 
-          ...prev, 
-          profile: { ...businessData, role: 'business' },
-          loading: false 
-        }));
-        return;
-      }
-
-      // No profile found
-      setState(prev => ({ ...prev, loading: false }));
-
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      setState(prev => ({ ...prev, loading: false }));
-    }
-  };
 
   const signOut = async () => {
     await supabase.auth.signOut();
