@@ -3,6 +3,36 @@ import { Link, useNavigate } from "react-router";
 import { useOutletContext } from 'react-router';
 import type { User } from '@supabase/supabase-js';
 import type { Tables } from '../lib/supabase';
+import { useCreator } from '../hooks/useCreator';
+import { useCampaignApplications } from '../hooks/useCampaignApplications';
+import { useEarnings } from '../hooks/useEarnings';
+
+export function CreatorDashboard() {
+  const { user } = useAuth();
+  const { 
+    profile, 
+    platforms, 
+    stats, 
+    recentStreams, 
+    loading: creatorLoading 
+  } = useCreator(user?.id);
+  
+  const { 
+    applications, 
+    loading: appsLoading 
+  } = useCampaignApplications();
+  
+  const { 
+    earnings, 
+    totalEarned, 
+    pendingEarnings, 
+    loading: earningsLoading 
+  } = useEarnings();
+
+  if (creatorLoading || appsLoading || earningsLoading) {
+    return <div>Loading...</div>;
+  }
+
 
 type AuthContext = {
   user: User | null;
