@@ -182,7 +182,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px]">
+    <div className="min-h-screen bg-white">
       <AppHeader showLogo subtitle="Creator Hub" />
       <Toaster position="top-center" richColors />
 
