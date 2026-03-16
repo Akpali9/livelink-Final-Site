@@ -1,24 +1,16 @@
 import React from "react";
 import { Link, useLocation } from "react-router";
-import { Home, Search, Bell, User, Briefcase, Building2 } from "lucide-react";
-import { useAuth } from "../lib/contexts/AuthContext";
+import { Home, Search, Bell, User, Briefcase } from "lucide-react";
 
 export function BottomNav() {
   const location = useLocation();
-  const { user } = useAuth();
-  const userType = user?.user_metadata?.user_type || "creator";
-
-  const profileItem =
-    userType === "business"
-      ? { icon: Building2, label: "Business", path: "/business/profile" }
-      : { icon: User,      label: "Profile",  path: "/profile/me"       };
-
+  
   const navItems = [
-    { icon: Home,      label: "Home",          path: userType === "business" ? "/business/dashboard" : "/dashboard" },
-    { icon: Search,    label: "Browse",        path: "/browse"        },
-    { icon: Briefcase, label: "Campaigns",     path: "/campaigns"     },
-    { icon: Bell,      label: "Notifications", path: "/notifications" },
-    profileItem,
+    { icon: Home, label: "Home", path: "/" },
+    { icon: Search, label: "Browse", path: "/browse" },
+    { icon: Briefcase, label: "Campaigns", path: "/campaigns" },
+    { icon: Bell, label: "Notifications", path: "/notifications" },
+    { icon: User, label: "Profile", path: "/profile/me" },
   ];
 
   return (
@@ -27,15 +19,13 @@ export function BottomNav() {
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
-
+          
           return (
             <Link
               key={item.path}
               to={item.path}
               className={`flex flex-col items-center gap-1 p-2 transition-colors ${
-                isActive
-                  ? "text-[#389C9A]"
-                  : "text-[#1D1D1D]/40 hover:text-[#1D1D1D]"
+                isActive ? "text-[#389C9A]" : "text-[#1D1D1D]/40 hover:text-[#1D1D1D]"
               }`}
             >
               <Icon className="w-5 h-5" />

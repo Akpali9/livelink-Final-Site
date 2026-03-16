@@ -1,38 +1,35 @@
-import { useState } from 'react';
+import React, { useState } from "react";
 
 interface ImageWithFallbackProps {
-  src?: string;
+  src: string;
   alt?: string;
   className?: string;
-  fallback?: React.ReactNode;
+  fallbackSrc?: string;
 }
 
 export function ImageWithFallback({ 
   src, 
-  alt = '', 
-  className = '', 
-  fallback 
+  alt = "", 
+  className = "", 
+  fallbackSrc = "https://via.placeholder.com/100x100?text=LiveLink" 
 }: ImageWithFallbackProps) {
+  const [imgSrc, setImgSrc] = useState(src);
   const [error, setError] = useState(false);
 
-  if (!src || error) {
-    return fallback ? (
-      <>{fallback}</>
-    ) : (
-      <div className={`${className} bg-gray-200 flex items-center justify-center`}>
-        <span className="text-gray-400 text-xs">No image</span>
-      </div>
-    );
-  }
+  const handleError = () => {
+    if (!error) {
+      setImgSrc(fallbackSrc);
+      setError(true);
+    }
+  };
 
   return (
-    <img
-      src={src}
+    <img 
+      src={imgSrc} 
       alt={alt}
       className={className}
-      onError={() => setError(true)}
+      onError={handleError}
       loading="lazy"
-      crossOrigin="anonymous"
     />
   );
 }
