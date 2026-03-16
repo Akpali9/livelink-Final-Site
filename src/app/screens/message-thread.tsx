@@ -175,7 +175,14 @@ export function MessageThread() {
       console.error("Error fetching messages:", error);
       toast.error("Failed to load messages");
     } else {
-      setMessages(data || []);
+      // Sanitize: ensure attachments is always a valid array
+      const sanitized = (data || []).map((msg) => ({
+        ...msg,
+        attachments: Array.isArray(msg.attachments)
+          ? msg.attachments.filter((a) => a && typeof a === "object" && typeof a.url === "string")
+          : [],
+      }));
+      setMessages(sanitized);
     }
   };
 
@@ -451,26 +458,33 @@ export function MessageThread() {
                           {msg.content}
                           
                           {/* Attachments */}
-                          {msg.attachments && msg.attachments.length > 0 && (
+                          {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
                             <div className="mt-3 space-y-2">
-                              {msg.attachments.map((att, i) => (
-                                <a
-                                  key={i}
-                                  href={att.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`flex items-center gap-2 p-2 rounded-lg text-[10px] ${
-                                    isOwn ? 'bg-white/10' : 'bg-white'
-                                  }`}
-                                >
-                                  {att.type.startsWith('image/') ? (
-                                    <ImageIcon className="w-4 h-4" />
-                                  ) : (
-                                    <Paperclip className="w-4 h-4" />
-                                  )}
-                                  <span className="truncate flex-1">{att.name}</span>
-                                </a>
-                              ))}
+                              {msg.attachments.map((att, i) => {
+                                // Guard against malformed JSONB rows
+                                if (!att || typeof att !== 'object') return null;
+                                const url = att.url || att.profile_url || '';
+                                const fileType = att.type || att.platform_type || '';
+                                const label = att.name || att.username || url.split('/').pop() || 'File';
+                                return (
+                                  <a
+                                    key={i}
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`flex items-center gap-2 p-2 rounded-lg text-[10px] ${
+                                      isOwn ? 'bg-white/10' : 'bg-white'
+                                    }`}
+                                  >
+                                    {fileType.startsWith('image/') ? (
+                                      <ImageIcon className="w-4 h-4" />
+                                    ) : (
+                                      <Paperclip className="w-4 h-4" />
+                                    )}
+                                    <span className="truncate flex-1">{label}</span>
+                                  </a>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
