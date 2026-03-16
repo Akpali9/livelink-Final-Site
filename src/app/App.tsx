@@ -1,18 +1,37 @@
+// src/app/router.tsx
 import { createBrowserRouter } from 'react-router';
 import { Dashboard } from './screens/dashboard';
-import { LoginPortal } from '../app/screens/login-portal';
+import { LoginPortal } from './screens/login-portal';
 import { Settings } from './screens/settings';
-import { ProtectedRoute } from '../app/components/ProtectedRoute';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { Offers } from "./screens/offers";
+
+// You need to create this component or import the correct one
+// For now, let's create a simple component
+const ConfirmEmail = () => {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="text-center">
+        <h1 className="text-2xl font-black uppercase tracking-tighter mb-4">Confirm Your Email</h1>
+        <p className="text-gray-600">Please check your email to confirm your account.</p>
+      </div>
+    </div>
+  );
+};
+
+// Login component - you already have LoginPortal, so use that
+const Login = () => <LoginPortal />;
 
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <div>Home Page</div>,
+    element: <div className="min-h-screen flex items-center justify-center bg-white">
+      <h1 className="text-4xl font-black uppercase tracking-tighter">Home Page</h1>
+    </div>,
   },
   {
     path: "/login",
-    element: <Login />,
+    element: <LoginPortal />, // Use LoginPortal directly
   },
   {
     path: "/dashboard",
@@ -41,24 +60,24 @@ export const router = createBrowserRouter([
   // Business routes
   {
     path: "/business/login",
-    element: <Login />,
+    element: <LoginPortal />, // Use LoginPortal directly
   },
   {
     path: "/business/dashboard",
     element: (
-      <ProtectedRoute userType="business">
+      <ProtectedRoute>
         <Dashboard />
       </ProtectedRoute>
     ),
   },
   {
-  path="/confirm-email",
+    path: "/confirm-email", // Fixed: removed the equals sign
     element: <ConfirmEmail />
   },
   {
     path: "/business/settings",
     element: (
-      <ProtectedRoute userType="business">
+      <ProtectedRoute>
         <Settings />
       </ProtectedRoute>
     ),
