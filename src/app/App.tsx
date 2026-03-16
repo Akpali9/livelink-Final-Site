@@ -9,7 +9,6 @@ import { Home } from './screens/home';
 import { Dashboard } from './screens/dashboard';
 import { Settings } from './screens/settings';
 import { Profile } from './screens/profile';
-import { Browse } from './screens/browse';
 import { BrowseBusinesses } from './screens/browse-businesses';
 import { Campaigns } from './screens/campaigns';
 import { CreatorCampaignDetail } from './screens/creator-campaign-detail';
@@ -65,7 +64,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/browse',
-    element: <Browse />,
+    element: <BrowseBusinesses />,
   },
 
   // ── Creator (protected) ──────────────────────────────────────────────────
