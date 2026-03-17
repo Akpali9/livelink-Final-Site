@@ -3,80 +3,105 @@ import { useNavigate } from "react-router";
 import { supabase } from "../lib/supabase";
 import { Toaster, toast } from "sonner";
 import { AppHeader } from "../components/app-header";
-import { 
-  TrendingUp, 
-  Clock, 
-  CheckCircle, 
+import {
+  TrendingUp,
+  Clock,
+  CheckCircle,
   DollarSign,
-  AlertCircle,
   RefreshCw,
   ChevronRight,
   Users,
   Calendar,
   Filter,
-  Download
+  Download,
 } from "lucide-react";
+
+// ─────────────────────────────────────────────
+// INTERFACES  (aligned with schema)
+// ─────────────────────────────────────────────
 
 interface Campaign {
   id: string;
   name: string;
   type: string;
   status: string;
-  price: string;
   budget?: number;
-  campaign_creators: any[];
+  bid_amount?: number;
+  pay_rate?: number;
+  campaign_creators: CampaignCreator[];
   created_at: string;
   start_date?: string;
   end_date?: string;
   description?: string;
 }
 
-interface Offer {
+interface CampaignCreator {
   id: string;
-  amount: string;
+  status: string;
+  creator_id: string | null;
+  user_id: string | null;
+  streams_completed: number;
+  streams_target: number;
+}
+
+/**
+ * "Offers" do not exist as a standalone table in the schema.
+ * We model them as campaign_creators rows that are still 'pending',
+ * joined with the creator_profiles and campaigns data.
+ */
+interface PendingCreator {
+  id: string;                 // campaign_creators.id
   status: string;
   created_at: string;
-  message?: string;
-  creators: {
+  streams_target: number;
+  // joined
+  creator_profiles: {
     id: string;
-    name: string;
-    avatar?: string;
-    email?: string;
-    followers?: number;
-  };
+    full_name: string | null;
+    avatar_url: string | null;
+    payout_email: string | null;
+    avg_viewers: number;
+    niche: string[] | null;
+  } | null;
   campaigns: {
     id: string;
     name: string;
     type: string;
-    budget?: number;
-  };
+    budget: number | null;
+  } | null;
 }
 
 interface BusinessProfile {
   id: string;
-  company_name: string;
-  logo_url?: string;
-  email?: string;
+  business_name: string | null;   // ✅ was company_name
+  logo_url: string | null;
+  contact_email: string | null;   // ✅ was email
 }
+
+// ─────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────
 
 export function BusinessDashboard() {
   const navigate = useNavigate();
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
+  const [pendingCreators, setPendingCreators] = useState<PendingCreator[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [campaignFilter, setCampaignFilter] = useState<"LIVE" | "PENDING" | "COMPLETED">("LIVE");
-  const [showOffersOnly, setShowOffersOnly] = useState(false);
+  const [showPendingOnly, setShowPendingOnly] = useState(false);
 
-  /* ---------------------------------- */
-  /* 1️⃣ GET LOGGED IN BUSINESS ID & PROFILE */
-  /* ---------------------------------- */
+  // ─── 1. AUTH + BUSINESS PROFILE ───────────────────────────────────────────
+
   useEffect(() => {
     const fetchBusiness = async () => {
       try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
 
         if (userError) throw userError;
         if (!user) {
@@ -85,15 +110,15 @@ export function BusinessDashboard() {
           return;
         }
 
-        // Fetch business profile
+        // ✅ Correct column names: business_name, contact_email (not company_name / email)
         const { data: business, error: businessError } = await supabase
           .from("businesses")
-          .select("id, company_name, logo_url, email")
+          .select("id, business_name, logo_url, contact_email")
           .eq("user_id", user.id)
           .single();
 
         if (businessError) {
-          if (businessError.code === 'PGRST116') {
+          if (businessError.code === "PGRST116") {
             toast.error("Please complete your business profile first");
             navigate("/become-business");
             return;
@@ -103,7 +128,7 @@ export function BusinessDashboard() {
 
         if (business) {
           setBusinessId(business.id);
-          setBusinessProfile(business);
+          setBusinessProfile(business as BusinessProfile);
         }
       } catch (error) {
         console.error("Error fetching business:", error);
@@ -114,61 +139,15 @@ export function BusinessDashboard() {
     fetchBusiness();
   }, [navigate]);
 
-  /* ---------------------------------- */
-  /* 2️⃣ FETCH DASHBOARD DATA */
-  /* ---------------------------------- */
+  // ─── 2. FETCH DASHBOARD DATA ──────────────────────────────────────────────
+
   useEffect(() => {
     if (!businessId) return;
 
     const fetchData = async () => {
       try {
         setLoading(true);
-
-        // Fetch campaigns with more details
-        const { data: campaignData, error: campaignError } = await supabase
-          .from("campaigns")
-          .select(`
-            *,
-            campaign_creators (
-              id,
-              status,
-              creator_id,
-              streams_completed,
-              streams_target
-            )
-          `)
-          .eq("business_id", businessId)
-          .order('created_at', { ascending: false });
-
-        if (campaignError) throw campaignError;
-
-        // Fetch offers with more details
-        const { data: offerData, error: offerError } = await supabase
-          .from("offers")
-          .select(`
-            *,
-            creators (
-              id,
-              name,
-              avatar,
-              email,
-              followers_count
-            ),
-            campaigns (
-              id,
-              name,
-              type,
-              budget
-            )
-          `)
-          .eq("business_id", businessId)
-          .in("status", ["Offer Received", "Negotiating", "Pending"])
-          .order('created_at', { ascending: false });
-
-        if (offerError) throw offerError;
-
-        setCampaigns(campaignData || []);
-        setOffers(offerData || []);
+        await Promise.all([fetchCampaigns(), fetchPendingCreators()]);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
         toast.error("Failed to load dashboard data");
@@ -179,290 +158,251 @@ export function BusinessDashboard() {
 
     fetchData();
 
-    // Set up realtime subscription for offers
-    const offersSubscription = supabase
-      .channel('offers_channel')
+    // Realtime: campaign_creators (pending invites / offers)
+    const creatorsSubscription = supabase
+      .channel("pending_creators_channel")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'offers',
-          filter: `business_id=eq.${businessId}`
+          event: "INSERT",
+          schema: "public",
+          table: "campaign_creators",
         },
-        (payload) => {
-          fetchNewOffer(payload.new.id);
-        }
+        () => fetchPendingCreators()
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'offers',
-          filter: `business_id=eq.${businessId}`
+          event: "UPDATE",
+          schema: "public",
+          table: "campaign_creators",
         },
-        (payload) => {
-          // Handle offer updates if needed
-          console.log("Offer updated:", payload);
-        }
+        () => fetchPendingCreators()
       )
       .subscribe();
 
-    // Set up realtime subscription for campaigns
+    // Realtime: campaigns
     const campaignsSubscription = supabase
-      .channel('campaigns_channel')
+      .channel("campaigns_channel")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'campaigns',
-          filter: `business_id=eq.${businessId}`
+          event: "*",
+          schema: "public",
+          table: "campaigns",
+          filter: `business_id=eq.${businessId}`,
         },
-        () => {
-          // Refresh campaigns on any change
-          refreshData();
-        }
+        () => fetchCampaigns()
       )
       .subscribe();
 
     return () => {
-      offersSubscription.unsubscribe();
+      creatorsSubscription.unsubscribe();
       campaignsSubscription.unsubscribe();
     };
   }, [businessId]);
 
-  const fetchNewOffer = async (offerId: string) => {
+  // ─── FETCH HELPERS ────────────────────────────────────────────────────────
+
+  const fetchCampaigns = async () => {
+    if (!businessId) return;
+
     const { data, error } = await supabase
-      .from("offers")
-      .select(`
-        *,
-        creators (
-          id,
-          name,
-          avatar,
-          email,
-          followers_count
+      .from("campaigns")
+      .select(
+        `
+        id, name, type, status, budget, bid_amount, pay_rate,
+        created_at, start_date, end_date, description,
+        campaign_creators (
+          id, status, creator_id, user_id,
+          streams_completed, streams_target
+        )
+      `
+      )
+      .eq("business_id", businessId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    setCampaigns((data as Campaign[]) || []);
+  };
+
+  /**
+   * Pending creators = campaign_creators rows with status 'pending' or 'PENDING'
+   * that belong to campaigns owned by this business.
+   * ✅ Uses creator_profiles (not "creators"), full_name (not "name"),
+   *    avatar_url (not "avatar"), avg_viewers (not "followers_count")
+   */
+  const fetchPendingCreators = async () => {
+    if (!businessId) return;
+
+    const { data, error } = await supabase
+      .from("campaign_creators")
+      .select(
+        `
+        id, status, created_at, streams_target,
+        creator_profiles (
+          id, full_name, avatar_url, payout_email, avg_viewers, niche
         ),
         campaigns (
-          id,
-          name,
-          type,
-          budget
+          id, name, type, budget
         )
-      `)
-      .eq("id", offerId)
-      .single();
+      `
+      )
+      .in("status", ["pending", "PENDING"])
+      // Filter to only this business's campaigns via the campaigns join
+      .filter("campaigns.business_id", "eq", businessId)
+      .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      setOffers(prev => [data, ...prev]);
-      toast.info(`New offer received from ${data.creators.name}!`, {
-        action: {
-          label: "View",
-          onClick: () => setShowOffersOnly(true)
-        }
-      });
+    if (error) {
+      console.error("Error fetching pending creators:", error);
+      return;
     }
+
+    // Extra safety: filter out rows where the campaign doesn't belong to this business
+    // (Supabase .filter on joined tables sometimes returns nulls instead of excluding rows)
+    const filtered = (data || []).filter(
+      (row: any) => row.campaigns !== null
+    ) as PendingCreator[];
+
+    setPendingCreators(filtered);
   };
+
+  // ─── 3. REFRESH ───────────────────────────────────────────────────────────
 
   const refreshData = async () => {
     if (!businessId) return;
-    
     setRefreshing(true);
     try {
-      const { data: campaignData } = await supabase
-        .from("campaigns")
-        .select(`
-          *,
-          campaign_creators (
-            id,
-            status,
-            creator_id,
-            streams_completed,
-            streams_target
-          )
-        `)
-        .eq("business_id", businessId)
-        .order('created_at', { ascending: false });
-
-      const { data: offerData } = await supabase
-        .from("offers")
-        .select(`
-          *,
-          creators (
-            id,
-            name,
-            avatar,
-            email,
-            followers_count
-          ),
-          campaigns (
-            id,
-            name,
-            type,
-            budget
-          )
-        `)
-        .eq("business_id", businessId)
-        .in("status", ["Offer Received", "Negotiating", "Pending"])
-        .order('created_at', { ascending: false });
-
-      setCampaigns(campaignData || []);
-      setOffers(offerData || []);
+      await Promise.all([fetchCampaigns(), fetchPendingCreators()]);
       toast.success("Dashboard updated");
-    } catch (error) {
+    } catch {
       toast.error("Failed to refresh data");
     } finally {
       setRefreshing(false);
     }
   };
 
-  /* ---------------------------------- */
-  /* 3️⃣ STATS CALCULATIONS */
-  /* ---------------------------------- */
-  const activeCampaigns = campaigns.filter(c => 
-    ["ACTIVE", "LIVE", "OPEN"].includes(c.status)
-  ).length;
-  
-  const pendingCampaigns = campaigns.filter(c => 
-    ["PENDING REVIEW", "DRAFT", "PENDING"].includes(c.status)
-  ).length;
-  
-  const completedCampaigns = campaigns.filter(c => 
-    c.status === "COMPLETED"
+  // ─── 4. STATS ─────────────────────────────────────────────────────────────
+
+  const activeCampaigns = campaigns.filter((c) =>
+    ["active", "ACTIVE", "live", "LIVE", "open", "OPEN"].includes(c.status)
   ).length;
 
-  const totalCreators = campaigns.reduce((sum, c) => 
-    sum + (c.campaign_creators?.length || 0), 0
+  const pendingCampaigns = campaigns.filter((c) =>
+    ["pending_review", "PENDING_REVIEW", "draft", "DRAFT", "pending", "PENDING", "review", "REVIEW"].includes(c.status)
+  ).length;
+
+  const completedCampaigns = campaigns.filter((c) =>
+    ["completed", "COMPLETED"].includes(c.status)
+  ).length;
+
+  const totalCreators = campaigns.reduce(
+    (sum, c) => sum + (c.campaign_creators?.length || 0),
+    0
   );
 
+  // Use budget, fallback to bid_amount or pay_rate
   const totalSpent = campaigns.reduce((sum, c) => {
-    const budget = c.budget || parseInt(c.price?.replace(/[^\d]/g, "") || "0");
-    return sum + (isNaN(budget) ? 0 : budget);
+    const val = c.budget ?? c.bid_amount ?? c.pay_rate ?? 0;
+    return sum + (isNaN(val) ? 0 : val);
   }, 0);
 
-  const totalOffers = offers.length;
+  const totalPending = pendingCreators.length;
 
   const stats = [
-    { 
-      label: "Active Campaigns", 
-      value: activeCampaigns, 
+    {
+      label: "Active Campaigns",
+      value: activeCampaigns,
       sub: `${totalCreators} creators working`,
       icon: TrendingUp,
-      color: "text-[#389C9A]"
+      color: "text-[#389C9A]",
     },
-    { 
-      label: "Pending", 
-      value: pendingCampaigns, 
-      sub: `${totalOffers} offers waiting`,
+    {
+      label: "Pending",
+      value: pendingCampaigns,
+      sub: `${totalPending} creators waiting`,
       icon: Clock,
-      color: "text-[#FEDB71]"
+      color: "text-[#FEDB71]",
     },
-    { 
-      label: "Completed", 
-      value: completedCampaigns, 
+    {
+      label: "Completed",
+      value: completedCampaigns,
       sub: "Campaigns finished",
       icon: CheckCircle,
-      color: "text-green-500"
+      color: "text-green-500",
     },
-    { 
-      label: "Total Spent", 
-      value: `₦${totalSpent.toLocaleString()}`, 
+    {
+      label: "Total Spent",
+      value: `₦${totalSpent.toLocaleString()}`,
       sub: `Across ${campaigns.length} campaigns`,
       icon: DollarSign,
-      color: "text-[#389C9A]"
-    }
+      color: "text-[#389C9A]",
+    },
   ];
 
-  /* ---------------------------------- */
-  /* 4️⃣ OFFER ACTIONS */
-  /* ---------------------------------- */
-  const acceptOffer = async (offer: Offer) => {
-    try {
-      // Update offer status
-      const { error: offerError } = await supabase
-        .from("offers")
-        .update({ 
-          status: "Accepted",
-          accepted_at: new Date().toISOString()
-        })
-        .eq("id", offer.id);
+  // ─── 5. ACCEPT / REJECT CREATOR ──────────────────────────────────────────
 
-      if (offerError) throw offerError;
-
-      // Check if creator already exists in campaign
-      const { data: existing } = await supabase
-        .from("campaign_creators")
-        .select("id")
-        .eq("campaign_id", offer.campaigns.id)
-        .eq("creator_id", offer.creators.id)
-        .maybeSingle();
-
-      if (!existing) {
-        // Create campaign creator relationship
-        const { error: creatorError } = await supabase
-          .from("campaign_creators")
-          .insert({
-            campaign_id: offer.campaigns.id,
-            creator_id: offer.creators.id,
-            status: "ACTIVE",
-            streams_target: 4,
-            streams_completed: 0,
-            accepted_at: new Date().toISOString()
-          });
-
-        if (creatorError) throw creatorError;
-      }
-
-      toast.success(`Offer accepted! ${offer.creators.name} added to campaign 🎉`);
-      setOffers(prev => prev.filter(o => o.id !== offer.id));
-      
-      // Refresh campaigns to show new creator
-      refreshData();
-    } catch (error) {
-      console.error("Error accepting offer:", error);
-      toast.error("Failed to accept offer");
-    }
-  };
-
-  const rejectOffer = async (offerId: string) => {
+  const acceptCreator = async (row: PendingCreator) => {
     try {
       const { error } = await supabase
-        .from("offers")
-        .update({ 
-          status: "Rejected",
-          rejected_at: new Date().toISOString()
+        .from("campaign_creators")
+        .update({
+          status: "ACTIVE",
+          accepted_at: new Date().toISOString(),
         })
-        .eq("id", offerId);
+        .eq("id", row.id);
 
       if (error) throw error;
 
-      toast.success("Offer rejected");
-      setOffers(prev => prev.filter(o => o.id !== offerId));
+      const name = row.creator_profiles?.full_name || "Creator";
+      toast.success(`${name} accepted into campaign 🎉`);
+      setPendingCreators((prev) => prev.filter((r) => r.id !== row.id));
+      fetchCampaigns(); // refresh creator counts
     } catch (error) {
-      console.error("Error rejecting offer:", error);
-      toast.error("Failed to reject offer");
+      console.error("Error accepting creator:", error);
+      toast.error("Failed to accept creator");
     }
   };
 
-  const negotiateOffer = async (offerId: string) => {
-    // This would open a negotiation modal
-    toast.info("Negotiation feature coming soon!");
+  const declineCreator = async (rowId: string) => {
+    try {
+      const { error } = await supabase
+        .from("campaign_creators")
+        .update({ status: "DECLINED" })
+        .eq("id", rowId);
+
+      if (error) throw error;
+
+      toast.success("Creator declined");
+      setPendingCreators((prev) => prev.filter((r) => r.id !== rowId));
+    } catch (error) {
+      console.error("Error declining creator:", error);
+      toast.error("Failed to decline creator");
+    }
   };
 
-  /* ---------------------------------- */
-  /* FILTER CAMPAIGNS */
-  /* ---------------------------------- */
-  const filteredCampaigns = campaigns.filter(c => {
+  // ─── 6. FILTER CAMPAIGNS ─────────────────────────────────────────────────
+
+  const filteredCampaigns = campaigns.filter((c) => {
+    const s = c.status?.toLowerCase();
     if (campaignFilter === "LIVE")
-      return ["ACTIVE", "LIVE", "OPEN"].includes(c.status);
+      return ["active", "live", "open"].includes(s);
     if (campaignFilter === "PENDING")
-      return ["PENDING REVIEW", "DRAFT", "PENDING"].includes(c.status);
+      return ["pending_review", "pending", "draft", "review"].includes(s);
     if (campaignFilter === "COMPLETED")
-      return c.status === "COMPLETED";
+      return s === "completed";
     return false;
   });
+
+  const countFor = (tab: "LIVE" | "PENDING" | "COMPLETED") =>
+    campaigns.filter((c) => {
+      const s = c.status?.toLowerCase();
+      if (tab === "LIVE") return ["active", "live", "open"].includes(s);
+      if (tab === "PENDING") return ["pending_review", "pending", "draft", "review"].includes(s);
+      return s === "completed";
+    }).length;
+
+  // ─── LOADING STATE ────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -478,6 +418,8 @@ export function BusinessDashboard() {
     );
   }
 
+  // ─── RENDER ───────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-white pb-20">
       <Toaster position="top-center" richColors />
@@ -488,14 +430,15 @@ export function BusinessDashboard() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-black uppercase tracking-tighter italic">
-              Welcome back, {businessProfile?.company_name || 'Business'}!
+              {/* ✅ business_name not company_name */}
+              Welcome back, {businessProfile?.business_name || "Business"}!
             </h1>
             <p className="text-sm text-gray-300 mt-1">
-              {new Date().toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
               })}
             </p>
           </div>
@@ -504,7 +447,7 @@ export function BusinessDashboard() {
             disabled={refreshing}
             className="p-3 border-2 border-white/30 hover:border-white text-white transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
@@ -514,7 +457,10 @@ export function BusinessDashboard() {
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
-            <div key={i} className="border-2 border-[#1D1D1D] p-6 bg-white hover:shadow-lg transition-shadow">
+            <div
+              key={i}
+              className="border-2 border-[#1D1D1D] p-6 bg-white hover:shadow-lg transition-shadow"
+            >
               <div className="flex justify-between items-start mb-4">
                 <p className="text-xs font-black uppercase tracking-widest text-gray-400">
                   {stat.label}
@@ -528,45 +474,44 @@ export function BusinessDashboard() {
         })}
       </div>
 
-      {/* Toggle between Campaigns and Offers */}
+      {/* Toggle: Campaigns / Pending Creators */}
       <div className="px-8 flex gap-4 mb-4">
         <button
-          onClick={() => setShowOffersOnly(false)}
+          onClick={() => setShowPendingOnly(false)}
           className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors ${
-            !showOffersOnly 
-              ? 'border-b-2 border-[#1D1D1D] text-[#1D1D1D]' 
-              : 'text-gray-400'
+            !showPendingOnly
+              ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]"
+              : "text-gray-400"
           }`}
         >
           Campaigns ({campaigns.length})
         </button>
         <button
-          onClick={() => setShowOffersOnly(true)}
+          onClick={() => setShowPendingOnly(true)}
           className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors relative ${
-            showOffersOnly 
-              ? 'border-b-2 border-[#1D1D1D] text-[#1D1D1D]' 
-              : 'text-gray-400'
+            showPendingOnly
+              ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]"
+              : "text-gray-400"
           }`}
         >
-          Offers ({offers.length})
-          {offers.length > 0 && (
+          Pending Creators ({pendingCreators.length})
+          {pendingCreators.length > 0 && (
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] text-xs flex items-center justify-center font-black">
-              {offers.length}
+              {pendingCreators.length}
             </span>
           )}
         </button>
       </div>
 
-      {/* Conditional Rendering: Campaigns or Offers */}
-      {!showOffersOnly ? (
-        /* CAMPAIGNS SECTION */
+      {/* ── Campaigns ── */}
+      {!showPendingOnly ? (
         <div className="px-8 mt-4">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-black uppercase tracking-tight italic">
               My Campaigns
             </h2>
             <button
-              onClick={() => navigate('/campaign/type')}
+              onClick={() => navigate("/campaign/type")}
               className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors"
             >
               + New Campaign
@@ -575,7 +520,7 @@ export function BusinessDashboard() {
 
           {/* Campaign Tabs */}
           <div className="flex gap-2 mb-6 border-b">
-            {(["LIVE", "PENDING", "COMPLETED"] as const).map(tab => (
+            {(["LIVE", "PENDING", "COMPLETED"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setCampaignFilter(tab)}
@@ -585,11 +530,7 @@ export function BusinessDashboard() {
                     : "text-gray-400 hover:text-[#1D1D1D]"
                 }`}
               >
-                {tab} ({campaigns.filter(c => 
-                  tab === "LIVE" ? ["ACTIVE", "LIVE", "OPEN"].includes(c.status) :
-                  tab === "PENDING" ? ["PENDING REVIEW", "DRAFT", "PENDING"].includes(c.status) :
-                  c.status === "COMPLETED"
-                ).length})
+                {tab} ({countFor(tab)})
               </button>
             ))}
           </div>
@@ -599,7 +540,7 @@ export function BusinessDashboard() {
             <div className="border-2 border-dashed border-gray-200 p-12 text-center">
               <p className="text-gray-400 mb-4">No campaigns in this category</p>
               <button
-                onClick={() => navigate('/campaign/type')}
+                onClick={() => navigate("/campaign/type")}
                 className="text-[#389C9A] font-black uppercase text-sm hover:underline"
               >
                 Create your first campaign →
@@ -607,7 +548,7 @@ export function BusinessDashboard() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {filteredCampaigns.map(campaign => (
+              {filteredCampaigns.map((campaign) => (
                 <div
                   key={campaign.id}
                   onClick={() => navigate(`/business/campaign/${campaign.id}`)}
@@ -624,7 +565,8 @@ export function BusinessDashboard() {
                         </span>
                         <span className="flex items-center gap-1">
                           <DollarSign className="w-4 h-4" />
-                          {campaign.budget || campaign.price || "Negotiable"}
+                          {/* ✅ Correct budget fields */}
+                          {campaign.budget ?? campaign.bid_amount ?? campaign.pay_rate ?? "Negotiable"}
                         </span>
                         {campaign.start_date && (
                           <span className="flex items-center gap-1">
@@ -642,82 +584,95 @@ export function BusinessDashboard() {
           )}
         </div>
       ) : (
-        /* OFFERS SECTION */
+        /* ── Pending Creators ── */
         <div className="px-8 mt-4">
           <h2 className="text-2xl font-black uppercase tracking-tight italic mb-6">
-            Incoming Offers ({offers.length})
+            Pending Creators ({pendingCreators.length})
           </h2>
 
-          {offers.length === 0 ? (
+          {pendingCreators.length === 0 ? (
             <div className="border-2 border-dashed border-gray-200 p-12 text-center">
-              <p className="text-gray-400">No pending offers</p>
+              <p className="text-gray-400">No pending creator requests</p>
             </div>
           ) : (
             <div className="grid gap-4">
-              {offers.map(offer => (
-                <div key={offer.id} className="border-2 border-[#FEDB71] p-6 bg-yellow-50">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        {offer.creators.avatar ? (
-                          <img 
-                            src={offer.creators.avatar} 
-                            alt={offer.creators.name}
-                            className="w-10 h-10 rounded-full border-2 border-[#1D1D1D]"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 bg-[#389C9A] flex items-center justify-center text-white font-black">
-                            {offer.creators.name[0]}
+              {pendingCreators.map((row) => {
+                // ✅ full_name not name, avatar_url not avatar, avg_viewers not followers_count
+                const creator = row.creator_profiles;
+                const displayName = creator?.full_name || "Unknown Creator";
+                const initial = displayName[0]?.toUpperCase() ?? "?";
+
+                return (
+                  <div
+                    key={row.id}
+                    className="border-2 border-[#FEDB71] p-6 bg-yellow-50"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          {creator?.avatar_url ? (
+                            <img
+                              src={creator.avatar_url}
+                              alt={displayName}
+                              className="w-10 h-10 rounded-full border-2 border-[#1D1D1D] object-cover"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-[#389C9A] flex items-center justify-center text-white font-black">
+                              {initial}
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="font-black">{displayName}</h3>
+                            {/* ✅ avg_viewers instead of followers_count */}
+                            <p className="text-xs opacity-60">
+                              ~{creator?.avg_viewers?.toLocaleString() ?? 0} avg viewers
+                            </p>
+                          </div>
+                        </div>
+                        <p className="font-bold text-lg">
+                          {row.campaigns?.name ?? "Unknown Campaign"}
+                        </p>
+                        <p className="text-sm mt-1">
+                          Type: {row.campaigns?.type ?? "—"}
+                        </p>
+                        {creator?.niche && creator.niche.length > 0 && (
+                          <div className="flex gap-2 mt-2 flex-wrap">
+                            {creator.niche.map((tag) => (
+                              <span
+                                key={tag}
+                                className="text-xs bg-white border border-gray-200 px-2 py-0.5"
+                              >
+                                {tag}
+                              </span>
+                            ))}
                           </div>
                         )}
-                        <div>
-                          <h3 className="font-black">{offer.creators.name}</h3>
-                          <p className="text-xs opacity-60">
-                            {offer.creators.followers?.toLocaleString() || '0'} followers
-                          </p>
-                        </div>
                       </div>
-                      <p className="font-bold text-lg">{offer.campaigns.name}</p>
-                      <p className="text-sm mt-1">Offer: {offer.amount}</p>
-                      {offer.message && (
-                        <p className="text-xs mt-2 bg-white p-2 border italic">
-                          "{offer.message}"
-                        </p>
-                      )}
-                    </div>
 
-                    <div className="flex gap-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          acceptOffer(offer);
-                        }}
-                        className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          negotiateOffer(offer.id);
-                        }}
-                        className="border-2 border-[#389C9A] text-[#389C9A] px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-[#389C9A] hover:text-white transition-colors"
-                      >
-                        Negotiate
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          rejectOffer(offer.id);
-                        }}
-                        className="border-2 border-[#1D1D1D] px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
-                      >
-                        Reject
-                      </button>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            acceptCreator(row);
+                          }}
+                          className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            declineCreator(row.id);
+                          }}
+                          className="border-2 border-[#1D1D1D] px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
+                        >
+                          Decline
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -730,7 +685,7 @@ export function BusinessDashboard() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <button
-            onClick={() => navigate('/browse-creators')}
+            onClick={() => navigate("/browse-creators")}
             className="border-2 border-[#1D1D1D] p-6 text-left hover:bg-[#1D1D1D] hover:text-white transition-colors group"
           >
             <Users className="w-6 h-6 mb-3 text-[#389C9A] group-hover:text-white" />
@@ -740,7 +695,7 @@ export function BusinessDashboard() {
           </button>
 
           <button
-            onClick={() => navigate('/business/settings')}
+            onClick={() => navigate("/business/settings")}
             className="border-2 border-[#1D1D1D] p-6 text-left hover:bg-[#1D1D1D] hover:text-white transition-colors group"
           >
             <Filter className="w-6 h-6 mb-3 text-[#FEDB71] group-hover:text-white" />
@@ -750,7 +705,7 @@ export function BusinessDashboard() {
           </button>
 
           <button
-            onClick={() => navigate('/business/analytics')}
+            onClick={() => navigate("/business/analytics")}
             className="border-2 border-[#1D1D1D] p-6 text-left hover:bg-[#1D1D1D] hover:text-white transition-colors group"
           >
             <TrendingUp className="w-6 h-6 mb-3 text-green-500 group-hover:text-white" />
@@ -760,7 +715,7 @@ export function BusinessDashboard() {
           </button>
 
           <button
-            onClick={() => navigate('/business/reports')}
+            onClick={() => navigate("/business/reports")}
             className="border-2 border-[#1D1D1D] p-6 text-left hover:bg-[#1D1D1D] hover:text-white transition-colors group"
           >
             <Download className="w-6 h-6 mb-3 text-blue-500 group-hover:text-white" />
