@@ -37,6 +37,7 @@ import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
+import { AdminDashboard } from "./screens/admin-dashboard"; // 👈 IMPORT THE ADMIN DASHBOARD
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -53,6 +54,13 @@ const protectBusiness = (Component: React.ComponentType) => (
 
 const protectBoth = (Component: React.ComponentType) => (
   <ProtectedRoute>
+    <Component />
+  </ProtectedRoute>
+);
+
+// 👇 NEW: Admin protection helper
+const protectAdmin = (Component: React.ComponentType) => (
+  <ProtectedRoute userType="admin">
     <Component />
   </ProtectedRoute>
 );
@@ -107,7 +115,9 @@ const routes: RouteObject[] = [
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
       
       // Admin routes
+      { path: "admin", element: protectAdmin(AdminDashboard) }, // 👈 ADDED: Main admin dashboard route
       { path: "admin/applications", element: protectBoth(AdminApplicationQueue) },
+      { path: "admin/dashboard", redirect: "/admin" }, // 👈 ADDED: Redirect for backward compatibility
     ],
   },
 ];
