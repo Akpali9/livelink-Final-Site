@@ -165,11 +165,11 @@ export function MessageThread() {
   const fetchMessages = async () => {
     if (!id) return;
 
-    const { data, error } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("conversation_id", id)
-      .order("created_at", { ascending: true });
+const { data, error } = await supabase
+  .rpc('get_messages_with_sender', {
+    p_receiver_id: userId,
+    p_limit: 5
+  })
 
     if (error) {
       console.error("Error fetching messages:", error);
