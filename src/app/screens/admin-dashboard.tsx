@@ -793,7 +793,7 @@ function AdminOverview({ stats, onTabChange }: { stats: DashboardStats; onTabCha
 function AdminCreators() {
   const [creators, setCreators] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"pending_review" | "active" | "suspended">("pending_review");
+  const [filter, setFilter] = useState<"pending_review" | "active" | "suspended" | "all">("pending_review");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCreator, setSelectedCreator] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -802,12 +802,11 @@ function AdminCreators() {
     setLoading(true);
     
     try {
-      // Fetch creators with basic info
       let query = supabase
         .from("creator_profiles")
         .select("*");
 
-      if (filter) {
+      if (filter !== "all") {
         query = query.eq("status", filter);
       }
 
@@ -974,9 +973,9 @@ function AdminCreators() {
         {(["pending_review", "active", "suspended", "all"] as const).map(tab => (
           <button
             key={tab}
-            onClick={() => setFilter(tab === "all" ? null : tab)}
+            onClick={() => setFilter(tab === "all" ? "all" : tab)}
             className={`px-4 py-3 text-[9px] font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
-              (tab === "all" && !filter) || filter === tab
+              (tab === "all" && filter === "all") || filter === tab
                 ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]"
                 : "text-gray-400 hover:text-[#1D1D1D]"
             }`}
@@ -2675,4 +2674,6 @@ function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: a
   );
 }
 
+// Export as both named and default export for flexibility
+export { AdminDashboard as AdminDashboardScreen };
 export default AdminDashboard;
