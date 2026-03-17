@@ -129,9 +129,7 @@ export function Profile() {
         // Fetch creator profile
         const { data: creatorData, error: creatorError } = await supabase
           .from("creator_profiles")
-          .select(`
-            *,
-            platforms:creator_platforms(*),
+          .select('*, platforms:creator_platforms!creator_id(*)
             stats:creator_stats(*),
             recent_streams:stream_updates(
               id,
@@ -140,7 +138,7 @@ export function Profile() {
               duration,
               viewer_count
             )
-          `)
+          ')
           .eq("id", id)
           .maybeSingle()
 
