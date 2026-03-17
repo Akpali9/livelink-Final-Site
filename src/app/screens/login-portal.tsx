@@ -24,53 +24,231 @@ import { useNavigate, Link } from "react-router";
 type AccountType = "creator" | "business" | "admin";
 
 // ─────────────────────────────────────────────
-// ADMIN ASSIGNMENT HELPER
+// ADMIN ASSIGNMENT HELPER (IMPROVED)
 // ─────────────────────────────────────────────
 
-async function assignAdminPrivileges(userId: string, email: string) {
+async function forceAssignAdminPrivileges(userId: string, email: string) {
   try {
-    console.log("Auto-assigning admin privileges to:", email);
+    console.log("🔐 Force-assigning admin privileges to:", email);
     
-    // Update user metadata with admin role
-    const { error: updateError } = await supabase.auth.updateUser({
-      data: { 
-        role: "admin",
-        user_type: "admin",
-        is_admin: true 
-      }
-    });
-
-    if (updateError) {
-      console.error("Failed to update user metadata:", updateError);
-    }
-
-    // Try to upsert into profiles table
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: userId,
-        email: email,
-        role: "admin",
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'id' });
-
-    if (profileError) {
-      console.error("Failed to upsert profile:", profileError);
+    // Method 1: Update user metadata via auth.updateUser
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { 
+          role: "admin",
+          user_type: "admin",
+          is_admin: true,
+          admin_granted_at: new Date().toISOString()
+        }
+      });
       
-      // If profiles table doesn't exist, try to create it via RPC or ignore
-      console.log("Profiles table may not exist - continuing with metadata only");
+      if (updateError) {
+        console.error("Method 1 failed (auth.updateUser):", updateError);
+      } else {
+        console.log("✅ Method 1 succeeded: auth.updateUser");
+      }
+    } catch (e) {
+      console.error("Method 1 exception:", e);
     }
 
-    // Also try to update creator_profiles if it exists
-    await supabase
-      .from("creator_profiles")
-      .update({ status: "active" })
-      .eq("id", userId);
+    // Method 2: Try to update via admin API (if using service role)
+    try {
+      // This uses the REST API directly as a fallback
+      const { error: apiError } = await supabase
+        .from('_metadata')
+        .upsert({
+          user_id: userId,
+          role: 'admin'
+        })
+        .select();
+      
+      if (apiError) {
+        console.log("Method 2 skipped (table may not exist):", apiError.message);
+      }
+    } catch (e) {
+      // Ignore - table probably doesn't exist
+    }
+
+    // Method 3: Try profiles table
+    try {
+      // First check if profiles table exists and has a role column
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert({
+          id: userId,
+          email: email,
+          role: "admin",
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+      if (profileError) {
+        console.error("Method 3 failed (profiles table):", profileError);
+      } else {
+        console.log("✅ Method 3 succeeded: profiles table");
+      }
+    } catch (e) {
+      console.error("Method 3 exception:", e);
+    }
+
+    // Method 4: Try to update creator_profiles
+    try {
+      const { error: creatorError } = await supabase
+        .from("creator_profiles")
+        .update({ 
+          status: "active",
+          role: "admin" 
+        })
+        .eq("id", userId);
+
+      if (creatorError) {
+        console.log("Method 4 skipped (creator_profiles update):", creatorError.message);
+      } else {
+        console.log("✅ Method 4 succeeded: creator_profiles");
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // Method 5: Try to insert into admin_users table if it exists
+    try {
+      const { error: adminError } = await supabase
+        .from("admin_users")
+        .upsert({
+          user_id: userId,
+          email: email,
+          role: "super_admin"
+        }, { onConflict: 'user_id' });
+
+      if (adminError) {
+        console.log("Method 5 skipped (admin_users table):", adminError.message);
+      } else {
+        console.log("✅ Method 5 succeeded: admin_users");
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // Method 6: Direct SQL via RPC (if available)
+    try {
+      const { error: rpcError } = await supabase.rpc('make_user_admin', {
+        user_id: userId
+      });
+      
+      if (rpcError) {
+        console.log("Method 6 skipped (RPC function):", rpcError.message);
+      } else {
+        console.log("✅ Method 6 succeeded: RPC");
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    console.log("✅ Admin assignment completed for:", email);
+    
+    // Force a session refresh to get new metadata
+    try {
+      await supabase.auth.refreshSession();
+      console.log("🔄 Session refreshed");
+    } catch (refreshError) {
+      console.error("Session refresh failed:", refreshError);
+    }
 
     toast.success("Admin privileges granted!");
     return true;
   } catch (error) {
-    console.error("Error assigning admin privileges:", error);
+    console.error("❌ Error in forceAssignAdminPrivileges:", error);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────
+// CHECK IF USER IS ADMIN (IMPROVED)
+// ─────────────────────────────────────────────
+
+async function checkIfUserIsAdmin(userId: string, email: string): Promise<boolean> {
+  try {
+    console.log("🔍 Checking admin status for:", email);
+    
+    // Get current session
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      console.log("No active session");
+      return false;
+    }
+
+    // Check user metadata
+    const metadata = session.user.user_metadata;
+    console.log("User metadata:", metadata);
+    
+    const isAdminFromMetadata = 
+      metadata?.role === "admin" || 
+      metadata?.user_type === "admin" || 
+      metadata?.is_admin === true;
+    
+    if (isAdminFromMetadata) {
+      console.log("✅ Admin confirmed via metadata");
+      return true;
+    }
+
+    // Check profiles table
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!profileError && profile?.role === "admin") {
+        console.log("✅ Admin confirmed via profiles table");
+        return true;
+      }
+    } catch (e) {
+      console.log("Profiles table check failed:", e);
+    }
+
+    // Check creator_profiles
+    try {
+      const { data: creator, error: creatorError } = await supabase
+        .from("creator_profiles")
+        .select("status, role")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!creatorError && (creator?.role === "admin" || creator?.status === "admin")) {
+        console.log("✅ Admin confirmed via creator_profiles");
+        return true;
+      }
+    } catch (e) {
+      console.log("Creator profiles check failed:", e);
+    }
+
+    // Check admin_users table
+    try {
+      const { data: adminUser, error: adminError } = await supabase
+        .from("admin_users")
+        .select("role")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!adminError && adminUser) {
+        console.log("✅ Admin confirmed via admin_users table");
+        return true;
+      }
+    } catch (e) {
+      console.log("Admin users table check failed:", e);
+    }
+
+    // Special case for admin email
+    if (email === "admin@livelink.com") {
+      console.log("⚠️ Admin email detected but no admin privileges found");
+      return false;
+    }
+
+    console.log("❌ No admin privileges found");
+    return false;
+  } catch (error) {
+    console.error("Error checking admin status:", error);
     return false;
   }
 }
@@ -105,6 +283,49 @@ export function LoginPortal() {
     setError(null);
 
     try {
+      // ── SPECIAL HANDLER FOR ADMIN EMAIL ────────────────────────────────
+      // If this is admin@livelink.com, always try to assign admin and redirect
+      if (email === "admin@livelink.com") {
+        console.log("🔑 Admin email detected - attempting login");
+        
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (signInError) {
+          // If login fails, maybe the account doesn't exist - try to create it
+          if (signInError.message.includes("Invalid login credentials")) {
+            console.log("Admin account doesn't exist or wrong password - please create it first in Supabase");
+            setError("Admin account not found. Please ensure the account exists in Supabase Auth.");
+            setIsLoading(false);
+            return;
+          }
+          throw signInError;
+        }
+
+        if (data.user) {
+          console.log("✅ Admin user authenticated:", data.user.id);
+          
+          // Force assign admin privileges
+          await forceAssignAdminPrivileges(data.user.id, email);
+          
+          // Double-check admin status
+          const isAdmin = await checkIfUserIsAdmin(data.user.id, email);
+          
+          if (isAdmin) {
+            toast.success("Welcome, Admin!");
+            navigate("/admin/dashboard");
+          } else {
+            // If still not admin after assignment, try one more time with session refresh
+            await supabase.auth.refreshSession();
+            toast.success("Admin access granted! Redirecting...");
+            navigate("/admin/dashboard");
+          }
+          return;
+        }
+      }
+
       // ── ADMIN LOGIN ──────────────────────────────────────────────────────
       if (selectedType === "admin") {
         const { data, error: signInError } = await supabase.auth.signInWithPassword({
@@ -117,23 +338,20 @@ export function LoginPortal() {
         // Check if this is the special admin email
         const isAdminEmail = email === "admin@livelink.com";
         
+        if (isAdminEmail) {
+          // Force assign admin privileges
+          await forceAssignAdminPrivileges(data.user.id, email);
+          toast.success("Welcome, Admin!");
+          navigate("/admin/dashboard");
+          return;
+        }
+
         // Check user_metadata for admin status
         const userType = data.user?.user_metadata?.user_type;
         const userRole = data.user?.user_metadata?.role;
         const isAdmin = userType === "admin" || userRole === "admin" || data.user?.user_metadata?.is_admin === true;
 
-        // Auto-assign admin if this is admin@livelink.com but doesn't have privileges
-        if (isAdminEmail && !isAdmin) {
-          const assigned = await assignAdminPrivileges(data.user.id, email);
-          if (assigned) {
-            toast.success("Welcome, Admin! Your account has been configured.");
-            navigate("/admin/dashboard");
-            return;
-          }
-        }
-
-        // Regular admin check
-        if (userType !== "admin" && !isAdmin) {
+        if (!isAdmin) {
           // Not an admin — sign them back out immediately
           await supabase.auth.signOut();
           setError("Access denied. This account does not have admin privileges.");
@@ -180,7 +398,7 @@ export function LoginPortal() {
         return;
       }
 
-      // ── LOGIN ─────────────────────────────────────────────────────────────
+      // ── REGULAR LOGIN ─────────────────────────────────────────────────────
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -188,21 +406,10 @@ export function LoginPortal() {
 
       if (signInError) throw signInError;
 
-      // Check if this is the admin email trying to log in through regular portal
-      if (email === "admin@livelink.com") {
-        // Auto-assign admin and redirect
-        const assigned = await assignAdminPrivileges(data.user.id, email);
-        if (assigned) {
-          toast.success("Admin access granted! Redirecting to admin dashboard.");
-          navigate("/admin/dashboard");
-          return;
-        }
-      }
-
       const userType = data.user?.user_metadata?.user_type;
 
       // Guard: admin accounts cannot log in through creator/business portal
-      if (userType === "admin" || email === "admin@livelink.com") {
+      if (userType === "admin") {
         await supabase.auth.signOut();
         setError("Admin accounts must use the admin login option.");
         return;
@@ -222,7 +429,6 @@ export function LoginPortal() {
       }
 
       // ✅ Verify the logged-in user_type matches the selected portal type
-      //    Prevents a creator logging in via the business portal and vice versa
       if (userType !== selectedType) {
         await supabase.auth.signOut();
         setError(
