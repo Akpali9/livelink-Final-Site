@@ -1,34 +1,22 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { 
-  Bell, 
-  ArrowUpRight, 
-  Inbox, 
-  Clock, 
-  CheckCircle2, 
-  Check, 
-  X, 
-  ChevronDown, 
+import {
+  ArrowUpRight,
+  Inbox,
+  Clock,
+  CheckCircle2,
+  Check,
+  X,
+  ChevronDown,
   ChevronUp,
-  Briefcase,
   Wallet,
   User,
   List,
   Monitor,
   RefreshCw,
-  TrendingUp,
-  DollarSign,
-  Calendar,
   Star,
   Award,
-  AlertCircle,
-  MessageSquare,
-  HelpCircle,
-  Zap,
-  Shield,
-  Gift,
-  Target,
-  Users  // <-- This was missing
+  Users,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast, Toaster } from "sonner";
@@ -39,46 +27,47 @@ import { BottomNav } from "../components/bottom-nav";
 import { AppHeader } from "../components/app-header";
 import { DeclineOfferModal } from "../components/decline-offer-modal";
 
+// ─────────────────────────────────────────────
+// INTERFACES  (aligned with schema)
+// ─────────────────────────────────────────────
 
+/**
+ * "Incoming requests" = campaign_creators rows with status 'pending'/'PENDING'
+ * that belong to campaigns the business sent to this creator.
+ * ✅ No "offers" table in schema — removed entirely.
+ */
 interface IncomingRequest {
-  id: string;
+  id: string;              // campaign_creators.id
+  campaign_id: string;
   business_id: string;
-  business: string;
-  name: string;
-  type: string;
-  streams: number;
-  price: number;
-  daysLeft: number;
-  logo: string;
-  status: 'pending' | 'accepted' | 'declined';
+  business: string;        // businesses.business_name
+  logo: string;            // businesses.logo_url
+  name: string;            // campaigns.name
+  type: string;            // campaigns.type
+  streams: number;         // campaign_creators.streams_target
+  price: number;           // campaigns.pay_rate ?? bid_amount ?? budget
+  status: "pending" | "active" | "completed" | "declined";
   created_at: string;
-  campaign_id?: string;
 }
 
+/**
+ * "Applications" = campaign_creators rows the creator inserted themselves (pending).
+ * ✅ No "campaign_applications" table in schema — removed.
+ */
 interface Application {
   id: string;
+  campaign_id: string;
   business_id: string;
   business: string;
   logo: string;
   type: string;
-  amount?: number;
+  amount: number | null;
   status: string;
   appliedAt: string;
-  campaign_id: string;
-}
-
-interface UpcomingCampaign {
-  id: string;
-  business_id: string;
-  business: string;
-  logo: string;
-  startDate: string;
-  package: string;
-  streams_required: number;
 }
 
 interface LiveCampaign {
-  id: string;
+  id: string;              // campaign_creators.id
   campaign_id: string;
   business_id: string;
   business: string;
@@ -100,20 +89,25 @@ interface DashboardStats {
   activeCount: number;
   completedCount: number;
   averageRating: number;
-  totalFollowers: number;
+  avgViewers: number;       // ✅ avg_viewers from creator_profiles (no total_followers in schema)
 }
+
+// ─────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────
 
 export function Dashboard() {
   const navigate = useNavigate();
   const earningsRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
-  
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [requestsExpanded, setRequestsExpanded] = useState(false);
   const [applicationsExpanded, setApplicationsExpanded] = useState(false);
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<IncomingRequest | null>(null);
+
   const [stats, setStats] = useState<DashboardStats>({
     totalEarned: 0,
     pendingEarnings: 0,
@@ -121,350 +115,316 @@ export function Dashboard() {
     requestedCount: 0,
     activeCount: 0,
     completedCount: 0,
-    averageRating: 4.8,
-    totalFollowers: 0
+    averageRating: 0,
+    avgViewers: 0,
   });
 
   const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
   const [liveCampaign, setLiveCampaign] = useState<LiveCampaign | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
-  const [upcomingCampaigns, setUpcomingCampaigns] = useState<UpcomingCampaign[]>([]);
   const [creatorProfile, setCreatorProfile] = useState<any>(null);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
 
-  // Fetch creator profile
+  // ─── CREATOR PROFILE ──────────────────────────────────────────────────────
+
   useEffect(() => {
-    if (user) {
-      fetchCreatorProfile();
-    }
+    if (user) fetchCreatorProfile();
   }, [user]);
 
   const fetchCreatorProfile = async () => {
     if (!user) return;
 
+    // ✅ correct columns: full_name, avg_viewers, rating (no total_followers in schema)
     const { data } = await supabase
       .from("creator_profiles")
-      .select("*")
+      .select("id, full_name, avatar_url, bio, avg_viewers, rating, status")
       .eq("user_id", user.id)
       .single();
 
     if (data) {
       setCreatorProfile(data);
+      setCreatorId(data.id);
       setStats(prev => ({
         ...prev,
-        averageRating: data.rating || 4.8,
-        totalFollowers: data.total_followers || 0
+        averageRating: data.rating   || 0,
+        avgViewers:    data.avg_viewers || 0,
       }));
     }
   };
 
-  // Real-time subscriptions
+  // ─── REALTIME + INITIAL FETCH ─────────────────────────────────────────────
+
   useEffect(() => {
-    if (!user) return;
+    if (!user || !creatorId) return;
 
-    // Subscribe to incoming requests/offers
-    const requestsSubscription = supabase
-      .channel('creator_requests')
+    // Realtime: campaign_creators (pending requests, active changes)
+    const campaignCreatorsSubscription = supabase
+      .channel("creator_campaign_creators")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'offers',
-          filter: `creator_id=eq.${user.id}`
-        },
-        async (payload) => {
-          // Fetch business details
-          const { data: businessData } = await supabase
-            .from("businesses")
-            .select("business_name, logo_url")
-            .eq("id", payload.new.business_id)
-            .single();
-
-          const newRequest: IncomingRequest = {
-            id: payload.new.id,
-            business_id: payload.new.business_id,
-            business: businessData?.business_name || 'Unknown Business',
-            name: payload.new.campaign_name,
-            type: payload.new.campaign_type,
-            streams: payload.new.streams_required || 4,
-            price: payload.new.amount,
-            daysLeft: calculateDaysLeft(payload.new.expires_at),
-            logo: businessData?.logo_url || 'https://via.placeholder.com/100',
-            status: 'pending',
-            created_at: payload.new.created_at,
-            campaign_id: payload.new.campaign_id
-          };
-
-          setIncomingRequests(prev => [newRequest, ...prev]);
-          setStats(prev => ({ ...prev, requestedCount: prev.requestedCount + 1 }));
-          
-          toast.success(`New offer from ${newRequest.business}!`, {
-            description: `${newRequest.type} · N${newRequest.price}`,
-            action: {
-              label: 'View',
-              onClick: () => setRequestsExpanded(true)
-            }
-          });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'offers',
-          filter: `creator_id=eq.${user.id}`
-        },
-        (payload) => {
-          if (payload.new.status === 'accepted') {
-            setIncomingRequests(prev => prev.filter(r => r.id !== payload.new.id));
-            setStats(prev => ({ 
-              ...prev, 
-              requestedCount: prev.requestedCount - 1,
-              activeCount: prev.activeCount + 1
-            }));
-            
-            toast.success('Offer Accepted! 🎉', {
-              description: 'You can now start working on this campaign',
-              action: {
-                label: 'View',
-                onClick: () => navigate('/campaigns')
-              }
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    // Subscribe to campaign creator updates
-    const campaignSubscription = supabase
-      .channel('creator_campaigns')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'campaign_creators',
-          filter: `creator_id=eq.${user.id}`
-        },
-        (payload) => {
-          refreshLiveCampaign();
-          fetchDashboardData();
-        }
-      )
-      .subscribe();
-
-    // Subscribe to application updates
-    const applicationsSubscription = supabase
-      .channel('creator_applications')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'campaign_applications',
-          filter: `creator_id=eq.${user.id}`
+          event: "*",
+          schema: "public",
+          table: "campaign_creators",
+          // ✅ filter by creator_id which exists on campaign_creators
+          filter: `creator_id=eq.${creatorId}`,
         },
         () => {
-          refreshApplications();
+          fetchIncomingRequests();
+          refreshLiveCampaign();
+          fetchDashboardStats();
         }
       )
       .subscribe();
 
-    // Initial data fetch
-    fetchDashboardData();
+    fetchDashboardStats();
+    fetchIncomingRequests();
     refreshLiveCampaign();
-    refreshApplications();
+    fetchApplications();
 
     return () => {
-      requestsSubscription.unsubscribe();
-      campaignSubscription.unsubscribe();
-      applicationsSubscription.unsubscribe();
+      campaignCreatorsSubscription.unsubscribe();
     };
-  }, [user]);
+  }, [user, creatorId]);
 
-  const calculateDaysLeft = (expiresAt?: string): number => {
-    if (!expiresAt) return 7;
-    const diff = new Date(expiresAt).getTime() - new Date().getTime();
-    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  };
+  // ─── STATS ────────────────────────────────────────────────────────────────
 
-  const fetchDashboardData = async () => {
-    if (!user) return;
-    
+  const fetchDashboardStats = async () => {
+    if (!creatorId) return;
+
     try {
       setLoading(true);
-      
-      // Fetch earnings data
-      const { data: earningsData } = await supabase
-        .from('creator_earnings')
-        .select('*')
-        .eq('creator_id', user.id)
-        .single();
 
-      if (earningsData) {
-        setStats(prev => ({
-          ...prev,
-          totalEarned: earningsData.total || 0,
-          pendingEarnings: earningsData.pending || 0,
-          paidOut: earningsData.paid_out || 0
-        }));
+      // ✅ Earnings from campaign_creators (total_earnings, paid_out columns in schema)
+      const { data: earningsRows } = await supabase
+        .from("campaign_creators")
+        .select("total_earnings, paid_out")
+        .eq("creator_id", creatorId);
+
+      if (earningsRows) {
+        const totalEarned   = earningsRows.reduce((s, r) => s + (r.total_earnings || 0), 0);
+        const paidOut       = earningsRows.reduce((s, r) => s + (r.paid_out || 0), 0);
+        const pendingEarnings = totalEarned - paidOut;
+
+        setStats(prev => ({ ...prev, totalEarned, paidOut, pendingEarnings }));
       }
 
-      // Fetch counts
-      const { count: requestedCount } = await supabase
-        .from('offers')
-        .select('*', { count: 'exact', head: true })
-        .eq('creator_id', user.id)
-        .eq('status', 'pending');
+      // ✅ Counts from campaign_creators — case-insensitive status match
+      const { data: allRows } = await supabase
+        .from("campaign_creators")
+        .select("status")
+        .eq("creator_id", creatorId);
 
-      const { count: activeCount } = await supabase
-        .from('campaign_creators')
-        .select('*', { count: 'exact', head: true })
-        .eq('creator_id', user.id)
-        .eq('status', 'active');
-
-      const { count: completedCount } = await supabase
-        .from('campaign_creators')
-        .select('*', { count: 'exact', head: true })
-        .eq('creator_id', user.id)
-        .eq('status', 'completed');
-
-      setStats(prev => ({
-        ...prev,
-        requestedCount: requestedCount || 0,
-        activeCount: activeCount || 0,
-        completedCount: completedCount || 0
-      }));
-
+      if (allRows) {
+        const normalize = (s: string) => s?.toLowerCase();
+        setStats(prev => ({
+          ...prev,
+          requestedCount: allRows.filter(r => normalize(r.status) === "pending").length,
+          activeCount:    allRows.filter(r => normalize(r.status) === "active").length,
+          completedCount: allRows.filter(r => normalize(r.status) === "completed").length,
+        }));
+      }
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      toast.error('Failed to load dashboard data');
+      console.error("Error fetching stats:", error);
+      toast.error("Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
   };
 
-  const refreshLiveCampaign = async () => {
-    if (!user) return;
-    
-    const { data } = await supabase
-      .from('campaign_creators')
+  // ─── INCOMING REQUESTS ────────────────────────────────────────────────────
+
+  /**
+   * ✅ Reads from campaign_creators (status=pending) joined with campaigns + businesses.
+   *    No "offers" table used.
+   */
+  const fetchIncomingRequests = async () => {
+    if (!creatorId) return;
+
+    const { data, error } = await supabase
+      .from("campaign_creators")
       .select(`
         id,
-        streams_completed,
-        streams_target,
         status,
-        campaign:campaigns (
+        streams_target,
+        created_at,
+        campaigns (
           id,
           name,
-          business:businesses (
+          type,
+          pay_rate,
+          bid_amount,
+          budget,
+          businesses (
             id,
             business_name,
             logo_url
           )
         )
       `)
-      .eq('creator_id', user.id)
-      .eq('status', 'active')
+      .eq("creator_id", creatorId)
+      .in("status", ["pending", "PENDING"])
+      .order("created_at", { ascending: false });
+
+    if (error) { console.error(error); return; }
+
+    const formatted: IncomingRequest[] = (data || [])
+      .filter((r: any) => r.campaigns !== null)
+      .map((r: any) => ({
+        id:          r.id,
+        campaign_id: r.campaigns.id,
+        business_id: r.campaigns.businesses?.id || "",
+        business:    r.campaigns.businesses?.business_name || "Unknown Business",
+        logo:        r.campaigns.businesses?.logo_url || "https://via.placeholder.com/100",
+        name:        r.campaigns.name,
+        type:        r.campaigns.type,
+        streams:     r.streams_target || 4,
+        // ✅ Use pay_rate → bid_amount → budget as price fallback
+        price:       r.campaigns.pay_rate ?? r.campaigns.bid_amount ?? r.campaigns.budget ?? 0,
+        status:      r.status.toLowerCase() as IncomingRequest["status"],
+        created_at:  r.created_at,
+      }));
+
+    setIncomingRequests(formatted);
+  };
+
+  // ─── LIVE CAMPAIGN ────────────────────────────────────────────────────────
+
+  const refreshLiveCampaign = async () => {
+    if (!creatorId) return;
+
+    const { data } = await supabase
+      .from("campaign_creators")
+      .select(`
+        id,
+        streams_completed,
+        streams_target,
+        total_earnings,
+        status,
+        campaigns (
+          id,
+          name,
+          pay_rate,
+          bid_amount,
+          businesses (
+            id,
+            business_name,
+            logo_url
+          )
+        )
+      `)
+      .eq("creator_id", creatorId)
+      .in("status", ["active", "ACTIVE"])
       .maybeSingle();
 
-    if (data) {
-      const progress = (data.streams_completed / data.streams_target) * 100;
-      const earningsPerStream = 15; // This should come from campaign data
-      
+    if (data && data.campaigns) {
+      const camp = data.campaigns as any;
+      const biz  = camp.businesses as any;
+      const progress = data.streams_target > 0
+        ? (data.streams_completed / data.streams_target) * 100
+        : 0;
+
       setLiveCampaign({
-        id: data.id,
-        campaign_id: data.campaign.id,
-        business_id: data.campaign.business.id,
-        business: data.campaign.business.business_name,
-        name: data.campaign.name,
-        logo: data.campaign.business.logo_url || 'https://via.placeholder.com/100',
-        sessionEarnings: data.streams_completed * earningsPerStream,
-        streamTime: formatStreamTime(data.streams_completed),
-        progress: progress,
-        remainingMins: calculateRemainingMins(data.streams_completed, data.streams_target),
+        id:                data.id,
+        campaign_id:       camp.id,
+        business_id:       biz?.id || "",
+        business:          biz?.business_name || "Unknown",
+        name:              camp.name,
+        logo:              biz?.logo_url || "https://via.placeholder.com/100",
+        sessionEarnings:   data.total_earnings || 0,
+        streamTime:        formatStreamTime(data.streams_completed),
+        progress,
+        remainingMins:     (data.streams_target - data.streams_completed) * 45,
         streams_completed: data.streams_completed,
-        streams_target: data.streams_target
+        streams_target:    data.streams_target,
       });
     } else {
       setLiveCampaign(null);
     }
   };
 
-  const formatStreamTime = (completed: number): string => {
-    const totalMins = completed * 45;
-    const hours = Math.floor(totalMins / 60);
-    const mins = totalMins % 60;
-    return `${hours}h ${mins}m`;
-  };
+  // ─── APPLICATIONS ─────────────────────────────────────────────────────────
 
-  const calculateRemainingMins = (completed: number, target: number): number => {
-    const remainingStreams = target - completed;
-    return remainingStreams * 45;
-  };
+  /**
+   * ✅ "Applications" = campaign_creators rows this creator created themselves
+   *    (pending/declined), showing which campaigns they applied to.
+   *    No "campaign_applications" table in schema.
+   */
+  const fetchApplications = async () => {
+    if (!creatorId) return;
 
-  const refreshApplications = async () => {
-    if (!user) return;
-    
     const { data } = await supabase
-      .from('campaign_applications')
+      .from("campaign_creators")
       .select(`
         id,
         status,
-        proposed_amount,
+        total_earnings,
         created_at,
-        campaign:campaigns (
+        campaigns (
           id,
           name,
           type,
-          business:businesses (
+          pay_rate,
+          bid_amount,
+          businesses (
             id,
             business_name,
             logo_url
           )
         )
       `)
-      .eq('creator_id', user.id)
-      .order('created_at', { ascending: false });
+      .eq("creator_id", creatorId)
+      .not("status", "in", '("active","ACTIVE")')  // show non-live ones as applications
+      .order("created_at", { ascending: false });
 
     if (data) {
-      const formattedApps = data.map(app => ({
-        id: app.id,
-        business_id: app.campaign.business.id,
-        business: app.campaign.business.business_name,
-        logo: app.campaign.business.logo_url || 'https://via.placeholder.com/100',
-        type: app.campaign.type,
-        amount: app.proposed_amount,
-        status: app.status,
-        appliedAt: formatDate(app.created_at),
-        campaign_id: app.campaign.id
-      }));
-      setApplications(formattedApps);
+      const formatted: Application[] = (data as any[])
+        .filter(r => r.campaigns !== null)
+        .map(r => ({
+          id:          r.id,
+          campaign_id: r.campaigns.id,
+          business_id: r.campaigns.businesses?.id || "",
+          business:    r.campaigns.businesses?.business_name || "Unknown",
+          logo:        r.campaigns.businesses?.logo_url || "https://via.placeholder.com/100",
+          type:        r.campaigns.type,
+          amount:      r.campaigns.pay_rate ?? r.campaigns.bid_amount ?? null,
+          status:      r.status,
+          appliedAt:   formatDate(r.created_at),
+        }));
+      setApplications(formatted);
     }
   };
 
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString();
-  };
+  // ─── ACCEPT / DECLINE ─────────────────────────────────────────────────────
 
-  const refreshData = async () => {
-    setRefreshing(true);
-    await Promise.all([
-      fetchDashboardData(),
-      refreshLiveCampaign(),
-      refreshApplications(),
-      fetchCreatorProfile()
-    ]);
-    setRefreshing(false);
-    toast.success('Dashboard updated');
+  const handleAcceptOffer = async (req: IncomingRequest) => {
+    if (!creatorId) return;
+
+    try {
+      // ✅ Update campaign_creators row status to ACTIVE
+      const { error } = await supabase
+        .from("campaign_creators")
+        .update({
+          status:      "ACTIVE",
+          accepted_at: new Date().toISOString(),
+        })
+        .eq("id", req.id);
+
+      if (error) throw error;
+
+      toast.success("Offer accepted! 🎉");
+      setIncomingRequests(prev => prev.filter(r => r.id !== req.id));
+      setStats(prev => ({
+        ...prev,
+        requestedCount: prev.requestedCount - 1,
+        activeCount:    prev.activeCount + 1,
+      }));
+
+      navigate(`/gig-accepted/${req.campaign_id}`);
+    } catch (error) {
+      console.error("Accept error:", error);
+      toast.error("Failed to accept offer");
+    }
   };
 
   const handleDeclineClick = (req: IncomingRequest) => {
@@ -473,82 +433,65 @@ export function Dashboard() {
   };
 
   const handleConfirmDecline = async (reason: string) => {
-    if (!selectedRequest || !user) return;
-    
+    if (!selectedRequest) return;
+
     try {
+      // ✅ Update campaign_creators row status to DECLINED
       const { error } = await supabase
-        .from('offers')
-        .update({ 
-          status: 'declined',
-          declined_reason: reason,
-          declined_at: new Date().toISOString()
-        })
-        .eq('id', selectedRequest.id);
+        .from("campaign_creators")
+        .update({ status: "DECLINED" })
+        .eq("id", selectedRequest.id);
 
       if (error) throw error;
 
       setIsDeclineModalOpen(false);
-      toast.success(`Offer declined`);
-      
+      toast.success("Offer declined");
       setIncomingRequests(prev => prev.filter(r => r.id !== selectedRequest.id));
       setStats(prev => ({ ...prev, requestedCount: prev.requestedCount - 1 }));
       setSelectedRequest(null);
-      
-    } catch (error) {
-      toast.error('Failed to decline offer');
+    } catch {
+      toast.error("Failed to decline offer");
     }
   };
 
-  const handleAcceptOffer = async (req: IncomingRequest) => {
-    if (!user) return;
-    
-    try {
-      // Update offer status
-      const { error: offerError } = await supabase
-        .from('offers')
-        .update({ 
-          status: 'accepted',
-          accepted_at: new Date().toISOString()
-        })
-        .eq('id', req.id);
+  // ─── REFRESH ALL ──────────────────────────────────────────────────────────
 
-      if (offerError) throw offerError;
-
-      // Create campaign creator entry
-      const { error: creatorError } = await supabase
-        .from('campaign_creators')
-        .insert({
-          campaign_id: req.campaign_id,
-          creator_id: user.id,
-          business_id: req.business_id,
-          status: 'active',
-          streams_completed: 0,
-          streams_target: req.streams,
-          accepted_at: new Date().toISOString()
-        });
-
-      if (creatorError) throw creatorError;
-
-      toast.success('Offer accepted!');
-      
-      setIncomingRequests(prev => prev.filter(r => r.id !== req.id));
-      setStats(prev => ({ 
-        ...prev, 
-        requestedCount: prev.requestedCount - 1,
-        activeCount: prev.activeCount + 1
-      }));
-      
-      navigate(`/gig-accepted/${req.campaign_id}`);
-      
-    } catch (error) {
-      console.error('Accept error:', error);
-      toast.error('Failed to accept offer');
-    }
+  const refreshData = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      fetchDashboardStats(),
+      fetchIncomingRequests(),
+      refreshLiveCampaign(),
+      fetchApplications(),
+      fetchCreatorProfile(),
+    ]);
+    setRefreshing(false);
+    toast.success("Dashboard updated");
   };
 
-  const earningsRatio = stats.totalEarned > 0 
-    ? (stats.paidOut / stats.totalEarned) * 100 
+  // ─── HELPERS ──────────────────────────────────────────────────────────────
+
+  const formatStreamTime = (completed: number): string => {
+    const totalMins = completed * 45;
+    const hours = Math.floor(totalMins / 60);
+    const mins  = totalMins % 60;
+    return `${hours}h ${mins}m`;
+  };
+
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const diffDays = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7)  return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  const earningsRatio = stats.totalEarned > 0
+    ? (stats.paidOut / stats.totalEarned) * 100
     : 0;
+
+  // ─── LOADING ──────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -565,31 +508,28 @@ export function Dashboard() {
     );
   }
 
+  // ─── RENDER ───────────────────────────────────────────────────────────────
+
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px]">
-      <AppHeader 
-        showLogo 
-        subtitle="Creator Hub" 
-        userType="creator"
-        showHome={false}
-      />
+      <AppHeader showLogo subtitle="Creator Hub" userType="creator" showHome={false} />
       <Toaster position="top-center" richColors />
-      
+
       <main className="max-w-[480px] mx-auto w-full">
-        {/* Welcome Section */}
+
+        {/* Welcome */}
         <div className="px-6 pt-6 pb-2 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-black uppercase tracking-tighter italic">
-              Welcome back,
-            </h1>
-            <p className="text-sm text-gray-500">{creatorProfile?.full_name || 'Creator'}!</p>
+            <h1 className="text-2xl font-black uppercase tracking-tighter italic">Welcome back,</h1>
+            {/* ✅ full_name not username */}
+            <p className="text-sm text-gray-500">{creatorProfile?.full_name || "Creator"}!</p>
           </div>
           <button
             onClick={refreshData}
             disabled={refreshing}
             className="p-3 border-2 border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white transition-colors disabled:opacity-50 rounded-xl"
           >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
 
@@ -597,13 +537,14 @@ export function Dashboard() {
         <div className="px-6 pb-4 grid grid-cols-3 gap-2">
           <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
             <Star className="w-4 h-4 text-[#FEDB71] mx-auto mb-1" />
-            <p className="text-sm font-black">{stats.averageRating}</p>
+            <p className="text-sm font-black">{stats.averageRating || "—"}</p>
             <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Rating</p>
           </div>
+          {/* ✅ avg_viewers instead of totalFollowers (no followers col in schema) */}
           <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
             <Users className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
-            <p className="text-sm font-black">{stats.totalFollowers.toLocaleString()}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Followers</p>
+            <p className="text-sm font-black">{stats.avgViewers.toLocaleString()}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Avg Viewers</p>
           </div>
           <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
             <Award className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
@@ -612,39 +553,39 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Section 1 — Earnings Card */}
+        {/* Earnings Card */}
         <div className="p-6" ref={earningsRef}>
           <div className="bg-[#1D1D1D] p-8 text-white relative overflow-hidden border-2 border-[#1D1D1D] rounded-xl">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
-            
+
             <div className="flex items-center justify-between mb-2 relative z-10">
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">Total Earnings</span>
               <button className="p-1 hover:bg-white/10 rounded-lg transition-colors">
                 <ArrowUpRight className="w-4 h-4 text-white/40" />
               </button>
             </div>
-            
+
             <h2 className="text-4xl font-black tracking-tighter leading-none mb-8 text-center italic relative z-10">
-              N{stats.totalEarned.toFixed(2)}
+              ₦{stats.totalEarned.toFixed(2)}
             </h2>
-            
+
             <div className="h-[1px] bg-white/10 mb-8 relative z-10" />
-            
+
             <div className="grid grid-cols-2 gap-8 mb-8 relative z-10">
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Pending</span>
-                <span className="text-xl font-black text-[#FEDB71]">N{stats.pendingEarnings.toFixed(2)}</span>
+                <span className="text-xl font-black text-[#FEDB71]">₦{stats.pendingEarnings.toFixed(2)}</span>
               </div>
               <div className="flex flex-col gap-1 text-right">
                 <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Paid Out</span>
-                <span className="text-xl font-black text-[#389C9A]">N{stats.paidOut.toFixed(2)}</span>
+                <span className="text-xl font-black text-[#389C9A]">₦{stats.paidOut.toFixed(2)}</span>
               </div>
             </div>
 
             <div className="space-y-2 relative z-10">
               <div className="h-1 bg-white/10 w-full rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-[#389C9A] rounded-full transition-all duration-1000" 
+                <div
+                  className="h-full bg-[#389C9A] rounded-full transition-all duration-1000"
                   style={{ width: `${earningsRatio}%` }}
                 />
               </div>
@@ -655,10 +596,10 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Section 2 — Primary CTA Button */}
+        {/* Primary CTA */}
         <div className="px-6 pb-6">
-          <Link 
-            to="/browse-businesses" 
+          <Link
+            to="/browse-businesses"
             className="w-full bg-[#1D1D1D] text-white py-8 px-8 text-xl font-black uppercase italic tracking-tighter flex items-center justify-between hover:bg-[#389C9A] transition-all rounded-xl"
           >
             Browse Opportunities
@@ -666,16 +607,16 @@ export function Dashboard() {
           </Link>
         </div>
 
-        {/* Section 3 — Campaign Status Row */}
+        {/* Campaign Status Row */}
         <div className="px-6 pb-12">
           <div className="grid grid-cols-3 gap-3">
             {[
-              { icon: Inbox, count: stats.requestedCount, label: "Requests", path: "/offers", color: "text-[#389C9A]" },
-              { icon: Clock, count: stats.activeCount, label: "Active", path: "/campaigns?status=active", color: "text-[#FEDB71]" },
-              { icon: CheckCircle2, count: stats.completedCount, label: "Completed", path: "/campaigns?status=completed", color: "text-green-500" },
+              { icon: Inbox,       count: stats.requestedCount, label: "Requests",  path: "/offers",                    color: "text-[#389C9A]" },
+              { icon: Clock,       count: stats.activeCount,    label: "Active",    path: "/campaigns?status=active",   color: "text-[#FEDB71]" },
+              { icon: CheckCircle2,count: stats.completedCount, label: "Completed", path: "/campaigns?status=completed",color: "text-green-500" },
             ].map((card, i) => (
-              <button 
-                key={i} 
+              <button
+                key={i}
                 onClick={() => navigate(card.path)}
                 className="bg-white border-2 border-[#1D1D1D] p-4 flex flex-col items-center gap-2 hover:bg-[#1D1D1D] hover:text-white transition-all cursor-pointer rounded-xl group"
               >
@@ -689,7 +630,7 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Section 4 — Incoming Requests */}
+        {/* Incoming Requests */}
         {incomingRequests.length > 0 && (
           <div className="px-6 pb-12">
             <div className="flex items-center justify-between mb-6">
@@ -698,13 +639,13 @@ export function Dashboard() {
                 {incomingRequests.length} new
               </span>
             </div>
-            
+
             <div className="flex flex-col gap-4">
               <AnimatePresence mode="popLayout">
                 {(requestsExpanded ? incomingRequests : incomingRequests.slice(0, 2)).map(req => (
-                  <motion.div 
+                  <motion.div
                     layout
-                    key={req.id} 
+                    key={req.id}
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
@@ -714,39 +655,28 @@ export function Dashboard() {
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 border-2 border-[#1D1D1D]/10 rounded-xl overflow-hidden">
-                          <ImageWithFallback 
-                            src={req.logo} 
-                            className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" 
-                          />
+                          <ImageWithFallback src={req.logo} className="w-full h-full object-cover grayscale" />
                         </div>
                         <div>
                           <h4 className="font-black text-lg uppercase tracking-tight leading-none mb-1">{req.business}</h4>
                           <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest">{req.type}</p>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end">
-                        <p className="text-2xl font-black italic leading-none mb-2 text-[#389C9A]">N{req.price}</p>
-                        <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full flex items-center gap-1.5 ${
-                          req.daysLeft <= 1 ? "bg-red-100 text-red-600" : 
-                          req.daysLeft <= 2 ? "bg-orange-100 text-orange-600" : "bg-[#FEDB71]/10 text-[#FEDB71]"
-                        }`}>
-                          <Clock className="w-2.5 h-2.5" /> {req.daysLeft} days left
-                        </div>
-                      </div>
+                      <p className="text-2xl font-black italic leading-none text-[#389C9A]">₦{req.price}</p>
                     </div>
-                    
+
                     <p className="text-[9px] font-medium text-[#1D1D1D]/60 italic">
                       {req.name} — {req.streams} streams required
                     </p>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <button 
+                      <button
                         onClick={() => handleAcceptOffer(req)}
                         className="bg-[#1D1D1D] text-white py-4 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#389C9A] transition-all rounded-xl"
                       >
                         <Check className="w-4 h-4" /> Accept
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDeclineClick(req)}
                         className="border-2 py-4 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all rounded-xl"
                       >
@@ -758,7 +688,7 @@ export function Dashboard() {
               </AnimatePresence>
 
               {incomingRequests.length > 2 && (
-                <button 
+                <button
                   onClick={() => setRequestsExpanded(!requestsExpanded)}
                   className="w-full py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 text-[#1D1D1D]/40 hover:text-[#1D1D1D] transition-colors"
                 >
@@ -773,7 +703,7 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Section 5 — Live Now */}
+        {/* Live Now */}
         <div className="px-6 pb-12">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">Live Now</h3>
@@ -784,47 +714,42 @@ export function Dashboard() {
               </div>
             )}
           </div>
-          
+
           {liveCampaign ? (
             <div className="bg-[#1D1D1D] p-6 flex flex-col gap-6 relative overflow-hidden border-2 border-[#1D1D1D] rounded-xl">
               <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
-              
+
               <div className="flex items-center gap-4 relative z-10">
                 <div className="w-14 h-14 border-2 border-white/20 rounded-xl overflow-hidden">
-                  <ImageWithFallback 
-                    src={liveCampaign.logo} 
-                    className="w-full h-full object-cover grayscale" 
-                  />
+                  <ImageWithFallback src={liveCampaign.logo} className="w-full h-full object-cover grayscale" />
                 </div>
                 <div className="flex-1 text-white">
                   <h4 className="font-black text-lg uppercase tracking-tight leading-none mb-1">{liveCampaign.business}</h4>
                   <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">{liveCampaign.name}</p>
                 </div>
                 <div className="text-right text-white">
-                  <p className="text-xl font-black italic leading-none mb-1 text-[#FEDB71]">N{liveCampaign.sessionEarnings}</p>
+                  {/* ✅ sessionEarnings from total_earnings column */}
+                  <p className="text-xl font-black italic leading-none mb-1 text-[#FEDB71]">₦{liveCampaign.sessionEarnings}</p>
                   <p className="text-[9px] font-black text-[#389C9A] uppercase tracking-widest italic">{liveCampaign.streamTime}</p>
                 </div>
               </div>
-              
+
               <div className="space-y-2 relative z-10">
                 <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-white/40">
                   <span>Progress</span>
                   <span>{liveCampaign.streams_completed}/{liveCampaign.streams_target}</span>
                 </div>
                 <div className="h-1.5 bg-white/10 w-full rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-[#389C9A] rounded-full" 
-                    style={{ width: `${liveCampaign.progress}%` }}
-                  />
+                  <div className="h-full bg-[#389C9A] rounded-full" style={{ width: `${liveCampaign.progress}%` }} />
                 </div>
                 <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">
-                  {liveCampaign.remainingMins} mins to qualify for next payment
+                  {liveCampaign.remainingMins} mins to next payment
                 </p>
               </div>
 
               <div className="pt-4 border-t border-white/10 flex justify-end relative z-10">
-                <Link 
-                  to={`/campaign/live-update/${liveCampaign.campaign_id}`} 
+                <Link
+                  to={`/campaign/live-update/${liveCampaign.campaign_id}`}
                   className="text-[9px] font-black uppercase tracking-widest text-white flex items-center gap-2 group hover:text-[#FEDB71] transition-all"
                 >
                   Update Campaign <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
@@ -842,18 +767,18 @@ export function Dashboard() {
           )}
         </div>
 
-        {/* Section 6 — My Applications */}
+        {/* My Applications */}
         {applications.length > 0 && (
           <div className="px-6 pb-12">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">My Applications</h3>
               <span className="text-[9px] font-black uppercase text-[#1D1D1D]/40">{applications.length} total</span>
             </div>
-            
+
             <div className="flex flex-col gap-3">
               {(applicationsExpanded ? applications : applications.slice(0, 3)).map(app => (
-                <div 
-                  key={app.id} 
+                <div
+                  key={app.id}
                   onClick={() => navigate(`/campaign/${app.campaign_id}`)}
                   className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl"
                 >
@@ -869,11 +794,16 @@ export function Dashboard() {
                     </div>
                   </div>
                   <div className="text-right">
-                    {app.amount && <p className="text-sm font-black italic mb-1 text-[#389C9A]">N{app.amount}</p>}
+                    {app.amount != null && (
+                      <p className="text-sm font-black italic mb-1 text-[#389C9A]">₦{app.amount}</p>
+                    )}
+                    {/* ✅ status values from schema: pending/PENDING/ACTIVE/active/COMPLETED/completed/DECLINED/declined */}
                     <div className={`text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                      app.status === "Awaiting Response" ? "bg-[#FEDB71] text-[#1D1D1D]" :
-                      app.status === "Under Review" ? "bg-blue-500 text-white" :
-                      app.status === "Accepted" ? "bg-[#389C9A] text-white" : "bg-gray-200 text-gray-500"
+                      app.status.toLowerCase() === "pending"   ? "bg-[#FEDB71] text-[#1D1D1D]" :
+                      app.status.toLowerCase() === "active"    ? "bg-[#389C9A] text-white" :
+                      app.status.toLowerCase() === "completed" ? "bg-green-500 text-white" :
+                      app.status.toLowerCase() === "declined"  ? "bg-red-100 text-red-600" :
+                      "bg-gray-200 text-gray-500"
                     }`}>
                       {app.status}
                     </div>
@@ -885,14 +815,14 @@ export function Dashboard() {
               ))}
 
               {applications.length > 3 && (
-                <button 
+                <button
                   onClick={() => setApplicationsExpanded(!applicationsExpanded)}
                   className="w-full py-3 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 text-[#1D1D1D]/30 hover:text-[#1D1D1D] transition-colors"
                 >
                   {applicationsExpanded ? (
                     <>Show less <ChevronUp className="w-3 h-3" /></>
                   ) : (
-                    <>Show {applications.length - 3} more applications <ChevronDown className="w-3 h-3" /></>
+                    <>Show {applications.length - 3} more <ChevronDown className="w-3 h-3" /></>
                   )}
                 </button>
               )}
@@ -900,44 +830,10 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Section 7 — Upcoming Campaigns */}
-        {upcomingCampaigns.length > 0 && (
-          <div className="px-6 pb-12">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-6">Coming Up</h3>
-            <div className="flex flex-col gap-3">
-              {upcomingCampaigns.map(camp => (
-                <div 
-                  key={camp.id} 
-                  onClick={() => navigate(`/creator/upcoming-gig/${camp.id}`)}
-                  className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 border-2 border-[#1D1D1D]/10 rounded-lg overflow-hidden">
-                      <ImageWithFallback src={camp.logo} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-xs uppercase tracking-tight">{camp.business}</h4>
-                      <p className="text-[7px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic">
-                        {new Date(camp.startDate).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[8px] font-black uppercase tracking-widest mb-1">{camp.package}</p>
-                    <span className="text-[7px] font-black uppercase tracking-widest text-[#389C9A] underline italic">
-                      View Details
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Section 8 — Quick Actions Row */}
+        {/* Quick Actions */}
         <div className="px-6 pb-24">
           <div className="grid grid-cols-3 gap-3">
-            <button 
+            <button
               onClick={() => navigate("/campaigns")}
               className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
             >
@@ -946,9 +842,9 @@ export function Dashboard() {
               </div>
               <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">My Campaigns</span>
             </button>
-            
-            <button 
-              onClick={() => earningsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+
+            <button
+              onClick={() => earningsRef.current?.scrollIntoView({ behavior: "smooth" })}
               className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
             >
               <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
@@ -956,9 +852,9 @@ export function Dashboard() {
               </div>
               <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">Earnings</span>
             </button>
-            
-            <button 
-              onClick={() => navigate("/profile/1")}
+
+            <button
+              onClick={() => navigate(`/profile/${creatorId || "me"}`)}
               className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
             >
               <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
@@ -969,27 +865,23 @@ export function Dashboard() {
           </div>
         </div>
       </main>
-      
+
       <BottomNav />
 
-      <DeclineOfferModal 
+      <DeclineOfferModal
         isOpen={isDeclineModalOpen}
         onClose={() => setIsDeclineModalOpen(false)}
         onConfirm={handleConfirmDecline}
         offerDetails={selectedRequest ? {
-          partnerName: selectedRequest.business,
-          offerName: selectedRequest.name,
+          partnerName:  selectedRequest.business,
+          offerName:    selectedRequest.name,
           campaignType: selectedRequest.type,
-          amount: `N${selectedRequest.price}`,
-          logo: selectedRequest.logo,
-          partnerType: "Business"
+          amount:       `₦${selectedRequest.price}`,
+          logo:         selectedRequest.logo,
+          partnerType:  "Business",
         } : {
-          partnerName: "",
-          offerName: "",
-          campaignType: "",
-          amount: "",
-          logo: "",
-          partnerType: ""
+          partnerName: "", offerName: "", campaignType: "",
+          amount: "", logo: "", partnerType: "",
         }}
       />
     </div>
