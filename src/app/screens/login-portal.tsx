@@ -24,7 +24,7 @@ import { useNavigate, Link } from "react-router";
 type AccountType = "creator" | "business" | "admin";
 
 // ─────────────────────────────────────────────
-// ADMIN ASSIGNMENT HELPER (IMPROVED)
+// ADMIN ASSIGNMENT HELPER
 // ─────────────────────────────────────────────
 
 async function forceAssignAdminPrivileges(userId: string, email: string) {
@@ -51,27 +51,8 @@ async function forceAssignAdminPrivileges(userId: string, email: string) {
       console.error("Method 1 exception:", e);
     }
 
-    // Method 2: Try to update via admin API (if using service role)
+    // Method 2: Try profiles table
     try {
-      // This uses the REST API directly as a fallback
-      const { error: apiError } = await supabase
-        .from('_metadata')
-        .upsert({
-          user_id: userId,
-          role: 'admin'
-        })
-        .select();
-      
-      if (apiError) {
-        console.log("Method 2 skipped (table may not exist):", apiError.message);
-      }
-    } catch (e) {
-      // Ignore - table probably doesn't exist
-    }
-
-    // Method 3: Try profiles table
-    try {
-      // First check if profiles table exists and has a role column
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert({
@@ -82,15 +63,15 @@ async function forceAssignAdminPrivileges(userId: string, email: string) {
         }, { onConflict: 'id' });
 
       if (profileError) {
-        console.error("Method 3 failed (profiles table):", profileError);
+        console.error("Method 2 failed (profiles table):", profileError);
       } else {
-        console.log("✅ Method 3 succeeded: profiles table");
+        console.log("✅ Method 2 succeeded: profiles table");
       }
     } catch (e) {
-      console.error("Method 3 exception:", e);
+      console.error("Method 2 exception:", e);
     }
 
-    // Method 4: Try to update creator_profiles
+    // Method 3: Try to update creator_profiles
     try {
       const { error: creatorError } = await supabase
         .from("creator_profiles")
@@ -101,43 +82,9 @@ async function forceAssignAdminPrivileges(userId: string, email: string) {
         .eq("id", userId);
 
       if (creatorError) {
-        console.log("Method 4 skipped (creator_profiles update):", creatorError.message);
+        console.log("Method 3 skipped:", creatorError.message);
       } else {
-        console.log("✅ Method 4 succeeded: creator_profiles");
-      }
-    } catch (e) {
-      // Ignore
-    }
-
-    // Method 5: Try to insert into admin_users table if it exists
-    try {
-      const { error: adminError } = await supabase
-        .from("admin_users")
-        .upsert({
-          user_id: userId,
-          email: email,
-          role: "super_admin"
-        }, { onConflict: 'user_id' });
-
-      if (adminError) {
-        console.log("Method 5 skipped (admin_users table):", adminError.message);
-      } else {
-        console.log("✅ Method 5 succeeded: admin_users");
-      }
-    } catch (e) {
-      // Ignore
-    }
-
-    // Method 6: Direct SQL via RPC (if available)
-    try {
-      const { error: rpcError } = await supabase.rpc('make_user_admin', {
-        user_id: userId
-      });
-      
-      if (rpcError) {
-        console.log("Method 6 skipped (RPC function):", rpcError.message);
-      } else {
-        console.log("✅ Method 6 succeeded: RPC");
+        console.log("✅ Method 3 succeeded: creator_profiles");
       }
     } catch (e) {
       // Ignore
@@ -157,98 +104,6 @@ async function forceAssignAdminPrivileges(userId: string, email: string) {
     return true;
   } catch (error) {
     console.error("❌ Error in forceAssignAdminPrivileges:", error);
-    return false;
-  }
-}
-
-// ─────────────────────────────────────────────
-// CHECK IF USER IS ADMIN (IMPROVED)
-// ─────────────────────────────────────────────
-
-async function checkIfUserIsAdmin(userId: string, email: string): Promise<boolean> {
-  try {
-    console.log("🔍 Checking admin status for:", email);
-    
-    // Get current session
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      console.log("No active session");
-      return false;
-    }
-
-    // Check user metadata
-    const metadata = session.user.user_metadata;
-    console.log("User metadata:", metadata);
-    
-    const isAdminFromMetadata = 
-      metadata?.role === "admin" || 
-      metadata?.user_type === "admin" || 
-      metadata?.is_admin === true;
-    
-    if (isAdminFromMetadata) {
-      console.log("✅ Admin confirmed via metadata");
-      return true;
-    }
-
-    // Check profiles table
-    try {
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (!profileError && profile?.role === "admin") {
-        console.log("✅ Admin confirmed via profiles table");
-        return true;
-      }
-    } catch (e) {
-      console.log("Profiles table check failed:", e);
-    }
-
-    // Check creator_profiles
-    try {
-      const { data: creator, error: creatorError } = await supabase
-        .from("creator_profiles")
-        .select("status, role")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (!creatorError && (creator?.role === "admin" || creator?.status === "admin")) {
-        console.log("✅ Admin confirmed via creator_profiles");
-        return true;
-      }
-    } catch (e) {
-      console.log("Creator profiles check failed:", e);
-    }
-
-    // Check admin_users table
-    try {
-      const { data: adminUser, error: adminError } = await supabase
-        .from("admin_users")
-        .select("role")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (!adminError && adminUser) {
-        console.log("✅ Admin confirmed via admin_users table");
-        return true;
-      }
-    } catch (e) {
-      console.log("Admin users table check failed:", e);
-    }
-
-    // Special case for admin email
-    if (email === "admin@livelink.com") {
-      console.log("⚠️ Admin email detected but no admin privileges found");
-      return false;
-    }
-
-    console.log("❌ No admin privileges found");
-    return false;
-  } catch (error) {
-    console.error("Error checking admin status:", error);
     return false;
   }
 }
@@ -294,9 +149,8 @@ export function LoginPortal() {
         });
 
         if (signInError) {
-          // If login fails, maybe the account doesn't exist - try to create it
           if (signInError.message.includes("Invalid login credentials")) {
-            console.log("Admin account doesn't exist or wrong password - please create it first in Supabase");
+            console.log("Admin account doesn't exist or wrong password");
             setError("Admin account not found. Please ensure the account exists in Supabase Auth.");
             setIsLoading(false);
             return;
@@ -310,18 +164,8 @@ export function LoginPortal() {
           // Force assign admin privileges
           await forceAssignAdminPrivileges(data.user.id, email);
           
-          // Double-check admin status
-          const isAdmin = await checkIfUserIsAdmin(data.user.id, email);
-          
-          if (isAdmin) {
-            toast.success("Welcome, Admin!");
-            navigate("/admin/dashboard");
-          } else {
-            // If still not admin after assignment, try one more time with session refresh
-            await supabase.auth.refreshSession();
-            toast.success("Admin access granted! Redirecting...");
-            navigate("/admin/dashboard");
-          }
+          toast.success("Welcome, Admin!");
+          navigate("/admin"); // ✅ FIXED: Changed from "/admin/dashboard"
           return;
         }
       }
@@ -342,7 +186,7 @@ export function LoginPortal() {
           // Force assign admin privileges
           await forceAssignAdminPrivileges(data.user.id, email);
           toast.success("Welcome, Admin!");
-          navigate("/admin/dashboard");
+          navigate("/admin"); // ✅ FIXED: Changed from "/admin/dashboard"
           return;
         }
 
@@ -359,7 +203,7 @@ export function LoginPortal() {
         }
 
         toast.success("Welcome, Admin!");
-        navigate("/admin/dashboard");
+        navigate("/admin"); // ✅ FIXED: Changed from "/admin/dashboard"
         return;
       }
 
