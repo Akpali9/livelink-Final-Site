@@ -18,6 +18,7 @@ import {
   Award,
   Users,
 } from "lucide-react";
+
 import { motion, AnimatePresence } from "motion/react";
 import { toast, Toaster } from "sonner";
 import { useAuth } from "../lib/contexts/AuthContext";
