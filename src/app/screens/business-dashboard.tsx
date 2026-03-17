@@ -15,7 +15,6 @@ import {
   Filter,
   Download,
 } from "lucide-react";
-
 // ─────────────────────────────────────────────
 // INTERFACES  (aligned with schema)
 // ─────────────────────────────────────────────
