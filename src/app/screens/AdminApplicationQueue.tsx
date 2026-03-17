@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { supabase } from "../lib/supabase";
-import { AppHeader } from "../components/app-header";
+
 
 interface Application {
   id: string;
@@ -112,7 +112,7 @@ export function AdminApplicationQueue() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D]">
-      <AppHeader title="Admin Review" showBack={true} />
+     
       <main className="p-8 max-w-[800px] mx-auto w-full">
         <h1 className="text-3xl font-black uppercase tracking-tighter italic mb-8">
           Pending Applications ({applications.length})
