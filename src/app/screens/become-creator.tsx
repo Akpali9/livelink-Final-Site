@@ -923,7 +923,7 @@ export function AdminApplicationQueue() {
 
   return (
     <div className="min-h-screen bg-white text-[#1D1D1D] pb-20">
-      <AppHeader showBack title="Creator Applications" />
+    
 
       <div className="max-w-4xl mx-auto px-6 py-8">
 
