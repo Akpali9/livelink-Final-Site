@@ -28,7 +28,10 @@ import { motion } from "motion/react";
 import { toast, Toaster } from "sonner";
 import { supabase } from "../lib/supabase";
 import { AdminApplicationQueue } from "./become-creator";
-
+import { AdminDashboard } from "../components/AdminDashboard";
+export function AdminDashboardScreen() {
+  return <AdminDashboard />;
+}
 // ─────────────────────────────────────────────
 // TYPES  (aligned with schema)
 // ─────────────────────────────────────────────
