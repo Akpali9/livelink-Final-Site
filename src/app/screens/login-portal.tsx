@@ -1,130 +1,234 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
-import { 
-  Video as VideoIcon, 
-  Building, 
-  ChevronRight, 
-  AlertCircle, 
-  Mail, 
-  Lock, 
-  Eye, 
-  EyeOff, 
+import {
+  Video as VideoIcon,
+  Building,
+  ChevronRight,
+  AlertCircle,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
   UserPlus,
-  ArrowLeft
+  ArrowLeft,
+  Shield,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { toast, Toaster } from "sonner";
 import { useNavigate, Link } from "react-router";
 
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
+
+type AccountType = "creator" | "business" | "admin";
+
+// ─────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────
+
 export function LoginPortal() {
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [selectedType, setSelectedType] = useState<"creator" | "business" | null>(null);
-  const [isSignUp, setIsSignUp] = useState(false);
+
+  const [isLoading, setIsLoading]           = useState(false);
+  const [error, setError]                   = useState<string | null>(null);
+  const [email, setEmail]                   = useState("");
+  const [password, setPassword]             = useState("");
+  const [showPassword, setShowPassword]     = useState(false);
+  const [selectedType, setSelectedType]     = useState<AccountType | null>(null);
+  const [isSignUp, setIsSignUp]             = useState(false);
+  const [showAdminEntry, setShowAdminEntry] = useState(false);
+
+  // ─── AUTH HANDLER ─────────────────────────────────────────────────────────
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedType) {
       setError("Please select an account type first");
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
+      // ── ADMIN LOGIN ──────────────────────────────────────────────────────
+      if (selectedType === "admin") {
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (signInError) throw signInError;
+
+        // ✅ Check user_metadata.user_type === "admin"
+        //    This is set when the admin account is created via Supabase Auth dashboard
+        //    or via supabase.auth.admin.createUser({ user_metadata: { user_type: "admin" } })
+        const userType = data.user?.user_metadata?.user_type;
+
+        if (userType !== "admin") {
+          // Not an admin — sign them back out immediately
+          await supabase.auth.signOut();
+          setError("Access denied. This account does not have admin privileges.");
+          return;
+        }
+
+        toast.success("Welcome, Admin!");
+        navigate("/admin/dashboard");
+        return;
+      }
+
+      // ── SIGN UP ───────────────────────────────────────────────────────────
       if (isSignUp) {
-        // Handle Sign Up
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
               user_type: selectedType,
-              full_name: email.split('@')[0],
-            }
-          }
+              full_name: email.split("@")[0],
+            },
+          },
         });
-        
-        if (error) throw error;
-        
+
+        if (signUpError) throw signUpError;
+
         if (data.user) {
           toast.success("Account created! Please check your email for verification.", {
-            duration: 6000
+            duration: 6000,
           });
-          
-          // Redirect to profile completion based on selected type
+
           if (selectedType === "business") {
             navigate("/become-business");
           } else {
             navigate("/become-creator");
           }
         }
-      } else {
-        // Handle Login
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        
-        if (error) throw error;
-        
-        toast.success("Logged in successfully!");
-        
-        // Get user type from metadata
-        const userType = data.user?.user_metadata?.user_type;
-        
-        if (!userType) {
-          // User exists but hasn't completed profile
-          toast.info("Please complete your profile");
-          if (selectedType === "business") {
-            navigate("/become-business");
-          } else {
-            navigate("/become-creator");
-          }
+        return;
+      }
+
+      // ── LOGIN ─────────────────────────────────────────────────────────────
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) throw signInError;
+
+      const userType = data.user?.user_metadata?.user_type;
+
+      // Guard: admin accounts cannot log in through creator/business portal
+      if (userType === "admin") {
+        await supabase.auth.signOut();
+        setError("Admin accounts must use the admin login option.");
+        return;
+      }
+
+      toast.success("Logged in successfully!");
+
+      if (!userType) {
+        // User exists but hasn't completed profile
+        toast.info("Please complete your profile");
+        if (selectedType === "business") {
+          navigate("/become-business");
+        } else {
+          navigate("/become-creator");
+        }
+        return;
+      }
+
+      // ✅ Verify the logged-in user_type matches the selected portal type
+      //    Prevents a creator logging in via the business portal and vice versa
+      if (userType !== selectedType) {
+        await supabase.auth.signOut();
+        setError(
+          `This account is registered as a ${userType}. Please select the correct account type.`
+        );
+        return;
+      }
+
+      // ✅ Check that the corresponding profile exists in the DB
+      if (userType === "business") {
+        const { data: biz, error: bizError } = await supabase
+          .from("businesses")
+          .select("id, application_status, status")
+          .eq("user_id", data.user.id)
+          .maybeSingle();
+
+        if (bizError) throw bizError;
+
+        if (!biz) {
+          navigate("/become-business");
           return;
         }
-        
-        // Redirect based on user type
-        if (userType === "business") {
-          navigate("/business/dashboard");
-        } else {
-          navigate("/dashboard");
+
+        if (biz.status === "deleted") {
+          await supabase.auth.signOut();
+          setError("This business account has been deactivated. Please contact support.");
+          return;
         }
+
+        navigate("/business/dashboard");
+      } else {
+        // creator
+        const { data: creator, error: creatorError } = await supabase
+          .from("creator_profiles")
+          .select("id, status")
+          .eq("user_id", data.user.id)
+          .maybeSingle();
+
+        if (creatorError) throw creatorError;
+
+        if (!creator) {
+          navigate("/become-creator");
+          return;
+        }
+
+        if (creator.status === "suspended") {
+          await supabase.auth.signOut();
+          setError("Your creator account has been suspended. Please contact support.");
+          return;
+        }
+
+        if (creator.status === "pending_review") {
+          toast.info("Your application is still under review. You'll be notified when approved.");
+          navigate("/dashboard");
+          return;
+        }
+
+        navigate("/dashboard");
       }
-      
-    } catch (error: any) {
-      console.error("Auth error:", error);
-      
-      // Handle specific error messages
-      if (error.message?.includes("Invalid login credentials")) {
+    } catch (err: any) {
+      console.error("Auth error:", err);
+
+      if (err.message?.includes("Invalid login credentials")) {
         setError("Invalid email or password. Please try again.");
-      } else if (error.message?.includes("Email not confirmed")) {
+      } else if (err.message?.includes("Email not confirmed")) {
         setError("Please verify your email before logging in. Check your inbox.");
-      } else if (error.message?.includes("User already registered")) {
+      } else if (err.message?.includes("User already registered")) {
         setError("This email is already registered. Please login instead.");
         setIsSignUp(false);
-      } else if (error.message?.includes("Password should be at least 6 characters")) {
+      } else if (err.message?.includes("Password should be at least 6 characters")) {
         setError("Password must be at least 6 characters long.");
       } else {
-        setError(error.message || "Authentication failed. Please try again.");
+        setError(err.message || "Authentication failed. Please try again.");
       }
-      
+
       toast.error("Authentication failed");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const selectAccountType = (type: "creator" | "business") => {
+  // ─── HELPERS ──────────────────────────────────────────────────────────────
+
+  const selectAccountType = (type: AccountType) => {
     setSelectedType(type);
     setError(null);
     setIsSignUp(false);
+    setEmail("");
+    setPassword("");
   };
 
   const toggleMode = () => {
@@ -132,53 +236,63 @@ export function LoginPortal() {
     setError(null);
   };
 
+  const headingText = () => {
+    if (!selectedType) return "Who are you?";
+    if (selectedType === "admin") return "Admin Login";
+    return `${isSignUp ? "Create" : "Login to"} ${selectedType} account`;
+  };
+
+  const subText = () => {
+    if (!selectedType) return "Choose your account type to continue";
+    if (selectedType === "admin") return "Enter your admin credentials";
+    return isSignUp
+      ? "Fill in your details to get started"
+      : "Enter your credentials to access your dashboard";
+  };
+
+  // ─── RENDER ───────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-white flex flex-col px-8 pt-20 pb-12">
       <Toaster position="top-center" richColors />
-      
-      {/* Logo & Heading */}
+
+      {/* Logo */}
       <div className="flex flex-col items-center mb-12">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }} 
-          animate={{ opacity: 1, scale: 1 }} 
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
           className="flex items-center gap-2 mb-4 cursor-pointer"
-          onClick={() => navigate('/')}
+          onClick={() => navigate("/")}
         >
           <div className="w-10 h-10 bg-[#1D1D1D] flex items-center justify-center">
             <div className="w-5 h-5 bg-[#389C9A]" />
           </div>
-          <span className="text-3xl font-black uppercase tracking-tighter italic text-[#1D1D1D]">LiveLink</span>
+          <span className="text-3xl font-black uppercase tracking-tighter italic text-[#1D1D1D]">
+            LiveLink
+          </span>
         </motion.div>
-        
-        <motion.h1 
-          initial={{ opacity: 0, y: 10 }} 
-          animate={{ opacity: 1, y: 0 }} 
+
+        <motion.h1
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
           className="text-3xl font-black uppercase tracking-tighter leading-none mb-2 italic text-[#1D1D1D] text-center"
         >
-          {selectedType 
-            ? `${isSignUp ? 'Create' : 'Login to'} ${selectedType} account`
-            : "Who are you?"
-          }
+          {headingText()}
         </motion.h1>
-        
-        <motion.p 
-          initial={{ opacity: 0 }} 
-          animate={{ opacity: 1 }} 
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ delay: 0.1 }}
           className="text-sm text-gray-500 text-center max-w-md"
         >
-          {selectedType 
-            ? isSignUp 
-              ? "Fill in your details to get started" 
-              : "Enter your credentials to access your dashboard"
-            : "Choose your account type to continue"
-          }
+          {subText()}
         </motion.p>
       </div>
 
-      {/* Error Display */}
+      {/* Error */}
       {error && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="max-w-md mx-auto w-full mb-6 p-4 bg-red-50 border-2 border-red-200 flex gap-3"
@@ -191,9 +305,11 @@ export function LoginPortal() {
         </motion.div>
       )}
 
-      {/* Account Type Selection */}
+      {/* ── ACCOUNT TYPE SELECTION ── */}
       {!selectedType ? (
         <div className="flex flex-col gap-6 max-w-md mx-auto w-full">
+
+          {/* Creator */}
           <motion.button
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -213,6 +329,7 @@ export function LoginPortal() {
             <ChevronRight className="w-6 h-6 transition-transform group-hover:translate-x-1" />
           </motion.button>
 
+          {/* Business */}
           <motion.button
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -232,44 +349,70 @@ export function LoginPortal() {
             <ChevronRight className="w-6 h-6 transition-transform group-hover:translate-x-1" />
           </motion.button>
 
-          {/* Quick signup links for users who know what they want */}
+          {/* Quick signup */}
           <div className="mt-4 pt-4 border-t border-gray-100">
-            <p className="text-xs text-center text-gray-500 mb-3">
-              New here? Jump straight to signup:
-            </p>
+            <p className="text-xs text-center text-gray-500 mb-3">New here? Jump straight to signup:</p>
             <div className="flex gap-3 justify-center">
-              <Link
-                to="/become-creator"
-                className="text-xs px-4 py-2 border border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white transition-colors font-medium"
-              >
+              <Link to="/become-creator" className="text-xs px-4 py-2 border border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white transition-colors font-medium">
                 Creator Signup
               </Link>
-              <Link
-                to="/become-business"
-                className="text-xs px-4 py-2 border border-[#FEDB71] text-[#FEDB71] hover:bg-[#FEDB71] hover:text-black transition-colors font-medium"
-              >
+              <Link to="/become-business" className="text-xs px-4 py-2 border border-[#FEDB71] text-[#FEDB71] hover:bg-[#FEDB71] hover:text-black transition-colors font-medium">
                 Business Signup
               </Link>
             </div>
           </div>
+
+          {/* Admin entry — subtle, not prominent */}
+          <div className="mt-2 text-center">
+            {!showAdminEntry ? (
+              <button
+                onClick={() => setShowAdminEntry(true)}
+                className="text-[10px] text-gray-300 hover:text-gray-500 uppercase tracking-widest transition-colors"
+              >
+                Admin Access
+              </button>
+            ) : (
+              <motion.button
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                onClick={() => selectAccountType("admin")}
+                className="flex items-center gap-2 mx-auto text-xs px-4 py-2 border border-gray-300 text-gray-500 hover:border-[#1D1D1D] hover:text-[#1D1D1D] transition-colors"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                Continue as Admin
+              </motion.button>
+            )}
+          </div>
         </div>
+
       ) : (
-        /* Auth Form */
+        /* ── AUTH FORM ── */
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="max-w-md mx-auto w-full"
         >
-          {/* Back button */}
+          {/* Back */}
           <button
-            onClick={() => setSelectedType(null)}
+            onClick={() => { setSelectedType(null); setShowAdminEntry(false); setError(null); }}
             className="flex items-center gap-2 text-sm text-gray-500 mb-6 hover:text-black transition-colors group"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             Back to selection
           </button>
 
+          {/* Admin badge */}
+          {selectedType === "admin" && (
+            <div className="mb-6 p-3 bg-gray-50 border-2 border-gray-200 flex items-center gap-3">
+              <Shield className="w-5 h-5 text-gray-500 flex-shrink-0" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Admin access only — unauthorised attempts are logged
+              </p>
+            </div>
+          )}
+
           <form onSubmit={handleAuth} className="flex flex-col gap-4">
+            {/* Email */}
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -280,9 +423,11 @@ export function LoginPortal() {
                 className="w-full pl-12 p-4 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors bg-white text-sm"
                 required
                 disabled={isLoading}
+                autoComplete="email"
               />
             </div>
 
+            {/* Password */}
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -294,6 +439,7 @@ export function LoginPortal() {
                 required
                 disabled={isLoading}
                 minLength={6}
+                autoComplete={isSignUp ? "new-password" : "current-password"}
               />
               <button
                 type="button"
@@ -306,101 +452,95 @@ export function LoginPortal() {
             </div>
 
             {isSignUp && (
-              <p className="text-xs text-gray-500 mt-1">
-                Password must be at least 6 characters long
-              </p>
+              <p className="text-xs text-gray-500">Password must be at least 6 characters long</p>
             )}
 
+            {/* Submit */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-[#1D1D1D] text-white p-4 font-black uppercase tracking-widest italic text-sm hover:bg-opacity-80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-4 flex items-center justify-center gap-2"
+              className={`w-full p-4 font-black uppercase tracking-widest italic text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-4 flex items-center justify-center gap-2 ${
+                selectedType === "admin"
+                  ? "bg-gray-800 text-white hover:bg-gray-700"
+                  : "bg-[#1D1D1D] text-white hover:bg-opacity-80"
+              }`}
             >
               {isLoading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Processing...
                 </>
+              ) : selectedType === "admin" ? (
+                <>
+                  <Shield className="w-4 h-4" /> Admin Sign In
+                </>
+              ) : isSignUp ? (
+                <>
+                  <UserPlus className="w-4 h-4" /> Create Account
+                </>
               ) : (
                 <>
-                  {isSignUp ? <UserPlus className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                  {isSignUp ? 'Create Account' : 'Sign In'}
+                  <Lock className="w-4 h-4" /> Sign In
                 </>
               )}
             </button>
           </form>
 
-          {/* Conditional links based on selected type */}
-          <div className="mt-6 text-center space-y-2">
-            {!isSignUp ? (
-              <>
-                {/* For login mode - show signup link */}
-                <p className="text-sm text-gray-500">
-                  Don't have an account?{" "}
-                  <Link
-                    to={selectedType === "business" ? "/become-business" : "/become-creator"}
-                    className="font-bold text-[#389C9A] hover:underline"
-                  >
-                    Sign up as {selectedType}
-                  </Link>
-                </p>
-                
-                {/* Forgot password link */}
-                <div>
-                  <button
-                    onClick={() => toast.info("Password reset feature coming soon!")}
-                    className="text-xs text-gray-400 hover:text-gray-600"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* For signup mode - show login link */}
-                <p className="text-sm text-gray-500">
-                  Already have an account?{" "}
-                  <button
-                    onClick={toggleMode}
-                    className="font-bold text-[#389C9A] hover:underline"
-                  >
-                    Sign in
-                  </button>
-                </p>
-                
-                {/* Show direct links to switch signup type */}
-                <div className="pt-2">
-                  <p className="text-xs text-gray-400 mb-2">
-                    Not a {selectedType}?
+          {/* Footer links — hide for admin */}
+          {selectedType !== "admin" && (
+            <div className="mt-6 text-center space-y-2">
+              {!isSignUp ? (
+                <>
+                  <p className="text-sm text-gray-500">
+                    Don't have an account?{" "}
+                    <Link
+                      to={selectedType === "business" ? "/become-business" : "/become-creator"}
+                      className="font-bold text-[#389C9A] hover:underline"
+                    >
+                      Sign up as {selectedType}
+                    </Link>
                   </p>
-                  <div className="flex gap-3 justify-center">
-                    {selectedType === "business" ? (
-                      <Link
-                        to="/become-creator"
-                        className="text-xs px-3 py-1 border border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white transition-colors"
-                      >
-                        Sign up as Creator
-                      </Link>
-                    ) : (
-                      <Link
-                        to="/become-business"
-                        className="text-xs px-3 py-1 border border-[#FEDB71] text-[#FEDB71] hover:bg-[#FEDB71] hover:text-black transition-colors"
-                      >
-                        Sign up as Business
-                      </Link>
-                    )}
+                  <div>
+                    <button
+                      onClick={() => toast.info("Password reset feature coming soon!")}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Forgot password?
+                    </button>
                   </div>
-                </div>
-              </>
-            )}
-          </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500">
+                    Already have an account?{" "}
+                    <button onClick={toggleMode} className="font-bold text-[#389C9A] hover:underline">
+                      Sign in
+                    </button>
+                  </p>
+                  <div className="pt-2">
+                    <p className="text-xs text-gray-400 mb-2">Not a {selectedType}?</p>
+                    <div className="flex gap-3 justify-center">
+                      {selectedType === "business" ? (
+                        <Link to="/become-creator" className="text-xs px-3 py-1 border border-[#389C9A] text-[#389C9A] hover:bg-[#389C9A] hover:text-white transition-colors">
+                          Sign up as Creator
+                        </Link>
+                      ) : (
+                        <Link to="/become-business" className="text-xs px-3 py-1 border border-[#FEDB71] text-[#FEDB71] hover:bg-[#FEDB71] hover:text-black transition-colors">
+                          Sign up as Business
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
-          {/* Footer */}
+          {/* Terms */}
           <div className="mt-8 pt-8 text-center border-t border-gray-100">
             <p className="text-xs text-gray-400">
               By continuing, you agree to LiveLink's{" "}
-              <a href="/terms" className="underline hover:text-black">Terms</a>{" "}
-              and{" "}
+              <a href="/terms" className="underline hover:text-black">Terms</a> and{" "}
               <a href="/privacy" className="underline hover:text-black">Privacy Policy</a>
             </p>
           </div>
