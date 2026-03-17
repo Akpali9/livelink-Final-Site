@@ -5,8 +5,8 @@ import { CreatorLogin } from "./screens/creator-login";
 import { BusinessLogin } from "./screens/business-login";
 import { Browse } from "./screens/browse";
 import { Profile } from "./screens/profile";
-import { Dashboard } from "./screens/dashboard"; // This should now work
-import { BusinessDashboard } from "./screens/business-dashboard"; // This should now work
+import { Dashboard } from "./screens/dashboard";
+import { BusinessDashboard } from "./screens/business-dashboard";
 import { BusinessProfile } from "./screens/business-profile";
 import { CampaignCreation } from "./screens/campaign-creation";
 import { CampaignTypeSelection } from "./screens/campaign-type-selection";
@@ -37,7 +37,7 @@ import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
-import { AdminDashboard } from "./screens/admin-dashboard"; // 👈 IMPORT THE ADMIN DASHBOARD
+import { AdminDashboardScreen } from "./screens/admin-dashboard";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -58,7 +58,6 @@ const protectBoth = (Component: React.ComponentType) => (
   </ProtectedRoute>
 );
 
-// 👇 NEW: Admin protection helper
 const protectAdmin = (Component: React.ComponentType) => (
   <ProtectedRoute userType="admin">
     <Component />
@@ -103,15 +102,7 @@ const routes: RouteObject[] = [
       { path: "business/campaign/:campaignId/creator/:creatorId", element: protectBusiness(BusinessCampaignDetail) },
       { path: "business/settings", element: protectBusiness(BusinessSettings) },
       { path: "business/submission-success", element: protectBusiness(BusinessSubmissionSuccess) },
-      {
-  path: "admin",
-  element: protectAdmin(AdminLayout),
-  children: [
-    { index: true, element: <AdminDashboardScreen /> },
-    { path: "dashboard", element: <AdminDashboardScreen /> },
-    { path: "applications", element: <AdminApplicationQueue /> },
-  ]
-},
+      
       // Protected routes for both user types
       { path: "messages", element: protectBoth(MessagesInbox) },
       { path: "messages/:id", element: protectBoth(MessageThread) },
@@ -122,10 +113,10 @@ const routes: RouteObject[] = [
       { path: "campaign/declined", element: protectBoth(CampaignDeclined) },
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
       
-      // Admin routes
-      { path: "admin", element: protectAdmin(AdminDashboard) }, // 👈 ADDED: Main admin dashboard route
+      // Admin Routes - Simplified without AdminLayout
+      { path: "admin", element: protectAdmin(AdminDashboardScreen) },
+      { path: "admin/dashboard", element: protectAdmin(AdminDashboardScreen) },
       { path: "admin/applications", element: protectBoth(AdminApplicationQueue) },
-      { path: "admin/dashboard", redirect: "/admin" }, // 👈 ADDED: Redirect for backward compatibility
     ],
   },
 ];
