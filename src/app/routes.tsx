@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouteObject } from "react-router";
+import { createBrowserRouter, RouteObject, Navigate } from "react-router";
 import { Home } from "./screens/home";
 import { LoginPortal } from "./screens/login-portal";
 import { CreatorLogin } from "./screens/creator-login";
@@ -37,7 +37,7 @@ import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
-import { AdminDashboardScreen } from "./screens/admin-dashboard";
+import { AdminDashboard } from "../components/AdminDashboard"; // 👈 Direct import from components
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -45,7 +45,6 @@ const protectCreator = (Component: React.ComponentType) => (
     <Component />
   </ProtectedRoute>
 );
-
 
 const protectBusiness = (Component: React.ComponentType) => (
   <ProtectedRoute userType="business">
@@ -114,9 +113,15 @@ const routes: RouteObject[] = [
       { path: "campaign/declined", element: protectBoth(CampaignDeclined) },
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
       
-      // Admin Routes - Simplified without AdminLayout
-      { path: "admin", element: protectAdmin(AdminDashboardScreen) },
-      { path: "admin/dashboard", element: protectAdmin(AdminDashboardScreen) },
+      // Admin Routes - Direct import from components
+      { 
+        path: "admin", 
+        element: protectAdmin(AdminDashboard) 
+      },
+      { 
+        path: "admin/dashboard", 
+        element: protectAdmin(AdminDashboard) 
+      },
       { path: "admin/applications", element: protectBoth(AdminApplicationQueue) },
     ],
   },
