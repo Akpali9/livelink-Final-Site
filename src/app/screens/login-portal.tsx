@@ -165,7 +165,7 @@ export function LoginPortal() {
           await forceAssignAdminPrivileges(data.user.id, email);
           
           toast.success("Welcome, Admin!");
-          navigate("/admin/dashboard"); // ✅ FIXED: Changed from "/admin/dashboard"
+          navigate("/admin"); // ✅ FIXED: Changed from "/admin/dashboard"
           return;
         }
       }
