@@ -1,40 +1,84 @@
-import React from "react";
-import { Navigate, useLocation } from "react-router";
-import { useAuth } from "../lib/contexts/AuthContext";
+// app/components/ProtectedRoute.tsx
+import { Navigate } from "react-router";
+import { supabase } from "../lib/supabase";
+import { useEffect, useState } from "react";
 
-interface ProtectedRouteProps {
+export function ProtectedRoute({ 
+  children, 
+  userType 
+}: { 
   children: React.ReactNode;
-  userType?: "creator" | "business" | "both";
-}
+  userType?: "creator" | "business" | "admin";
+}) {
+  const [loading, setLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
-export function ProtectedRoute({ children, userType = "both" }: ProtectedRouteProps) {
-  const { user, isLoading, isAuthenticated } = useAuth();
-  const location = useLocation();
+  useEffect(() => {
+    const checkAccess = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setHasAccess(false);
+        setLoading(false);
+        return;
+      }
 
-  if (isLoading) {
+      setUser(user);
+
+      // Get user metadata
+      const userTypeFromMeta = user.user_metadata?.user_type;
+      const userRole = user.user_metadata?.role;
+      const isAdmin = userRole === "admin" || 
+                     userTypeFromMeta === "admin" ||
+                     user.user_metadata?.is_admin === true;
+
+      console.log("ProtectedRoute check:", {
+        email: user.email,
+        userTypeFromMeta,
+        userRole,
+        isAdmin,
+        requiredType: userType
+      });
+
+      // Admin access check
+      if (userType === "admin") {
+        setHasAccess(isAdmin);
+        setLoading(false);
+        return;
+      }
+
+      // Regular user type check
+      if (userType && userTypeFromMeta !== userType) {
+        console.log(`Access denied: user is ${userTypeFromMeta}, requires ${userType}`);
+        setHasAccess(false);
+        setLoading(false);
+        return;
+      }
+
+      setHasAccess(true);
+      setLoading(false);
+    };
+
+    checkAccess();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      checkAccess();
+    });
+
+    return () => subscription?.unsubscribe();
+  }, [userType]);
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-[#F8F8F8] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    // Redirect to login portal if not authenticated
-    return <Navigate to="/login/portal" state={{ from: location }} replace />;
-  }
-
-  // Check user type if needed
-  if (userType !== "both") {
-    // You'll need to determine the user type from your user metadata or a separate field
-    // This is just an example - adjust based on your user structure
-    const actualUserType = user?.user_metadata?.type || "creator";
-    
-    if (actualUserType !== userType) {
-      // Redirect to appropriate dashboard if wrong user type
-      const redirectPath = actualUserType === "business" ? "/business/dashboard" : "/dashboard";
-      return <Navigate to={redirectPath} replace />;
-    }
+  if (!hasAccess) {
+    return <Navigate to="/login/portal" replace />;
   }
 
   return <>{children}</>;
