@@ -47,14 +47,151 @@ interface DashboardStats {
 }
 
 // ─────────────────────────────────────────────
-// ADMIN GUARD
+// ADMIN GUARD WITH AUTO-ASSIGNMENT
 // ─────────────────────────────────────────────
 
-async function verifyAdmin(): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-  // ✅ No admin_profiles table in schema — check user_metadata set at account creation
-  return user.user_metadata?.user_type === "admin";
+async function verifyAndAssignAdmin(): Promise<boolean> {
+  try {
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      console.error("No user found:", userError);
+      return false;
+    }
+
+    console.log("Current user:", user.email);
+
+    // Check if this is the admin email
+    const isAdminEmail = user.email === "admin@livelink.com";
+
+    // Check if user already has admin in metadata
+    const hasAdminMetadata = user.user_metadata?.role === "admin" || 
+                            user.user_metadata?.user_type === "admin";
+
+    // If this is admin@livelink.com but doesn't have admin privileges, auto-assign them
+    if (isAdminEmail && !hasAdminMetadata) {
+      console.log("Auto-assigning admin privileges to admin@livelink.com");
+      
+      // Update user metadata with admin role
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { 
+          role: "admin",
+          user_type: "admin",
+          is_admin: true 
+        }
+      });
+
+      if (updateError) {
+        console.error("Failed to update user metadata:", updateError);
+        
+        // Try alternative method - update via admin API (if using service role)
+        // This is a fallback
+        await assignAdminViaDatabase(user.id);
+      } else {
+        toast.success("Admin privileges granted!");
+        return true;
+      }
+    }
+
+    // Also check profiles table for admin role
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!profileError && profile?.role === "admin") {
+      return true;
+    }
+
+    // If this is admin email but profile doesn't have admin role, create/update it
+    if (isAdminEmail) {
+      await upsertAdminProfile(user.id, user.email);
+      return true;
+    }
+
+    // Final check: any admin indicator in metadata
+    return user.user_metadata?.role === "admin" || 
+           user.user_metadata?.user_type === "admin" ||
+           user.user_metadata?.is_admin === true;
+           
+  } catch (error) {
+    console.error("Error in verifyAndAssignAdmin:", error);
+    return false;
+  }
+}
+
+// Helper function to assign admin via database
+async function assignAdminViaDatabase(userId: string) {
+  try {
+    // Try to update profiles table directly
+    const { error: upsertError } = await supabase
+      .from("profiles")
+      .upsert({
+        id: userId,
+        role: "admin",
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+
+    if (upsertError) {
+      console.error("Failed to upsert profile:", upsertError);
+    }
+
+    // Also try to update creator_profiles if it exists
+    await supabase
+      .from("creator_profiles")
+      .update({ status: "active" })
+      .eq("id", userId);
+      
+  } catch (error) {
+    console.error("Error in assignAdminViaDatabase:", error);
+  }
+}
+
+// Helper to upsert admin profile
+async function upsertAdminProfile(userId: string, email: string) {
+  try {
+    // Check if profiles table exists and upsert
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .upsert({
+        id: userId,
+        email: email,
+        role: "admin",
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+
+    if (profileError) {
+      console.error("Failed to upsert profile:", profileError);
+      
+      // If profiles table doesn't exist, try to create it via RPC
+      await createProfilesTable();
+    }
+
+    // Also update user metadata again to be safe
+    await supabase.auth.updateUser({
+      data: { 
+        role: "admin", 
+        user_type: "admin",
+        is_admin: true 
+      }
+    });
+
+  } catch (error) {
+    console.error("Error in upsertAdminProfile:", error);
+  }
+}
+
+// Helper to create profiles table if it doesn't exist
+async function createProfilesTable() {
+  try {
+    // This is a SQL query that would need to be run via RPC or migration
+    // For now, we'll just log it
+    console.log("Please ensure profiles table exists with role column");
+  } catch (error) {
+    console.error("Error creating profiles table:", error);
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -70,6 +207,7 @@ export function AdminDashboard() {
   const [activeTab, setActiveTab]         = useState<
     "overview" | "creators" | "businesses" | "campaigns" | "support"
   >("overview");
+  const [isAdmin, setIsAdmin]             = useState(false);
 
   const [stats, setStats] = useState<DashboardStats>({
     totalCreators:      0,
@@ -84,19 +222,46 @@ export function AdminDashboard() {
     pendingPayouts:     0,
   });
 
-  // ─── GUARD ──────────────────────────────────────────────────────────────
+  // ─── GUARD WITH AUTO-ASSIGNMENT ─────────────────────────────────────────
 
   useEffect(() => {
     const init = async () => {
-      const isAdmin = await verifyAdmin();
-      if (!isAdmin) {
+      setLoading(true);
+      
+      // Check and auto-assign admin if needed
+      const adminStatus = await verifyAndAssignAdmin();
+      setIsAdmin(adminStatus);
+      
+      if (!adminStatus) {
         toast.error("Unauthorised access");
         navigate("/login/portal");
         return;
       }
+      
       await fetchDashboardData();
+      setLoading(false);
     };
+    
     init();
+
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        const adminStatus = await verifyAndAssignAdmin();
+        setIsAdmin(adminStatus);
+        if (adminStatus) {
+          await fetchDashboardData();
+        } else {
+          navigate("/login/portal");
+        }
+      } else if (event === 'SIGNED_OUT') {
+        navigate("/login/portal");
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   // ─── FETCH STATS ─────────────────────────────────────────────────────────
