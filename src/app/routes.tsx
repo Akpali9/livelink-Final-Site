@@ -103,7 +103,15 @@ const routes: RouteObject[] = [
       { path: "business/campaign/:campaignId/creator/:creatorId", element: protectBusiness(BusinessCampaignDetail) },
       { path: "business/settings", element: protectBusiness(BusinessSettings) },
       { path: "business/submission-success", element: protectBusiness(BusinessSubmissionSuccess) },
-      
+      {
+  path: "admin",
+  element: protectAdmin(AdminLayout),
+  children: [
+    { index: true, element: <AdminDashboardScreen /> },
+    { path: "dashboard", element: <AdminDashboardScreen /> },
+    { path: "applications", element: <AdminApplicationQueue /> },
+  ]
+},
       // Protected routes for both user types
       { path: "messages", element: protectBoth(MessagesInbox) },
       { path: "messages/:id", element: protectBoth(MessageThread) },
