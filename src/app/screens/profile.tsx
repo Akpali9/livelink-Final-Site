@@ -142,7 +142,7 @@ export function Profile() {
             )
           `)
           .eq("id", id)
-          .single();
+          .maybeSingle()
 
         if (creatorError) throw creatorError;
 
