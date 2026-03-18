@@ -43,6 +43,7 @@ import { ForgotPassword } from "./screens/forgot-password";
 import { ResetPassword } from "./screens/reset-password";
 import { Terms } from "./screens/terms";
 import { Privacy } from "./screens/privacy";
+import { AdminBusinessQueue } from "../app/components/AdminBusinessQueue";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -121,6 +122,7 @@ const routes: RouteObject[] = [
       { path: "reset-password", Component: ResetPassword },
       { path: "terms", Component: Terms },
       { path: "privacy", Component: Privacy },
+      { path: "admin/businesses", element: protectAdmin(AdminBusinessQueue)}
       
       // ✅ ADMIN ROUTES - CORRECTED
       { 
