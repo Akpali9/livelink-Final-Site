@@ -31,7 +31,7 @@ import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────
-// INTERFACES  (aligned with schema)
+// INTERFACES (aligned with schema)
 // ─────────────────────────────────────────────
 
 interface CreatorPlatform {
@@ -39,32 +39,27 @@ interface CreatorPlatform {
   platform_type: string;
   followers_count: number;
   profile_url: string;
-}
-
-interface StreamUpdate {
-  id: string;
-  stream_number: number;
-  stream_date: string;
-  duration: string;
-  viewer_count: number;
+  username?: string;
 }
 
 // Raw row from creator_profiles join
 interface CreatorRow {
   id: string;
   user_id: string;
-  full_name: string | null;       // ✅ not "name"
+  full_name: string | null;
   username: string | null;
-  avatar_url: string | null;      // ✅ not "avatar"
+  email: string | null;
+  avatar_url: string | null;
   bio: string | null;
   location: string | null;
-  niche: string[] | null;         // ✅ not "niches" — schema column is "niche"
-  avg_viewers: number;            // ✅ not "avg_concurrent"
+  niche: string[] | null;
+  avg_viewers: number;
   total_streams: number;
   rating: number;
+  status: string;
+  created_at: string;
   // joined
   creator_platforms: CreatorPlatform[];
-  stream_updates: StreamUpdate[];
 }
 
 interface FormattedCreator {
@@ -80,59 +75,20 @@ interface FormattedCreator {
   niches: string[];
   stats: {
     avgViewers: number;
-    peakViewers: number;
-    followers: number;
     totalStreams: number;
-    engagement: number;
     rating: number;
-    reviews: number;
   };
   platforms: {
     name: string;
     followers: number;
     url: string;
+    username?: string;
   }[];
-  packages: CreatorPackage[];
-  recentStreams: {
-    id: string;
-    title: string;
-    date: string;
-    viewers: number;
-    duration: string;
-  }[];
-  reviews: Review[];
-}
-
-interface CreatorPackage {
-  id: string;
-  name: string;
-  streams: number;
-  price: number;
-  description: string;
-  popular?: boolean;
-}
-
-interface Review {
-  id: string;
-  business: string;
-  rating: number;
-  comment: string;
-  date: string;
 }
 
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
-
-function getPlatformIcon(platform: string) {
-  switch (platform.toLowerCase()) {
-    case "twitch":    return Twitch;
-    case "youtube":   return Youtube;
-    case "instagram": return Instagram;
-    case "facebook":  return Facebook;
-    default:          return VideoIcon;
-  }
-}
 
 function getPlatformIconComponent(platformName: string) {
   switch (platformName.toLowerCase()) {
@@ -162,7 +118,6 @@ export function Profile() {
   const [creator, setCreator] = useState<FormattedCreator | null>(null);
   const [loading, setLoading] = useState(true);
   const [isBioExpanded, setIsBioExpanded] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<CreatorPackage | null>(null);
   const [offerSent, setOfferSent] = useState(false);
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [customOffer, setCustomOffer] = useState({
@@ -183,9 +138,7 @@ export function Profile() {
       setLoading(true);
 
       try {
-        // ✅ Fixed: backtick string, correct join table names from schema
-        // schema tables: creator_platforms (not "platforms"), stream_updates (not "stream_updates" aliased differently)
-        // ❌ Removed: creator_stats (doesn't exist in schema), creator_packages fetched separately
+        // ✅ Fixed: Removed non-existent tables (stream_updates, creator_packages)
         const { data: creatorData, error: creatorError } = await supabase
           .from("creator_profiles")
           .select(`
@@ -193,6 +146,7 @@ export function Profile() {
             user_id,
             full_name,
             username,
+            email,
             avatar_url,
             bio,
             location,
@@ -200,21 +154,18 @@ export function Profile() {
             avg_viewers,
             total_streams,
             rating,
+            status,
+            created_at,
             creator_platforms (
               id,
               platform_type,
               followers_count,
-              profile_url
-            ),
-            stream_updates (
-              id,
-              stream_number,
-              stream_date,
-              duration,
-              viewer_count
+              profile_url,
+              username
             )
           `)
           .eq("id", id)
+          .eq("status", "active") // Only show active creators
           .maybeSingle();
 
         if (creatorError) throw creatorError;
@@ -225,52 +176,31 @@ export function Profile() {
 
         const raw = creatorData as CreatorRow;
 
-        // Fetch packages separately (separate table, no FK join issues)
-        const { data: packagesData } = await supabase
-          .from("creator_packages")
-          .select("*")
-          .eq("creator_id", id)
-          .order("price", { ascending: true });
-
         // ✅ Map raw DB columns → formatted shape
         const formatted: FormattedCreator = {
           id: raw.id,
           user_id: raw.user_id,
-          name: raw.full_name || "Unknown Creator",       // ✅ full_name
+          name: raw.full_name || "Unknown Creator",
           username: raw.username
             ? `@${raw.username}`
             : `@${(raw.full_name || "creator").toLowerCase().replace(/\s+/g, "")}`,
-          avatar: raw.avatar_url || "https://via.placeholder.com/200", // ✅ avatar_url
+          avatar: raw.avatar_url || "https://via.placeholder.com/200",
           bio: raw.bio || "Live streamer and content creator passionate about engaging with audiences.",
           location: raw.location || "Remote",
-          verified: false, // no verified column in schema — extend if needed
-          availability: "Available for campaigns",
-          niches: raw.niche || ["Gaming", "Entertainment"],  // ✅ niche (not niches)
+          verified: false, // No verified column in schema
+          availability: raw.status === "active" ? "Available for campaigns" : "Not available",
+          niches: raw.niche || ["Gaming", "Entertainment"],
           stats: {
-            avgViewers:   raw.avg_viewers   || 0,   // ✅ avg_viewers (not avg_concurrent)
-            peakViewers:  0,                         // not in schema
-            followers:    0,                         // not in creator_profiles schema
-            totalStreams:  raw.total_streams || 0,
-            engagement:   0,                         // not in schema
-            rating:       raw.rating        || 0,
-            reviews:      0,
+            avgViewers: raw.avg_viewers || 0,
+            totalStreams: raw.total_streams || 0,
+            rating: raw.rating || 0,
           },
           platforms: (raw.creator_platforms || []).map((p) => ({
-            name:      p.platform_type,
+            name: p.platform_type,
             followers: p.followers_count || 0,
-            url:       p.profile_url || "#",
+            url: p.profile_url || "#",
+            username: p.username,
           })),
-          packages: packagesData || [],
-          recentStreams: (raw.stream_updates || [])
-            .slice(0, 5)
-            .map((s) => ({
-              id:       s.id,
-              title:    `Stream #${s.stream_number}`,
-              date:     new Date(s.stream_date).toLocaleDateString(),
-              viewers:  s.viewer_count || 0,
-              duration: s.duration || "—",
-            })),
-          reviews: [],
         };
 
         setCreator(formatted);
@@ -279,9 +209,9 @@ export function Profile() {
         if (user) {
           const { data: business } = await supabase
             .from("businesses")
-            .select("id, business_name, contact_email, logo_url") // ✅ business_name not company_name
+            .select("id, business_name, email, logo_url") // ✅ Fixed: contact_email → email
             .eq("user_id", user.id)
-            .single();
+            .maybeSingle();
 
           if (business) {
             setIsBusiness(true);
@@ -301,19 +231,7 @@ export function Profile() {
 
   // ─── OFFER ACTIONS ────────────────────────────────────────────────────────
 
-  const handleSelectPackage = (pkg: CreatorPackage) => {
-    setSelectedPackage(pkg);
-    setCustomOffer({
-      streams: pkg.streams.toString(),
-      rate:    pkg.price.toString(),
-      type:    "Banner Only",
-      message: "",
-    });
-    setShowOfferModal(true);
-  };
-
   const handleCustomOffer = () => {
-    setSelectedPackage(null);
     setShowOfferModal(true);
   };
 
@@ -322,31 +240,17 @@ export function Profile() {
     const avg = creator.stats.avgViewers;
     return {
       uniqueViewers: Math.round(avg * 0.4 * streams + 500),
-      hours:         streams * 1.5,
-      impressions:   Math.round(avg * 1.4 * streams),
-      totalCost:     streams * rate,
+      hours: streams * 1.5,
+      impressions: Math.round(avg * 1.4 * streams),
+      totalCost: streams * rate,
     };
   };
 
   const estimates =
-    selectedPackage
-      ? getEstimates(selectedPackage.streams, selectedPackage.price)
-      : customOffer.streams && customOffer.rate
+    customOffer.streams && customOffer.rate
       ? getEstimates(parseInt(customOffer.streams), parseFloat(customOffer.rate))
       : null;
 
-  /**
-   * "offers" table does not exist in the schema.
-   * We insert into campaign_creators with status='pending' instead,
-   * linked to a campaign the business owns.
-   *
-   * ⚠️  For a direct creator→business offer flow you will need to either:
-   *   a) Add an `offers` table to your schema, OR
-   *   b) Require the business to select an existing campaign to attach the creator to.
-   *
-   * Below we use campaign_creators with a pending status as the closest match.
-   * Replace `campaignId` logic with a campaign-picker if needed.
-   */
   const handleSendOffer = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -364,14 +268,12 @@ export function Profile() {
     if (!creator) return;
 
     try {
-      // Insert a pending campaign_creator row.
-      // ⚠️  campaign_id is required (NOT NULL) — you must supply a real campaign id.
-      // Here we look up the business's most recent active campaign as a fallback.
+      // Find the business's most recent campaign
       const { data: campaignRow, error: campaignError } = await supabase
         .from("campaigns")
         .select("id")
         .eq("business_id", businessProfile.id)
-        .in("status", ["active", "draft"])
+        .in("status", ["active", "draft", "pending_review"])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -397,26 +299,41 @@ export function Profile() {
         return;
       }
 
+      // ✅ Fixed: Removed user_id from insert (doesn't exist in schema)
       const { error } = await supabase
         .from("campaign_creators")
         .insert({
-          campaign_id:       campaignRow.id,
-          creator_id:        creator.id,
-          user_id:           creator.user_id,
-          status:            "pending",
-          streams_target:    parseInt(customOffer.streams),
+          campaign_id: campaignRow.id,
+          creator_id: creator.id,
+          status: "pending",
+          streams_target: parseInt(customOffer.streams),
           streams_completed: 0,
-          total_earnings:    parseFloat(customOffer.rate) * parseInt(customOffer.streams),
+          total_earnings: parseFloat(customOffer.rate) * parseInt(customOffer.streams),
+          paid_out: 0,
+          created_at: new Date().toISOString(),
         });
 
       if (error) throw error;
+
+      // Create notification for creator
+      await supabase.from("notifications").insert({
+        user_id: creator.user_id,
+        type: "new_offer",
+        title: "New Campaign Offer! 🎉",
+        message: `${businessProfile.business_name} sent you an offer for ${customOffer.streams} streams.`,
+        data: { 
+          business_id: businessProfile.id,
+          campaign_id: campaignRow.id,
+          creator_id: creator.id 
+        },
+        created_at: new Date().toISOString()
+      });
 
       setOfferSent(true);
       setShowOfferModal(false);
       toast.success("Offer sent successfully!");
 
       setCustomOffer({ streams: "4", rate: "", type: "Banner Only", message: "" });
-      setSelectedPackage(null);
     } catch (error) {
       console.error("Error sending offer:", error);
       toast.error("Failed to send offer");
@@ -456,7 +373,7 @@ export function Profile() {
         <div className="flex flex-col items-center justify-center h-[80vh] px-8">
           <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
           <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Profile Not Found</h2>
-          <p className="text-gray-400 text-center mb-8">The creator you're looking for doesn't exist.</p>
+          <p className="text-gray-400 text-center mb-8">The creator you're looking for doesn't exist or is not active.</p>
           <button
             onClick={() => navigate("/browse")}
             className="bg-[#1D1D1D] text-white px-8 py-4 text-sm font-black uppercase tracking-widest rounded-xl"
@@ -529,7 +446,7 @@ export function Profile() {
                 <span>{creator.location}</span>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 border-2 border-[#1D1D1D] text-[8px] uppercase font-black italic rounded-full">
-                <span className="w-1.5 h-1.5 bg-[#389C9A] rounded-full" />
+                <span className={`w-1.5 h-1.5 ${creator.availability.includes("Available") ? "bg-[#389C9A]" : "bg-gray-400"} rounded-full`} />
                 {creator.availability}
               </div>
             </div>
@@ -567,32 +484,33 @@ export function Profile() {
               )}
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-3 w-full">
-              <button
-                onClick={handleCustomOffer}
-                className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
-              >
-                <Zap className="w-4 h-4 text-[#FEDB71]" /> Send Offer
-              </button>
-              <button
-                onClick={handleContact}
-                className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
-              >
-                <MessageSquare className="w-4 h-4" /> Message
-              </button>
-            </div>
+            {/* Action Buttons - Only show for businesses */}
+            {isBusiness && (
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={handleCustomOffer}
+                  className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-4 h-4 text-[#FEDB71]" /> Send Offer
+                </button>
+                <button
+                  onClick={handleContact}
+                  className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
+                >
+                  <MessageSquare className="w-4 h-4" /> Message
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Stats Grid */}
         <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {[
               { icon: <Users className="w-5 h-5 text-[#389C9A] mx-auto" />, value: formatNumber(creator.stats.avgViewers), label: "Avg Viewers" },
-              { icon: <Eye className="w-5 h-5 text-[#389C9A] mx-auto" />,   value: creator.stats.totalStreams, label: "Streams" },
-              { icon: <TrendingUp className="w-5 h-5 text-[#389C9A] mx-auto" />, value: `${creator.stats.engagement}%`, label: "Engagement" },
-              { icon: <Star className="w-5 h-5 text-[#FEDB71] mx-auto" />,   value: creator.stats.rating || "—", label: "Rating" },
+              { icon: <Eye className="w-5 h-5 text-[#389C9A] mx-auto" />, value: creator.stats.totalStreams, label: "Total Streams" },
+              { icon: <Star className="w-5 h-5 text-[#FEDB71] mx-auto" />, value: creator.stats.rating || "—", label: "Rating" },
             ].map((s, i) => (
               <div key={i} className="text-center">
                 <div className="bg-[#F8F8F8] p-3 rounded-xl mb-2">{s.icon}</div>
@@ -603,71 +521,23 @@ export function Profile() {
           </div>
         </div>
 
-        {/* Packages */}
-        {creator.packages.length > 0 && (
+        {/* Platforms Detail */}
+        {creator.platforms.length > 0 && (
           <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">Campaign Packages</h3>
-            <div className="flex flex-col gap-4">
-              {creator.packages.map((pkg) => (
-                <motion.div
-                  key={pkg.id}
-                  whileHover={{ y: -2 }}
-                  className={`relative bg-white border-2 rounded-xl p-6 cursor-pointer transition-all ${
-                    pkg.popular
-                      ? "border-[#389C9A] shadow-lg"
-                      : "border-[#1D1D1D] hover:border-[#389C9A]"
-                  }`}
-                  onClick={() => handleSelectPackage(pkg)}
-                >
-                  {pkg.popular && (
-                    <div className="absolute -top-3 right-4 bg-[#389C9A] text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest">
-                      Popular
-                    </div>
-                  )}
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h4 className="font-black text-lg uppercase tracking-tight">{pkg.name}</h4>
-                      <p className="text-[8px] font-medium opacity-40 uppercase tracking-widest">{pkg.streams} streams</p>
-                    </div>
-                    <p className="text-xl font-black text-[#389C9A]">£{pkg.price}</p>
-                  </div>
-                  <p className="text-[9px] text-[#1D1D1D]/60 mb-4">{pkg.description}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[7px] font-black uppercase tracking-widest opacity-40">
-                      <Calendar className="w-3 h-3" />
-                      <span>Est. {(pkg.streams * 1.5).toFixed(1)} hours</span>
-                    </div>
-                    <span className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] flex items-center gap-1">
-                      Select Package <ArrowRight className="w-3 h-3" />
-                    </span>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Recent Streams */}
-        {creator.recentStreams.length > 0 && (
-          <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">Recent Streams</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">Connected Platforms</h3>
             <div className="space-y-3">
-              {creator.recentStreams.map((stream) => (
-                <div
-                  key={stream.id}
-                  className="bg-[#F8F8F8] p-4 rounded-xl flex items-center justify-between"
-                >
+              {creator.platforms.map((platform, i) => (
+                <div key={i} className="bg-[#F8F8F8] p-4 rounded-xl flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <VideoIcon className="w-4 h-4 text-[#389C9A]" />
+                    {getPlatformIconComponent(platform.name)}
                     <div>
-                      <p className="font-black text-xs uppercase tracking-tight">{stream.title}</p>
-                      <p className="text-[7px] font-medium opacity-40">{stream.date}</p>
+                      <p className="font-black text-xs uppercase">{platform.name}</p>
+                      {platform.username && (
+                        <p className="text-[7px] font-medium opacity-40">@{platform.username}</p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-black">{stream.viewers.toLocaleString()}</p>
-                    <p className="text-[7px] font-medium opacity-40">viewers</p>
-                  </div>
+                  <p className="text-sm font-black">{formatNumber(platform.followers)}</p>
                 </div>
               ))}
             </div>
@@ -675,19 +545,21 @@ export function Profile() {
         )}
 
         {/* CTA */}
-        <div className="px-6 py-8">
-          <div className="bg-gradient-to-r from-[#1D1D1D] to-gray-800 p-8 rounded-xl text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
-            <h4 className="text-xl font-black uppercase italic mb-2">Ready to collaborate?</h4>
-            <p className="text-[9px] opacity-60 mb-6">Send an offer to start working with {creator.name}</p>
-            <button
-              onClick={handleCustomOffer}
-              className="w-full bg-white text-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] hover:text-white transition-all flex items-center justify-center gap-2"
-            >
-              Send Offer <ArrowRight className="w-4 h-4" />
-            </button>
+        {isBusiness && (
+          <div className="px-6 py-8">
+            <div className="bg-gradient-to-r from-[#1D1D1D] to-gray-800 p-8 rounded-xl text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
+              <h4 className="text-xl font-black uppercase italic mb-2">Ready to collaborate?</h4>
+              <p className="text-[9px] opacity-60 mb-6">Send an offer to start working with {creator.name}</p>
+              <button
+                onClick={handleCustomOffer}
+                className="w-full bg-white text-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] hover:text-white transition-all flex items-center justify-center gap-2"
+              >
+                Send Offer <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </main>
 
       <BottomNav />
@@ -741,7 +613,6 @@ export function Profile() {
                       <option>Banner Only</option>
                       <option>Promo Code</option>
                       <option>Banner + Promo Code</option>
-                      <option>Custom</option>
                     </select>
                   </div>
 
