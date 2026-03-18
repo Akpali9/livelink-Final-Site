@@ -74,6 +74,7 @@ export function BusinessDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [campaignFilter, setCampaignFilter] = useState<"LIVE" | "PENDING" | "COMPLETED">("LIVE");
   const [showPendingOnly, setShowPendingOnly] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   // ─── 1. AUTH + BUSINESS PROFILE ───────────────────────────────────────────
 
@@ -89,20 +90,22 @@ export function BusinessDashboard() {
           return;
         }
 
-        // ✅ Only real columns: email (not contact_email), no company_name
+        // ✅ Use maybeSingle() instead of single() to avoid 406 errors
         const { data: business, error: businessError } = await supabase
           .from("businesses")
           .select("id, business_name, full_name, email, logo_url, application_status, status")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
 
-        if (businessError) {
-          if (businessError.code === "PGRST116") {
-            // No profile yet — complete registration
-            navigate("/become-business", { replace: true });
-            return;
-          }
+        if (businessError && businessError.code !== "PGRST116") {
           throw businessError;
+        }
+
+        if (!business) {
+          // No profile yet — complete registration
+          console.log("No business profile found, redirecting to registration");
+          navigate("/become-business", { replace: true });
+          return;
         }
 
         if (business.status === "deleted") {
@@ -113,9 +116,15 @@ export function BusinessDashboard() {
 
         setBusinessId(business.id);
         setBusinessProfile(business as BusinessProfile);
+        setAuthChecked(true);
+
+        // Even if pending, we show the dashboard with a banner
+        // Don't redirect away
+        
       } catch (error) {
         console.error("Error fetching business:", error);
         toast.error("Failed to load business profile");
+        setAuthChecked(true); // Still set to true to avoid infinite loading
       }
     };
 
@@ -125,7 +134,7 @@ export function BusinessDashboard() {
   // ─── 2. FETCH DASHBOARD DATA ──────────────────────────────────────────────
 
   useEffect(() => {
-    if (!businessId) return;
+    if (!businessId || !authChecked) return;
 
     const fetchData = async () => {
       try {
@@ -156,7 +165,7 @@ export function BusinessDashboard() {
       creatorsSubscription.unsubscribe();
       campaignsSubscription.unsubscribe();
     };
-  }, [businessId]);
+  }, [businessId, authChecked]);
 
   // ─── FETCH HELPERS ────────────────────────────────────────────────────────
 
@@ -172,7 +181,10 @@ export function BusinessDashboard() {
       .eq("business_id", businessId)
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error("Error fetching campaigns:", error);
+      return;
+    }
     setCampaigns((data as Campaign[]) || []);
   };
 
@@ -183,13 +195,16 @@ export function BusinessDashboard() {
       .select(`
         id, status, created_at, streams_target,
         creator_profiles (id, full_name, avatar_url, payout_email, avg_viewers, niche),
-        campaigns (id, name, type, budget)
+        campaigns!inner (id, name, type, budget, business_id)
       `)
       .in("status", ["pending", "PENDING"])
-      .filter("campaigns.business_id", "eq", businessId)
+      .eq("campaigns.business_id", businessId)
       .order("created_at", { ascending: false });
 
-    if (error) { console.error("Error fetching pending creators:", error); return; }
+    if (error) { 
+      console.error("Error fetching pending creators:", error); 
+      return;
+    }
 
     const filtered = (data || []).filter((row: any) => row.campaigns !== null) as PendingCreator[];
     setPendingCreators(filtered);
@@ -213,7 +228,10 @@ export function BusinessDashboard() {
   const pendingCampaigns = campaigns.filter(c => ["pending_review","PENDING_REVIEW","draft","DRAFT","pending","PENDING","review","REVIEW"].includes(c.status)).length;
   const completedCampaigns = campaigns.filter(c => ["completed","COMPLETED"].includes(c.status)).length;
   const totalCreators = campaigns.reduce((sum, c) => sum + (c.campaign_creators?.length || 0), 0);
-  const totalSpent = campaigns.reduce((sum, c) => { const val = c.budget ?? c.bid_amount ?? c.pay_rate ?? 0; return sum + (isNaN(val) ? 0 : val); }, 0);
+  const totalSpent = campaigns.reduce((sum, c) => { 
+    const val = c.budget ?? c.bid_amount ?? c.pay_rate ?? 0; 
+    return sum + (isNaN(val) ? 0 : val); 
+  }, 0);
   const totalPending = pendingCreators.length;
 
   const stats = [
@@ -227,21 +245,37 @@ export function BusinessDashboard() {
 
   const acceptCreator = async (row: PendingCreator) => {
     try {
-      const { error } = await supabase.from("campaign_creators").update({ status: "ACTIVE", accepted_at: new Date().toISOString() }).eq("id", row.id);
+      const { error } = await supabase
+        .from("campaign_creators")
+        .update({ status: "ACTIVE", accepted_at: new Date().toISOString() })
+        .eq("id", row.id);
+      
       if (error) throw error;
+      
       toast.success(`${row.creator_profiles?.full_name || "Creator"} accepted 🎉`);
       setPendingCreators(prev => prev.filter(r => r.id !== row.id));
       fetchCampaigns();
-    } catch (error) { console.error(error); toast.error("Failed to accept creator"); }
+    } catch (error) { 
+      console.error(error); 
+      toast.error("Failed to accept creator"); 
+    }
   };
 
   const declineCreator = async (rowId: string) => {
     try {
-      const { error } = await supabase.from("campaign_creators").update({ status: "DECLINED" }).eq("id", rowId);
+      const { error } = await supabase
+        .from("campaign_creators")
+        .update({ status: "DECLINED" })
+        .eq("id", rowId);
+      
       if (error) throw error;
+      
       toast.success("Creator declined");
       setPendingCreators(prev => prev.filter(r => r.id !== rowId));
-    } catch (error) { console.error(error); toast.error("Failed to decline creator"); }
+    } catch (error) { 
+      console.error(error); 
+      toast.error("Failed to decline creator"); 
+    }
   };
 
   // ─── 6. FILTER CAMPAIGNS ─────────────────────────────────────────────────
@@ -263,7 +297,7 @@ export function BusinessDashboard() {
 
   // ─── LOADING ──────────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (loading && !authChecked) {
     return (
       <div className="min-h-screen bg-white">
         <AppHeader showLogo userType="business" subtitle="Business Hub" />
@@ -295,7 +329,11 @@ export function BusinessDashboard() {
               {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
             </p>
           </div>
-          <button onClick={refreshData} disabled={refreshing} className="p-3 border-2 border-white/30 hover:border-white text-white transition-colors disabled:opacity-50">
+          <button 
+            onClick={refreshData} 
+            disabled={refreshing} 
+            className="p-3 border-2 border-white/30 hover:border-white text-white transition-colors disabled:opacity-50 rounded-lg"
+          >
             <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
@@ -303,7 +341,7 @@ export function BusinessDashboard() {
 
       {/* Pending approval banner */}
       {businessProfile?.application_status === "pending" && (
-        <div className="mx-8 mt-4 p-4 bg-[#FEDB71]/20 border-2 border-[#FEDB71] flex items-center gap-3">
+        <div className="mx-8 mt-4 p-4 bg-[#FEDB71]/20 border-2 border-[#FEDB71] flex items-center gap-3 rounded-lg">
           <Clock className="w-5 h-5 text-[#1D1D1D] shrink-0" />
           <p className="text-sm font-bold uppercase tracking-widest">
             Your application is under review. You'll be notified at <span className="underline">{businessProfile.email}</span> once approved.
@@ -316,7 +354,7 @@ export function BusinessDashboard() {
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
-            <div key={i} className="border-2 border-[#1D1D1D] p-6 bg-white hover:shadow-lg transition-shadow">
+            <div key={i} className="border-2 border-[#1D1D1D] p-6 bg-white hover:shadow-lg transition-shadow rounded-xl">
               <div className="flex justify-between items-start mb-4">
                 <p className="text-xs font-black uppercase tracking-widest text-gray-400">{stat.label}</p>
                 <Icon className={`w-5 h-5 ${stat.color}`} />
@@ -330,13 +368,21 @@ export function BusinessDashboard() {
 
       {/* Toggle */}
       <div className="px-8 flex gap-4 mb-4">
-        <button onClick={() => setShowPendingOnly(false)} className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors ${!showPendingOnly ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400"}`}>
+        <button 
+          onClick={() => setShowPendingOnly(false)} 
+          className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors ${!showPendingOnly ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400"}`}
+        >
           Campaigns ({campaigns.length})
         </button>
-        <button onClick={() => setShowPendingOnly(true)} className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors relative ${showPendingOnly ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400"}`}>
+        <button 
+          onClick={() => setShowPendingOnly(true)} 
+          className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors relative ${showPendingOnly ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400"}`}
+        >
           Pending Creators ({pendingCreators.length})
           {pendingCreators.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] text-xs flex items-center justify-center font-black">{pendingCreators.length}</span>
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] text-xs flex items-center justify-center font-black rounded-full">
+              {pendingCreators.length}
+            </span>
           )}
         </button>
       </div>
@@ -346,40 +392,67 @@ export function BusinessDashboard() {
         <div className="px-8 mt-4">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-black uppercase tracking-tight italic">My Campaigns</h2>
-            <button onClick={() => navigate("/campaign/type")} className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors">
+            <button 
+              onClick={() => navigate("/campaign/type")} 
+              className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors rounded-lg"
+            >
               + New Campaign
             </button>
           </div>
 
-          <div className="flex gap-2 mb-6 border-b">
+          <div className="flex gap-2 mb-6 border-b overflow-x-auto">
             {(["LIVE", "PENDING", "COMPLETED"] as const).map(tab => (
-              <button key={tab} onClick={() => setCampaignFilter(tab)}
-                className={`px-6 py-3 text-sm font-black uppercase tracking-widest italic transition-colors ${campaignFilter === tab ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400 hover:text-[#1D1D1D]"}`}>
+              <button 
+                key={tab} 
+                onClick={() => setCampaignFilter(tab)}
+                className={`px-6 py-3 text-sm font-black uppercase tracking-widest italic transition-colors whitespace-nowrap ${
+                  campaignFilter === tab 
+                    ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" 
+                    : "text-gray-400 hover:text-[#1D1D1D]"
+                }`}
+              >
                 {tab} ({countFor(tab)})
               </button>
             ))}
           </div>
 
           {filteredCampaigns.length === 0 ? (
-            <div className="border-2 border-dashed border-gray-200 p-12 text-center">
+            <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
               <p className="text-gray-400 mb-4">No campaigns in this category</p>
-              <button onClick={() => navigate("/campaign/type")} className="text-[#389C9A] font-black uppercase text-sm hover:underline">
+              <button 
+                onClick={() => navigate("/campaign/type")} 
+                className="text-[#389C9A] font-black uppercase text-sm hover:underline"
+              >
                 Create your first campaign →
               </button>
             </div>
           ) : (
             <div className="grid gap-4">
               {filteredCampaigns.map(campaign => (
-                <div key={campaign.id} onClick={() => navigate(`/business/campaign/${campaign.id}`)}
-                  className="border-2 border-[#1D1D1D] p-6 cursor-pointer hover:bg-[#1D1D1D] hover:text-white transition-colors group">
+                <div 
+                  key={campaign.id} 
+                  onClick={() => navigate(`/business/campaign/${campaign.id}`)}
+                  className="border-2 border-[#1D1D1D] p-6 cursor-pointer hover:bg-[#1D1D1D] hover:text-white transition-colors group rounded-xl"
+                >
                   <div className="flex justify-between items-start">
                     <div>
                       <h3 className="font-black text-lg mb-2">{campaign.name}</h3>
                       <p className="text-sm opacity-60 mb-3">{campaign.type}</p>
-                      <div className="flex gap-4 text-xs">
-                        <span className="flex items-center gap-1"><Users className="w-4 h-4" />{campaign.campaign_creators?.length || 0} creators</span>
-                        <span className="flex items-center gap-1"><DollarSign className="w-4 h-4" />{campaign.budget ?? campaign.bid_amount ?? campaign.pay_rate ?? "Negotiable"}</span>
-                        {campaign.start_date && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{new Date(campaign.start_date).toLocaleDateString()}</span>}
+                      <div className="flex flex-wrap gap-4 text-xs">
+                        <span className="flex items-center gap-1">
+                          <Users className="w-4 h-4" />
+                          {campaign.campaign_creators?.length || 0} creators
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <DollarSign className="w-4 h-4" />
+                          {campaign.budget ?? campaign.bid_amount ?? campaign.pay_rate ?? "Negotiable"}
+                        </span>
+                        {campaign.start_date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-4 h-4" />
+                            {new Date(campaign.start_date).toLocaleDateString()}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <ChevronRight className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -392,9 +465,11 @@ export function BusinessDashboard() {
       ) : (
         /* Pending Creators */
         <div className="px-8 mt-4">
-          <h2 className="text-2xl font-black uppercase tracking-tight italic mb-6">Pending Creators ({pendingCreators.length})</h2>
+          <h2 className="text-2xl font-black uppercase tracking-tight italic mb-6">
+            Pending Creators ({pendingCreators.length})
+          </h2>
           {pendingCreators.length === 0 ? (
-            <div className="border-2 border-dashed border-gray-200 p-12 text-center">
+            <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
               <p className="text-gray-400">No pending creator requests</p>
             </div>
           ) : (
@@ -403,35 +478,51 @@ export function BusinessDashboard() {
                 const creator = row.creator_profiles;
                 const displayName = creator?.full_name || "Unknown Creator";
                 return (
-                  <div key={row.id} className="border-2 border-[#FEDB71] p-6 bg-yellow-50">
+                  <div key={row.id} className="border-2 border-[#FEDB71] p-6 bg-yellow-50 rounded-xl">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-3 mb-2">
                           {creator?.avatar_url ? (
-                            <img src={creator.avatar_url} alt={displayName} className="w-10 h-10 rounded-full border-2 border-[#1D1D1D] object-cover" />
+                            <img 
+                              src={creator.avatar_url} 
+                              alt={displayName} 
+                              className="w-10 h-10 rounded-full border-2 border-[#1D1D1D] object-cover" 
+                            />
                           ) : (
-                            <div className="w-10 h-10 bg-[#389C9A] flex items-center justify-center text-white font-black">{displayName[0]?.toUpperCase()}</div>
+                            <div className="w-10 h-10 bg-[#389C9A] flex items-center justify-center text-white font-black rounded-full">
+                              {displayName[0]?.toUpperCase()}
+                            </div>
                           )}
                           <div>
                             <h3 className="font-black">{displayName}</h3>
-                            <p className="text-xs opacity-60">~{creator?.avg_viewers?.toLocaleString() ?? 0} avg viewers</p>
+                            <p className="text-xs opacity-60">
+                              ~{creator?.avg_viewers?.toLocaleString() ?? 0} avg viewers
+                            </p>
                           </div>
                         </div>
                         <p className="font-bold text-lg">{row.campaigns?.name ?? "Unknown Campaign"}</p>
                         <p className="text-sm mt-1">Type: {row.campaigns?.type ?? "—"}</p>
                         {creator?.niche && creator.niche.length > 0 && (
                           <div className="flex gap-2 mt-2 flex-wrap">
-                            {creator.niche.map(tag => <span key={tag} className="text-xs bg-white border border-gray-200 px-2 py-0.5">{tag}</span>)}
+                            {creator.niche.map(tag => (
+                              <span key={tag} className="text-xs bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+                                {tag}
+                              </span>
+                            ))}
                           </div>
                         )}
                       </div>
                       <div className="flex gap-3">
-                        <button onClick={e => { e.stopPropagation(); acceptCreator(row); }}
-                          className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors">
+                        <button 
+                          onClick={e => { e.stopPropagation(); acceptCreator(row); }}
+                          className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors rounded-lg"
+                        >
                           Accept
                         </button>
-                        <button onClick={e => { e.stopPropagation(); declineCreator(row.id); }}
-                          className="border-2 border-[#1D1D1D] px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors">
+                        <button 
+                          onClick={e => { e.stopPropagation(); declineCreator(row.id); }}
+                          className="border-2 border-[#1D1D1D] px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg"
+                        >
                           Decline
                         </button>
                       </div>
@@ -456,8 +547,11 @@ export function BusinessDashboard() {
           ].map((item, i) => {
             const Icon = item.icon;
             return (
-              <button key={i} onClick={() => navigate(item.link)}
-                className="border-2 border-[#1D1D1D] p-6 text-left hover:bg-[#1D1D1D] hover:text-white transition-colors group">
+              <button 
+                key={i} 
+                onClick={() => navigate(item.link)}
+                className="border-2 border-[#1D1D1D] p-6 text-left hover:bg-[#1D1D1D] hover:text-white transition-colors group rounded-xl"
+              >
                 <Icon className={`w-6 h-6 mb-3 ${item.color} group-hover:text-white`} />
                 <h3 className="font-black text-sm mb-2 italic">{item.label}</h3>
                 <p className="text-xs opacity-60 mb-4">{item.sub}</p>
