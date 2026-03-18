@@ -196,12 +196,13 @@ export function useBusinessRegistration() {
           data: {
             full_name: formData.fullName.trim(),
             user_type: 'business',
+            role: 'business',
             job_title: formData.jobTitle.trim(),
             phone: `${formData.phoneCountryCode}${formData.phoneNumber}`,
             business_name: formData.businessName.trim(),
             created_at: new Date().toISOString()
           },
-          emailRedirectTo: `${window.location.origin}/auth/callback`
+          emailRedirectTo: `${window.location.origin}/auth/callback?role=business`
         }
       });
 
@@ -224,14 +225,12 @@ export function useBusinessRegistration() {
           throw new Error('Password must be at least 6 characters long');
         }
         else if (signUpError.status === 422) {
-          // This is the 422 error - provide detailed guidance
           console.error('422 Unprocessable Entity - Check:', {
             email: cleanEmail,
             passwordLength: formData.password.length,
             hasMetadata: !!formData.fullName
           });
           
-          // Try to determine the cause
           if (cleanEmail.includes('@') && !cleanEmail.includes('.')) {
             throw new Error('Invalid email domain. Please use a valid email address.');
           } else {
@@ -264,7 +263,6 @@ export function useBusinessRegistration() {
         console.log('ID document uploaded successfully');
       } else {
         console.warn('ID upload failed:', uploadResult.error);
-        // Don't throw - we can still create profile and handle later
         toast.warning('ID upload failed but we saved your application. Support will contact you.');
       }
 
@@ -279,7 +277,10 @@ export function useBusinessRegistration() {
         .insert({
           user_id: authData.user.id,
           business_name: formData.businessName.trim(),
-          business_type: formData.businessType,
+          full_name: formData.fullName.trim(),
+          job_title: formData.jobTitle.trim(),
+          email: cleanEmail,
+          phone_number: `${formData.phoneCountryCode}${formData.phoneNumber}`,
           industry: formData.industry,
           description: formData.description?.trim() || null,
           website: formData.website?.trim() || null,
@@ -287,20 +288,17 @@ export function useBusinessRegistration() {
           city: formData.city?.trim() || null,
           postcode: formData.postcode?.trim() || null,
           operating_since: formData.operatingTime || null,
-          contact_name: formData.fullName.trim(),
-          contact_job_title: formData.jobTitle.trim(),
-          contact_email: cleanEmail,
-          contact_phone: `${formData.phoneCountryCode}${formData.phoneNumber}`,
-          id_verification_url: idDocumentUrl || null,
-          id_verified: false,
+          verification_document_url: idDocumentUrl || null,
+          verification_status: 'pending',
           application_status: 'pending',
-          submitted_at: new Date().toISOString()
+          status: 'pending_review',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         });
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
         
-        // Profile creation failed but user was created - still show success
         toast.warning('Account created but profile setup incomplete. Support will contact you.');
         
         // Try to send a notification to admin
@@ -314,57 +312,29 @@ export function useBusinessRegistration() {
       }
 
       // ============================================
-      // STEP 5: Insert social media links (non-critical)
+      // STEP 5: Store campaign preferences in creator_profiles? 
+      // Actually businesses don't have preferences table - store in metadata
       // ============================================
       
-      if (formData.socials && formData.socials.length > 0) {
-        const validSocials = formData.socials.filter(s => s.handle?.trim());
-        
-        if (validSocials.length > 0) {
-          const { error: socialsError } = await supabase
-            .from('business_socials')
-            .insert(
-              validSocials.map(social => ({
-                user_id: authData.user.id,
-                platform: social.platform,
-                handle: social.handle.trim(),
-                created_at: new Date().toISOString()
-              }))
-            );
-
-          if (socialsError) {
-            console.error('Socials insert error:', socialsError);
-          }
+      // Update user metadata with preferences
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: {
+          goals: formData.goals,
+          campaign_type_preference: formData.campaignType,
+          budget_range: formData.budget,
+          target_age_range: { min: formData.ageMin, max: formData.ageMax },
+          target_gender: formData.gender,
+          target_location: formData.targetLocation?.trim() || null,
+          referral_code: formData.referral?.trim() || null
         }
+      });
+
+      if (metadataError) {
+        console.error('Metadata update error:', metadataError);
       }
 
       // ============================================
-      // STEP 6: Insert business preferences (non-critical)
-      // ============================================
-      
-      if (formData.goals?.length > 0) {
-        const { error: goalsError } = await supabase
-          .from('business_preferences')
-          .insert({
-            user_id: authData.user.id,
-            goals: formData.goals,
-            campaign_type: formData.campaignType,
-            monthly_budget: formData.budget,
-            target_age_min: formData.ageMin || 18,
-            target_age_max: formData.ageMax || 65,
-            target_gender: formData.gender || [],
-            target_location: formData.targetLocation?.trim() || null,
-            referral_code: formData.referral?.trim() || null,
-            created_at: new Date().toISOString()
-          });
-
-        if (goalsError) {
-          console.error('Preferences insert error:', goalsError);
-        }
-      }
-
-      // ============================================
-      // STEP 7: Send confirmation notification
+      // STEP 6: Send confirmation notification
       // ============================================
       
       await supabase.from('notifications').insert({
@@ -372,7 +342,8 @@ export function useBusinessRegistration() {
         title: 'Registration Submitted',
         message: 'Your business registration has been submitted and is under review.',
         type: 'system',
-        data: { application_status: 'pending' }
+        data: { application_status: 'pending' },
+        created_at: new Date().toISOString()
       });
 
       // Success!
@@ -407,7 +378,7 @@ export function useBusinessRegistration() {
         type: 'signup',
         email: email.trim().toLowerCase(),
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`
+          emailRedirectTo: `${window.location.origin}/auth/callback?role=business`
         }
       });
 
