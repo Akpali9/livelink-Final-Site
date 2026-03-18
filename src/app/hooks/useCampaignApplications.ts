@@ -15,9 +15,13 @@ interface Campaign {
   name: string;
   type: string;
   budget: number;
+  pay_rate?: number;
+  bid_amount?: number;
   description: string;
   business_id: string;
   status: string;
+  start_date?: string;
+  end_date?: string;
   created_at: string;
 }
 
@@ -25,10 +29,15 @@ interface CampaignApplication {
   id: string;
   campaign_id: string;
   creator_id: string;
-  status: 'pending' | 'approved' | 'rejected' | 'completed';
-  proposed_amount: number;
+  status: 'pending' | 'active' | 'completed' | 'declined';
+  streams_target: number;
+  streams_completed: number;
+  total_earnings: number;
+  paid_out: number;
   created_at: string;
-  updated_at?: string;
+  accepted_at?: string;
+  completed_at?: string;
+  declined_at?: string;
   campaign?: Campaign & { business?: Business };
 }
 
@@ -37,24 +46,58 @@ export function useCampaignApplications() {
   const [applications, setApplications] = useState<CampaignApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
 
+  // Get creator profile ID from user ID
   useEffect(() => {
-    if (user?.id) {
-      fetchApplications();
-    }
+    const getCreatorId = async () => {
+      if (!user?.id) return;
+      
+      const { data } = await supabase
+        .from('creator_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (data) {
+        setCreatorId(data.id);
+      }
+    };
+
+    getCreatorId();
   }, [user?.id]);
 
+  useEffect(() => {
+    if (creatorId) {
+      fetchApplications();
+    }
+  }, [creatorId]);
+
   const fetchApplications = async () => {
-    if (!user?.id) return;
+    if (!creatorId) return;
 
     try {
       setLoading(true);
 
-      // First get all applications for this creator
+      // Get all campaign_creators entries for this creator
       const { data: applicationsData, error: appsError } = await supabase
-        .from('campaign_applications')
-        .select('*')
-        .eq('creator_id', user.id)
+        .from('campaign_creators') // ✅ Fixed: correct table name
+        .select(`
+          id,
+          campaign_id,
+          creator_id,
+          status,
+          streams_target,
+          streams_completed,
+          total_earnings,
+          paid_out,
+          created_at,
+          accepted_at,
+          completed_at,
+          declined_at,
+          cancelled_at
+        `)
+        .eq('creator_id', creatorId)
         .order('created_at', { ascending: false });
 
       if (appsError) throw appsError;
@@ -66,7 +109,20 @@ export function useCampaignApplications() {
         // Fetch campaign details
         const { data: campaignsData, error: campaignsError } = await supabase
           .from('campaigns')
-          .select('*')
+          .select(`
+            id,
+            name,
+            type,
+            budget,
+            pay_rate,
+            bid_amount,
+            description,
+            business_id,
+            status,
+            start_date,
+            end_date,
+            created_at
+          `)
           .in('id', campaignIds);
 
         if (campaignsError) throw campaignsError;
@@ -94,6 +150,7 @@ export function useCampaignApplications() {
           
           return {
             ...app,
+            status: app.status.toLowerCase() as CampaignApplication['status'], // Normalize status
             campaign: campaign ? {
               ...campaign,
               business
@@ -114,28 +171,95 @@ export function useCampaignApplications() {
     }
   };
 
-  const applyToCampaign = async (campaignId: string, proposedAmount: number) => {
+  const applyToCampaign = async (campaignId: string, proposedAmount: number, streamsTarget: number = 4) => {
     if (!user?.id) throw new Error('User not authenticated');
+    if (!creatorId) throw new Error('Creator profile not found');
 
     try {
+      // Check if already applied
+      const { data: existing } = await supabase
+        .from('campaign_creators')
+        .select('id')
+        .eq('campaign_id', campaignId)
+        .eq('creator_id', creatorId)
+        .maybeSingle();
+
+      if (existing) {
+        throw new Error('You have already applied to this campaign');
+      }
+
+      // Insert into campaign_creators
       const { data, error } = await supabase
-        .from('campaign_applications')
+        .from('campaign_creators') // ✅ Fixed: correct table name
         .insert([{
           campaign_id: campaignId,
-          creator_id: user.id,
-          proposed_amount: proposedAmount,
+          creator_id: creatorId,
           status: 'pending',
+          streams_target: streamsTarget,
+          streams_completed: 0,
+          total_earnings: proposedAmount,
+          paid_out: 0,
           created_at: new Date().toISOString()
         }])
         .select()
         .single();
 
       if (error) throw error;
-      
+
+      // Create notification for business
+      const { data: campaign } = await supabase
+        .from('campaigns')
+        .select('business_id, name')
+        .eq('id', campaignId)
+        .single();
+
+      if (campaign) {
+        await supabase.from('notifications').insert({
+          user_id: campaign.business_id,
+          type: 'new_application',
+          title: 'New Campaign Application! 🎉',
+          message: `A creator applied to your campaign "${campaign.name}"`,
+          data: { 
+            campaign_id: campaignId,
+            creator_id: creatorId
+          },
+          created_at: new Date().toISOString()
+        });
+      }
+
       await fetchApplications();
       return data;
     } catch (err) {
       console.error('Error applying to campaign:', err);
+      throw err;
+    }
+  };
+
+  const updateApplicationStatus = async (applicationId: string, newStatus: 'active' | 'completed' | 'declined') => {
+    if (!user?.id) throw new Error('User not authenticated');
+
+    try {
+      const updates: any = { status: newStatus.toUpperCase() };
+      
+      if (newStatus === 'active') {
+        updates.accepted_at = new Date().toISOString();
+      } else if (newStatus === 'completed') {
+        updates.completed_at = new Date().toISOString();
+      } else if (newStatus === 'declined') {
+        updates.declined_at = new Date().toISOString();
+      }
+
+      const { error } = await supabase
+        .from('campaign_creators')
+        .update(updates)
+        .eq('id', applicationId);
+
+      if (error) throw error;
+
+      await fetchApplications();
+      return true;
+    } catch (err) {
+      console.error('Error updating application status:', err);
       throw err;
     }
   };
@@ -145,6 +269,7 @@ export function useCampaignApplications() {
     loading,
     error,
     refresh: fetchApplications,
-    applyToCampaign
+    applyToCampaign,
+    updateApplicationStatus
   };
 }
