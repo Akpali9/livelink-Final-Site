@@ -47,7 +47,7 @@ import {
   Check,
   AlertCircle,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import { toast, Toaster } from "sonner";
 import { supabase } from "../lib/supabase";
 
@@ -111,22 +111,22 @@ interface CreatorPlatform {
 
 interface BusinessProfile {
   id: string;
-  business_name?: string;   // ✅ real column
-  name?: string;            // ✅ real column (alternate)
-  full_name?: string;       // ✅ real column (contact person)
-  job_title?: string;       // ✅ real column
-  email?: string;           // ✅ real column (was contact_email)
-  phone_number?: string;    // ✅ real column (was contact_phone)
-  industry?: string;        // ✅ real column
-  city?: string;            // ✅ real column
-  country?: string;         // ✅ real column
-  postcode?: string;        // ✅ real column
-  logo_url?: string;        // ✅ real column
-  logo?: string;            // ✅ real column (alternate)
-  website?: string;         // ✅ real column
-  description?: string;     // ✅ real column
-  bio?: string;             // ✅ real column
-  budget?: string;          // ✅ real column
+  business_name?: string;
+  name?: string;
+  full_name?: string;
+  job_title?: string;
+  email?: string;
+  phone_number?: string;
+  industry?: string;
+  city?: string;
+  country?: string;
+  postcode?: string;
+  logo_url?: string;
+  logo?: string;
+  website?: string;
+  description?: string;
+  bio?: string;
+  budget?: string;
   status: string;
   application_status?: string;
   created_at: string;
@@ -269,7 +269,7 @@ export function AdminDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // ── CREATORS (table confirmed exists) ───────────────────────────────
+      // ── CREATORS ───────────────────────────────
       let totalCreators = 0, pendingCreators = 0, activeCreators = 0, suspendedCreators = 0;
       try {
         const { count: total } = await supabase.from("creator_profiles").select("*", { count: "exact", head: true });
@@ -282,7 +282,7 @@ export function AdminDashboard() {
         suspendedCreators = suspended || 0;
       } catch (e) { console.error("Creator stats error:", e); }
 
-      // ── BUSINESSES (table confirmed exists) ─────────────────────────────
+      // ── BUSINESSES ─────────────────────────────
       let totalBusinesses = 0, pendingBusinesses = 0, approvedBusinesses = 0, rejectedBusinesses = 0;
       try {
         const { count: total } = await supabase.from("businesses").select("*", { count: "exact", head: true }).neq("status", "deleted");
@@ -295,7 +295,7 @@ export function AdminDashboard() {
         rejectedBusinesses = rejected || 0;
       } catch (e) { console.error("Business stats error:", e); }
 
-      // ── CAMPAIGNS (table confirmed exists) ──────────────────────────────
+      // ── CAMPAIGNS ──────────────────────────────
       let totalCampaigns = 0, activeCampaigns = 0, completedCampaigns = 0, pendingCampaigns = 0;
       try {
         const { count: total } = await supabase.from("campaigns").select("*", { count: "exact", head: true });
@@ -308,7 +308,7 @@ export function AdminDashboard() {
         pendingCampaigns = pending || 0;
       } catch (e) { console.error("Campaign stats error:", e); }
 
-      // ── REVENUE: business_transactions (403 = RLS blocks admin, skip gracefully) ──
+      // ── REVENUE ──
       let totalRevenue = 0;
       try {
         const { data: txRows, error: txError } = await supabase
@@ -317,32 +317,27 @@ export function AdminDashboard() {
           .eq("status", "completed")
           .eq("type", "payment");
         if (!txError) totalRevenue = (txRows || []).reduce((s, r) => s + (r.amount || 0), 0);
-        // If 403: RLS policy needs UPDATE — add policy: admin can select business_transactions
-      } catch (e) { console.error("Revenue fetch error (check RLS):", e); }
+      } catch (e) { console.error("Revenue fetch error:", e); }
 
-      // ── PAYOUTS: campaign_creators — only query columns that exist ───────
-      // NOTE: total_earnings and paid_out don't exist in this schema
-      // Use streams_completed * pay_rate as approximation if available
+      // ── PAYOUTS ───────
       let pendingPayouts = 0;
       try {
         const { data: ccRows, error: ccError } = await supabase
           .from("campaign_creators")
           .select("streams_completed, streams_target, status")
           .eq("status", "ACTIVE");
-        // Real payout calc requires pay_rate join — show 0 until schema has earnings columns
         if (!ccError) pendingPayouts = 0;
       } catch (e) { console.error("Payout fetch error:", e); }
 
-      // ── TOTAL USERS: auth.users is not accessible via REST API ──────────
-      // Use creator_profiles + businesses count as proxy instead
+      // ── TOTAL USERS ──────────
       let totalUsers = 0;
       try {
         const { count: creatorCount } = await supabase.from("creator_profiles").select("*", { count: "exact", head: true });
-        const { count: bizCount } = await supabase.from("businesses").select("*", { count: "exact", head: true });
-        totalUsers = (creatorCount || 0) + (bizCount || 0);
+        const { count: businessCount } = await supabase.from("businesses").select("*", { count: "exact", head: true });
+        totalUsers = (creatorCount || 0) + (businessCount || 0);
       } catch (e) { console.error("User count error:", e); }
 
-      // ── REPORTED CONTENT: table may not exist yet ────────────────────────
+      // ── REPORTED CONTENT ────────────────────────
       let reportedContent = 0;
       try {
         const { count, error: rcError } = await supabase
@@ -350,10 +345,9 @@ export function AdminDashboard() {
           .select("*", { count: "exact", head: true })
           .eq("status", "pending");
         if (!rcError) reportedContent = count || 0;
-        // If 404: CREATE TABLE reported_content in Supabase to enable this feature
       } catch (e) { /* table doesn't exist yet — safe to ignore */ }
 
-      // ── SUPPORT TICKETS: table may not exist yet ─────────────────────────
+      // ── SUPPORT TICKETS ─────────────────────────
       let openSupportTickets = 0;
       try {
         const { count, error: stError } = await supabase
@@ -361,7 +355,6 @@ export function AdminDashboard() {
           .select("*", { count: "exact", head: true })
           .in("status", ["open", "in_progress"]);
         if (!stError) openSupportTickets = count || 0;
-        // If 404: CREATE TABLE support_tickets in Supabase to enable this feature
       } catch (e) { /* table doesn't exist yet — safe to ignore */ }
 
       setStats({
@@ -411,87 +404,88 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F0F0F0] lg:flex">
+    <div className="min-h-screen bg-[#F0F0F0]">
       <Toaster position="top-center" richColors />
 
-      {/* Mobile Header */}
-      <div className="lg:hidden bg-white border-b border-[#1D1D1D]/10 px-4 py-3 flex justify-between items-center sticky top-0 z-30">
+      {/* Mobile Header - Always visible */}
+      <div className="bg-white border-b border-[#1D1D1D]/10 px-4 py-3 flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)}>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
             <Menu className="w-6 h-6" />
           </button>
-          <span className="font-black uppercase tracking-tight text-lg">Admin</span>
+          <div>
+            <span className="font-black uppercase tracking-tight text-lg block">Admin</span>
+            <span className="text-[8px] opacity-40 uppercase tracking-widest">LiveLink Panel</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={refresh} disabled={refreshing} className="p-2 hover:bg-[#F8F8F8] rounded-full">
+        <div className="flex items-center gap-2">
+          <button onClick={refresh} disabled={refreshing} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
             <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
           </button>
-          <div className="w-8 h-8 bg-[#1D1D1D] text-white flex items-center justify-center font-black text-sm">
+          <div className="w-9 h-9 bg-[#1D1D1D] text-white flex items-center justify-center font-black text-sm rounded-lg">
             {adminUser?.email?.[0]?.toUpperCase() || "A"}
           </div>
         </div>
       </div>
 
-      {/* Sidebar Overlay (mobile) */}
+      {/* Sidebar Overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* ── SIDEBAR ─────────────────────────────────────────────────────── */}
-      {/* Mobile: fixed overlay. Desktop: sticky flex item. */}
+      {/* Sidebar - Same for all screen sizes */}
       <aside
         className={`
-          fixed top-0 left-0 h-screen w-64 bg-white border-r border-[#1D1D1D]/10 z-50
-          flex flex-col shrink-0
-          transform transition-transform duration-200
-          lg:sticky lg:translate-x-0
+          fixed top-0 left-0 h-screen w-[280px] bg-white border-r border-[#1D1D1D]/10 z-50
+          flex flex-col
+          transform transition-transform duration-200 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
         {/* Logo */}
-        <div className="px-6 py-5 border-b border-[#1D1D1D]/10 flex justify-between items-center shrink-0">
+        <div className="px-5 py-4 border-b border-[#1D1D1D]/10 flex justify-between items-center">
           <h1 className="text-xl font-black uppercase tracking-tighter italic">
             Admin<span className="text-[#389C9A]">.</span>
           </h1>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1">
+          <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* User chip */}
-        <div className="px-4 py-4 border-b border-[#1D1D1D]/10 shrink-0">
+        <div className="px-4 py-4 border-b border-[#1D1D1D]/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#1D1D1D] text-white flex items-center justify-center font-black text-base shrink-0">
+            <div className="w-10 h-10 bg-[#1D1D1D] text-white flex items-center justify-center font-black text-base rounded-lg shrink-0">
               {adminUser?.email?.[0]?.toUpperCase() || "A"}
             </div>
             <div className="min-w-0">
               <p className="font-black uppercase tracking-tight text-sm truncate">Admin User</p>
-              <p className="text-[9px] opacity-40 uppercase tracking-widest">Super Admin</p>
+              <p className="text-[8px] opacity-40 uppercase tracking-widest">Super Admin</p>
             </div>
           </div>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto p-3">
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {navItems.map((item, i) => (
               <button
                 key={i}
                 onClick={() => { setActiveTab(item.tab); setSidebarOpen(false); }}
                 className={`
-                  w-full flex items-center justify-between px-3 py-2.5
-                  text-[9px] font-black uppercase tracking-widest transition-all rounded
+                  w-full flex items-center justify-between px-4 py-3
+                  text-xs font-black uppercase tracking-widest transition-all rounded-lg
                   ${activeTab === item.tab
                     ? "bg-[#1D1D1D] text-white"
-                    : "hover:bg-[#F4F4F4] text-[#1D1D1D]/50 hover:text-[#1D1D1D]"}
+                    : "hover:bg-[#F4F4F4] text-[#1D1D1D]/60 hover:text-[#1D1D1D]"}
                 `}
               >
-                <div className="flex items-center gap-2.5">
-                  <item.icon className="w-4 h-4 shrink-0" />
+                <div className="flex items-center gap-3">
+                  <item.icon className="w-5 h-5 shrink-0" />
                   {item.label}
                 </div>
                 {item.badge > 0 && (
-                  <span className="bg-[#389C9A] text-white px-1.5 py-0.5 text-[7px] font-black rounded-full">
+                  <span className="bg-[#389C9A] text-white px-2 py-0.5 text-[9px] font-black rounded-full">
                     {item.badge}
                   </span>
                 )}
@@ -501,173 +495,176 @@ export function AdminDashboard() {
         </nav>
 
         {/* Sign out */}
-        <div className="p-3 border-t border-[#1D1D1D]/10 shrink-0">
+        <div className="p-3 border-t border-[#1D1D1D]/10">
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[9px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all rounded"
+            className="w-full flex items-center gap-3 px-4 py-3 text-xs font-black uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all rounded-lg"
           >
-            <LogOut className="w-4 h-4" /> Sign Out
+            <LogOut className="w-5 h-5" /> Sign Out
           </button>
         </div>
       </aside>
 
-      {/* ── MAIN CONTENT ────────────────────────────────────────────────── */}
-      {/* lg:ml-64 matches sidebar width; flex-1 fills remaining horizontal space */}
-      <div className="flex-1 min-h-screen flex flex-col min-w-0">
-        {/* Desktop top bar */}
-        <header className="lg:hidden bg-white border-b border-[#1D1D1D]/10 px-4 py-3 flex justify-between items-center sticky top-0 z-30">
-          <div>
-            <h2 className="font-black uppercase tracking-tight text-lg">
-              {navItems.find(n => n.tab === activeTab)?.label || "Overview"}
-            </h2>
-            <p className="text-[9px] opacity-40 uppercase tracking-widest mt-0.5">
-              LiveLink Admin Panel
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={refresh}
-              disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-            <div className="w-9 h-9 bg-[#1D1D1D] text-white flex items-center justify-center font-black">
-              {adminUser?.email?.[0]?.toUpperCase() || "A"}
-            </div>
-          </div>
-        </header>
+      {/* Main Content - Always full width with padding */}
+      <div className="flex-1 p-4 min-h-screen">
+        {/* Tab Header */}
+        <div className="mb-4">
+          <h2 className="font-black uppercase tracking-tight text-xl">
+            {navItems.find(n => n.tab === activeTab)?.label || "Overview"}
+          </h2>
+          <p className="text-[10px] opacity-40 uppercase tracking-widest mt-0.5">
+            {activeTab === "overview" && "Dashboard overview and statistics"}
+            {activeTab === "creators" && "Manage creator applications and profiles"}
+            {activeTab === "businesses" && "Review and manage business accounts"}
+            {activeTab === "campaigns" && "Oversee all platform campaigns"}
+            {activeTab === "support" && "Handle support tickets and inquiries"}
+            {activeTab === "reports" && "Review reported content"}
+            {activeTab === "transactions" && "Monitor financial transactions"}
+            {activeTab === "settings" && "Configure platform settings"}
+          </p>
+        </div>
 
-        {/* Page content — max-w keeps it readable on ultra-wide */}
-        <main className="flex-1 p-4 lg:p-8">
-          <div className="max-w-7xl mx-auto w-full">
-            {activeTab === "overview" && <AdminOverview stats={stats} onTabChange={setActiveTab} />}
-            {activeTab === "creators" && <AdminCreators />}
-            {activeTab === "businesses" && <AdminBusinesses onStatsChange={fetchDashboardData} />}
-            {activeTab === "campaigns" && <AdminCampaigns />}
-            {activeTab === "support" && <AdminSupport />}
-            {activeTab === "reports" && <AdminReports />}
-            {activeTab === "transactions" && <AdminTransactions />}
-            {activeTab === "settings" && <AdminSettings stats={stats} setStats={setStats} />}
-          </div>
-        </main>
+        {/* Page content */}
+        <div className="w-full">
+          {activeTab === "overview" && <AdminOverview stats={stats} onTabChange={setActiveTab} />}
+          {activeTab === "creators" && <AdminCreators />}
+          {activeTab === "businesses" && <AdminBusinesses onStatsChange={fetchDashboardData} />}
+          {activeTab === "campaigns" && <AdminCampaigns />}
+          {activeTab === "support" && <AdminSupport />}
+          {activeTab === "reports" && <AdminReports />}
+          {activeTab === "transactions" && <AdminTransactions />}
+          {activeTab === "settings" && <AdminSettings stats={stats} setStats={setStats} />}
+        </div>
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// OVERVIEW TAB
+// OVERVIEW TAB - Mobile First
 // ─────────────────────────────────────────────
 
 function AdminOverview({ stats, onTabChange }: { stats: DashboardStats; onTabChange: (tab: any) => void }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Hero banner */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-[#1D1D1D] text-white px-8 py-7 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+        className="bg-[#1D1D1D] text-white p-5 flex flex-col gap-4"
       >
         <div>
-          <h2 className="text-2xl lg:text-3xl font-black uppercase tracking-tighter italic mb-1">
+          <h2 className="text-xl font-black uppercase tracking-tighter italic mb-1">
             Admin Dashboard
           </h2>
-          <p className="text-white/50 text-sm">Manage creators, businesses, and platform settings</p>
+          <p className="text-white/50 text-xs">Manage creators, businesses, and platform settings</p>
         </div>
-        <div className="flex gap-3 flex-wrap">
+        <div className="flex flex-col gap-2">
           {stats.pendingCreators > 0 && (
             <button
               onClick={() => onTabChange("creators")}
-              className="px-4 py-2 bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black uppercase tracking-widest hover:bg-[#ffd14d] transition-colors"
+              className="w-full px-4 py-3 bg-[#FEDB71] text-[#1D1D1D] text-xs font-black uppercase tracking-widest hover:bg-[#ffd14d] transition-colors rounded-lg"
             >
-              {stats.pendingCreators} Pending Creators
+              {stats.pendingCreators} Pending Creator{stats.pendingCreators !== 1 ? 's' : ''}
             </button>
           )}
           {stats.pendingBusinesses > 0 && (
             <button
               onClick={() => onTabChange("businesses")}
-              className="px-4 py-2 bg-[#389C9A] text-white text-[9px] font-black uppercase tracking-widest hover:bg-[#2d7f7d] transition-colors"
+              className="w-full px-4 py-3 bg-[#389C9A] text-white text-xs font-black uppercase tracking-widest hover:bg-[#2d7f7d] transition-colors rounded-lg"
             >
-              {stats.pendingBusinesses} Pending Businesses
+              {stats.pendingBusinesses} Pending Business{stats.pendingBusinesses !== 1 ? 'es' : ''}
             </button>
           )}
         </div>
       </motion.div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3">
         {[
-          { label: "Total Creators", value: stats.totalCreators, icon: Users, color: "text-blue-500", sub: `${stats.pendingCreators} pending` },
-          { label: "Total Businesses", value: stats.totalBusinesses, icon: Building2, color: "text-emerald-500", sub: `${stats.approvedBusinesses} approved` },
-          { label: "Active Campaigns", value: stats.activeCampaigns, icon: Megaphone, color: "text-violet-500", sub: `${stats.pendingCampaigns} pending` },
-          { label: "Total Users", value: stats.totalUsers, icon: User, color: "text-orange-500", sub: "registered accounts" },
+          { label: "Total Creators", value: stats.totalCreators, icon: Users, color: "text-blue-500", bg: "bg-blue-50", sub: `${stats.pendingCreators} pending` },
+          { label: "Total Businesses", value: stats.totalBusinesses, icon: Building2, color: "text-emerald-500", bg: "bg-emerald-50", sub: `${stats.approvedBusinesses} approved` },
+          { label: "Active Campaigns", value: stats.activeCampaigns, icon: Megaphone, color: "text-violet-500", bg: "bg-violet-50", sub: `${stats.pendingCampaigns} pending` },
+          { label: "Total Users", value: stats.totalUsers, icon: User, color: "text-orange-500", bg: "bg-orange-50", sub: "registered" },
         ].map((stat, i) => (
           <motion.div
             key={i}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.07 }}
-            className="bg-white border-2 border-[#1D1D1D] p-5 lg:p-6"
+            className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl"
           >
-            <div className="flex justify-between items-start mb-4">
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center bg-gray-50`}>
-                <stat.icon className={`w-4.5 h-4.5 ${stat.color}`} />
-              </div>
+            <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center mb-3`}>
+              <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
-            <p className="text-3xl font-black uppercase tracking-tight mb-0.5">{stat.value.toLocaleString()}</p>
+            <p className="text-2xl font-black tracking-tight mb-0.5">{stat.value.toLocaleString()}</p>
             <p className="text-[9px] font-black uppercase tracking-widest opacity-40 mb-1">{stat.label}</p>
-            <p className="text-[9px] text-gray-400">{stat.sub}</p>
+            <p className="text-[8px] text-gray-400">{stat.sub}</p>
           </motion.div>
         ))}
       </div>
 
       {/* Revenue Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border-2 border-[#1D1D1D] p-6">
+      <div className="grid grid-cols-1 gap-3">
+        <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
           <div className="flex items-center gap-3 mb-3">
-            <DollarSign className="w-4 h-4 text-[#389C9A]" />
-            <h3 className="font-black uppercase tracking-tight text-xs">Total Revenue</h3>
+            <div className="w-10 h-10 bg-[#389C9A]/10 rounded-xl flex items-center justify-center">
+              <DollarSign className="w-5 h-5 text-[#389C9A]" />
+            </div>
+            <div>
+              <h3 className="font-black uppercase tracking-tight text-sm">Total Revenue</h3>
+              <p className="text-[8px] opacity-40">Completed payments</p>
+            </div>
           </div>
           <p className="text-3xl font-black italic">₦{stats.totalRevenue.toLocaleString()}</p>
-          <p className="text-[9px] opacity-40 mt-2">Completed payments</p>
         </div>
-        <div className="bg-white border-2 border-[#1D1D1D] p-6">
+        
+        <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
           <div className="flex items-center gap-3 mb-3">
-            <TrendingUp className="w-4 h-4 text-[#FEDB71]" />
-            <h3 className="font-black uppercase tracking-tight text-xs">Pending Payouts</h3>
+            <div className="w-10 h-10 bg-[#FEDB71]/10 rounded-xl flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-[#FEDB71]" />
+            </div>
+            <div>
+              <h3 className="font-black uppercase tracking-tight text-sm">Pending Payouts</h3>
+              <p className="text-[8px] opacity-40">Not yet paid out</p>
+            </div>
           </div>
           <p className="text-3xl font-black italic">₦{stats.pendingPayouts.toLocaleString()}</p>
-          <p className="text-[9px] opacity-40 mt-2">Earnings not yet paid out</p>
         </div>
-        <div className="bg-white border-2 border-[#1D1D1D] p-6">
+
+        <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
           <div className="flex items-center gap-3 mb-3">
-            <PieChart className="w-4 h-4 text-[#389C9A]" />
-            <h3 className="font-black uppercase tracking-tight text-xs">Platform Fee</h3>
+            <div className="w-10 h-10 bg-[#389C9A]/10 rounded-xl flex items-center justify-center">
+              <PieChart className="w-5 h-5 text-[#389C9A]" />
+            </div>
+            <div>
+              <h3 className="font-black uppercase tracking-tight text-sm">Platform Fee</h3>
+              <p className="text-[8px] opacity-40">Standard rate</p>
+            </div>
           </div>
           <p className="text-3xl font-black italic">{stats.platformFee}%</p>
-          <p className="text-[9px] opacity-40 mt-2">Standard platform fee</p>
         </div>
       </div>
 
       {/* Pending Reviews */}
       <div>
-        <h3 className="font-black uppercase tracking-tight text-xs mb-3 opacity-50">Action Required</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <h3 className="font-black uppercase tracking-tight text-sm mb-3">Action Required</h3>
+        <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Pending Creator Reviews", value: stats.pendingCreators, action: () => onTabChange("creators"), accent: "border-[#FEDB71]", icon: Users },
-            { label: "Pending Business Reviews", value: stats.pendingBusinesses, action: () => onTabChange("businesses"), accent: "border-[#389C9A]", icon: Building2 },
-            { label: "Pending Campaigns", value: stats.pendingCampaigns, action: () => onTabChange("campaigns"), accent: "border-violet-400", icon: Megaphone },
-            { label: "Reported Content", value: stats.reportedContent, action: () => onTabChange("reports"), accent: "border-red-400", icon: Flag },
+            { label: "Pending Creators", value: stats.pendingCreators, action: () => onTabChange("creators"), accent: "border-[#FEDB71]", icon: Users, bg: "bg-[#FEDB71]/10" },
+            { label: "Pending Businesses", value: stats.pendingBusinesses, action: () => onTabChange("businesses"), accent: "border-[#389C9A]", icon: Building2, bg: "bg-[#389C9A]/10" },
+            { label: "Pending Campaigns", value: stats.pendingCampaigns, action: () => onTabChange("campaigns"), accent: "border-violet-400", icon: Megaphone, bg: "bg-violet-50" },
+            { label: "Reported Content", value: stats.reportedContent, action: () => onTabChange("reports"), accent: "border-red-400", icon: Flag, bg: "bg-red-50" },
           ].map((item, i) => (
             <button
               key={i}
               onClick={item.action}
-              className={`bg-white border-2 ${item.accent} p-5 text-left hover:shadow-md transition-all group`}
+              className={`bg-white border-2 ${item.accent} p-4 text-left hover:shadow-md transition-all rounded-xl`}
             >
-              <item.icon className="w-5 h-5 text-gray-300 group-hover:text-[#1D1D1D] transition-colors mb-3" />
-              <p className="text-3xl font-black italic mb-1">{item.value}</p>
+              <div className={`w-10 h-10 ${item.bg} rounded-xl flex items-center justify-center mb-3`}>
+                <item.icon className="w-5 h-5 text-gray-600" />
+              </div>
+              <p className="text-2xl font-black italic mb-1">{item.value}</p>
               <p className="text-[9px] font-black uppercase tracking-widest opacity-50 leading-tight">{item.label}</p>
             </button>
           ))}
@@ -676,23 +673,23 @@ function AdminOverview({ stats, onTabChange }: { stats: DashboardStats; onTabCha
 
       {/* Quick Actions */}
       <div>
-        <h3 className="font-black uppercase tracking-tight text-xs mb-3 opacity-50">Quick Actions</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <h3 className="font-black uppercase tracking-tight text-sm mb-3">Quick Actions</h3>
+        <div className="grid grid-cols-2 gap-2">
           {[
-            { label: "Review Creators", icon: Users, action: () => onTabChange("creators"), color: "bg-blue-50 text-blue-600" },
-            { label: "Review Businesses", icon: Building2, action: () => onTabChange("businesses"), color: "bg-emerald-50 text-emerald-600" },
-            { label: "Check Reports", icon: Flag, action: () => onTabChange("reports"), color: "bg-red-50 text-red-600" },
-            { label: "View Transactions", icon: CreditCard, action: () => onTabChange("transactions"), color: "bg-violet-50 text-violet-600" },
+            { label: "Review Creators", icon: Users, action: () => onTabChange("creators"), color: "bg-blue-500" },
+            { label: "Review Businesses", icon: Building2, action: () => onTabChange("businesses"), color: "bg-emerald-500" },
+            { label: "Check Reports", icon: Flag, action: () => onTabChange("reports"), color: "bg-red-500" },
+            { label: "View Transactions", icon: CreditCard, action: () => onTabChange("transactions"), color: "bg-violet-500" },
           ].map((item, i) => (
             <button
               key={i}
               onClick={item.action}
-              className="bg-white border-2 border-[#1D1D1D] p-4 text-left hover:shadow-md transition-all flex items-center gap-3"
+              className="bg-white border-2 border-[#1D1D1D] p-4 text-left hover:shadow-md transition-all rounded-xl flex items-center gap-3"
             >
-              <div className={`w-8 h-8 rounded-lg ${item.color} flex items-center justify-center shrink-0`}>
-                <item.icon className="w-4 h-4" />
+              <div className={`w-10 h-10 ${item.color} rounded-xl flex items-center justify-center shrink-0`}>
+                <item.icon className="w-5 h-5 text-white" />
               </div>
-              <span className="text-[9px] font-black uppercase tracking-widest">{item.label}</span>
+              <span className="text-[10px] font-black uppercase tracking-widest">{item.label}</span>
             </button>
           ))}
         </div>
@@ -702,7 +699,7 @@ function AdminOverview({ stats, onTabChange }: { stats: DashboardStats; onTabCha
 }
 
 // ─────────────────────────────────────────────
-// CREATORS TAB
+// CREATORS TAB - Mobile First
 // ─────────────────────────────────────────────
 
 function AdminCreators() {
@@ -712,6 +709,7 @@ function AdminCreators() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCreator, setSelectedCreator] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchCreators = async () => {
     setLoading(true);
@@ -771,125 +769,221 @@ function AdminCreators() {
   const getCreatorJoinDate = (c: any) => c.created_at ? new Date(c.created_at).toLocaleDateString() : "Unknown";
 
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <h3 className="font-black uppercase tracking-tight">Creator Applications</h3>
-        <div className="flex gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:flex-initial">
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      {/* Header with search */}
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Creator Applications</h3>
+        
+        <div className="flex gap-2">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               placeholder="Search creators..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors w-full md:w-64 text-sm"
+              className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm rounded-xl"
             />
           </div>
-          <button className="p-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors"><Filter className="w-4 h-4" /></button>
-          <button className="p-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors"><Download className="w-4 h-4" /></button>
-        </div>
-      </div>
-
-      <div className="flex gap-2 mb-6 border-b border-[#1D1D1D]/10 overflow-x-auto">
-        {(["pending_review", "active", "suspended", "all"] as const).map(tab => (
-          <button key={tab} onClick={() => setFilter(tab)}
-            className={`px-4 py-3 text-[9px] font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
-              filter === tab ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400 hover:text-[#1D1D1D]"
-            }`}
+          <button 
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
           >
-            {tab === "all" ? "All Creators" : tab.replace("_", " ")}
+            <Filter className="w-5 h-5" />
           </button>
-        ))}
+          <button className="px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl">
+            <Download className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Filter tabs - collapsible on mobile */}
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
+            {(["pending_review", "active", "suspended", "all"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
+                  filter === tab 
+                    ? "bg-[#1D1D1D] text-white" 
+                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                }`}
+              >
+                {tab === "all" ? "All" : tab.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Always visible filter indicators */}
+        {!showFilters && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">
+              Filter: {filter === "all" ? "All Creators" : filter.replace("_", " ")}
+            </span>
+            <span className="text-xs text-gray-400">({creators.length})</span>
+          </div>
+        )}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-[#1D1D1D] border-t-transparent animate-spin" /></div>
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
       ) : creators.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-16 text-center">
-          <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No creators found</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {creators.map((creator) => (
-            <motion.div key={creator.id || creator.user_id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-5 transition-all"
+            <motion.div
+              key={creator.id || creator.user_id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
             >
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <div className="flex items-center gap-4 flex-1 min-w-0">
+              {/* Creator header with status */}
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3 flex-1">
                   {creator.avatar_url ? (
-                    <img src={creator.avatar_url} alt={getCreatorName(creator)} onClick={() => { setSelectedCreator(creator); setShowDetailModal(true); }}
-                      className="w-14 h-14 border-2 border-[#1D1D1D] object-cover cursor-pointer hover:opacity-80 shrink-0" />
+                    <img
+                      src={creator.avatar_url}
+                      alt={getCreatorName(creator)}
+                      onClick={() => { setSelectedCreator(creator); setShowDetailModal(true); }}
+                      className="w-14 h-14 border-2 border-[#1D1D1D] object-cover cursor-pointer hover:opacity-80 shrink-0 rounded-xl"
+                    />
                   ) : (
-                    <div onClick={() => { setSelectedCreator(creator); setShowDetailModal(true); }}
-                      className="w-14 h-14 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center cursor-pointer hover:bg-gray-200 shrink-0">
-                      <User className="w-5 h-5 text-gray-400" />
+                    <div
+                      onClick={() => { setSelectedCreator(creator); setShowDetailModal(true); }}
+                      className="w-14 h-14 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center cursor-pointer hover:bg-gray-200 shrink-0 rounded-xl"
+                    >
+                      <User className="w-6 h-6 text-gray-400" />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-1 mb-1">
                       <h4 className="font-black text-base uppercase tracking-tight truncate">{getCreatorName(creator)}</h4>
-                      {creator.verified && <Shield className="w-3.5 h-3.5 text-[#389C9A] shrink-0" />}
+                      {creator.verified && <Shield className="w-4 h-4 text-[#389C9A] shrink-0" />}
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-gray-500">
-                      <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{getCreatorEmail(creator)}</span>
-                      <span className="flex items-center gap-1"><Video className="w-3 h-3" />{getCreatorCategory(creator)}</span>
-                      <span className="flex items-center gap-1"><Users className="w-3 h-3" />{getCreatorFollowers(creator).toLocaleString()} followers</span>
-                      {getCreatorLocation(creator) && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{getCreatorLocation(creator)}</span>}
-                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Joined {getCreatorJoinDate(creator)}</span>
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                      <Mail className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{getCreatorEmail(creator)}</span>
                     </div>
-                    {creator.platforms?.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {creator.platforms.map((p: any, idx: number) => (
-                          <span key={idx} className="text-[8px] bg-gray-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Zap className="w-2 h-2" />{p.platform_type || p.platform}: {(p.followers_count || p.followers)?.toLocaleString()}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {creator.bio && <p className="text-xs text-gray-500 mt-2 line-clamp-1">{creator.bio}</p>}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full whitespace-nowrap ${
-                    creator.status === "active" ? "bg-green-100 text-green-700" :
-                    creator.status === "suspended" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                  }`}>{creator.status?.replace("_", " ") || "pending"}</span>
-                  <span className="text-[8px] text-gray-400">ID: {(creator.id || creator.user_id)?.slice(0, 8)}</span>
+                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full whitespace-nowrap ${
+                  creator.status === "active" ? "bg-green-100 text-green-700" :
+                  creator.status === "suspended" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {creator.status?.replace("_", " ") || "pending"}
+                </span>
+              </div>
+
+              {/* Creator details */}
+              <div className="grid grid-cols-2 gap-2 mb-3 text-[10px]">
+                <div className="flex items-center gap-1 text-gray-600">
+                  <Video className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{getCreatorCategory(creator)}</span>
+                </div>
+                <div className="flex items-center gap-1 text-gray-600">
+                  <Users className="w-3 h-3 shrink-0" />
+                  <span>{getCreatorFollowers(creator).toLocaleString()} followers</span>
+                </div>
+                {getCreatorLocation(creator) && (
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{getCreatorLocation(creator)}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1 text-gray-600">
+                  <Calendar className="w-3 h-3 shrink-0" />
+                  <span>Joined {getCreatorJoinDate(creator)}</span>
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-3 border-t border-[#1D1D1D]/5">
-                <button onClick={() => { setSelectedCreator(creator); setShowDetailModal(true); }}
-                  className="px-3 py-1.5 border-2 border-[#1D1D1D] text-[8px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors flex items-center gap-1">
-                  <Eye className="w-3 h-3" /> Details
+              {/* Platforms */}
+              {creator.platforms?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {creator.platforms.slice(0, 2).map((p: any, idx: number) => (
+                    <span key={idx} className="text-[8px] bg-gray-100 px-2 py-1 rounded-full flex items-center gap-1">
+                      <Zap className="w-2 h-2" />
+                      {p.platform_type || p.platform}: {(p.followers_count || p.followers)?.toLocaleString()}
+                    </span>
+                  ))}
+                  {creator.platforms.length > 2 && (
+                    <span className="text-[8px] bg-gray-100 px-2 py-1 rounded-full">
+                      +{creator.platforms.length - 2} more
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Bio preview */}
+              {creator.bio && (
+                <p className="text-xs text-gray-500 mb-3 line-clamp-2">{creator.bio}</p>
+              )}
+
+              {/* Action buttons */}
+              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                <button
+                  onClick={() => { setSelectedCreator(creator); setShowDetailModal(true); }}
+                  className="px-3 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
+                >
+                  <Eye className="w-3 h-3" /> View
                 </button>
-                {creator.status === "pending_review" && <>
-                  <button onClick={() => updateCreatorStatus(creator.id, "active")}
-                    className="flex-1 bg-[#1D1D1D] text-white py-1.5 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-1">
-                    <CheckCircle className="w-3 h-3" /> Approve
-                  </button>
-                  <button onClick={() => updateCreatorStatus(creator.id, "suspended")}
-                    className="flex-1 border-2 border-[#1D1D1D] py-1.5 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors flex items-center justify-center gap-1">
-                    <XCircle className="w-3 h-3" /> Reject
-                  </button>
-                </>}
+                
+                {creator.status === "pending_review" && (
+                  <>
+                    <button
+                      onClick={() => updateCreatorStatus(creator.id, "active")}
+                      className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1"
+                    >
+                      <CheckCircle className="w-3 h-3" /> Approve
+                    </button>
+                    <button
+                      onClick={() => updateCreatorStatus(creator.id, "suspended")}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
+                    >
+                      <XCircle className="w-3 h-3" /> Reject
+                    </button>
+                  </>
+                )}
+                
                 {creator.status === "active" && (
-                  <button onClick={() => updateCreatorStatus(creator.id, "suspended")}
-                    className="flex-1 border-2 border-red-500 text-red-500 py-1.5 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors">
-                    Suspend
-                  </button>
+                  <>
+                    <button
+                      onClick={() => updateCreatorStatus(creator.id, "suspended")}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg col-span-2"
+                    >
+                      Suspend
+                    </button>
+                    <button
+                      onClick={() => deleteCreator(creator.id)}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg"
+                    >
+                      <Trash2 className="w-3 h-3 mx-auto" />
+                    </button>
+                  </>
                 )}
+                
                 {creator.status === "suspended" && (
-                  <button onClick={() => updateCreatorStatus(creator.id, "active")}
-                    className="flex-1 border-2 border-green-500 text-green-500 py-1.5 text-[8px] font-black uppercase tracking-widest hover:bg-green-500 hover:text-white transition-colors">
-                    Reinstate
-                  </button>
+                  <>
+                    <button
+                      onClick={() => updateCreatorStatus(creator.id, "active")}
+                      className="border-2 border-green-500 text-green-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-green-500 hover:text-white transition-colors rounded-lg col-span-2"
+                    >
+                      Reinstate
+                    </button>
+                    <button
+                      onClick={() => deleteCreator(creator.id)}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg"
+                    >
+                      <Trash2 className="w-3 h-3 mx-auto" />
+                    </button>
+                  </>
                 )}
-                <button onClick={() => deleteCreator(creator.id)}
-                  className="px-3 py-1.5 border-2 border-red-500 text-red-500 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors">
-                  <Trash2 className="w-3 h-3" />
-                </button>
               </div>
             </motion.div>
           ))}
@@ -897,70 +991,84 @@ function AdminCreators() {
       )}
 
       {showDetailModal && selectedCreator && (
-        <CreatorDetailModal creator={selectedCreator} onClose={() => setShowDetailModal(false)}
-          onUpdate={() => { setShowDetailModal(false); fetchCreators(); }} />
+        <CreatorDetailModal creator={selectedCreator} onClose={() => setShowDetailModal(false)} />
       )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// CREATOR DETAIL MODAL
+// CREATOR DETAIL MODAL - Mobile Optimized
 // ─────────────────────────────────────────────
 
-function CreatorDetailModal({ creator, onClose, onUpdate }: { creator: any; onClose: () => void; onUpdate: () => void }) {
+function CreatorDetailModal({ creator, onClose }: { creator: any; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-        className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[88vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-6 py-4 flex justify-between items-center">
-          <h3 className="font-black uppercase tracking-tight">Creator Details</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-[#F8F8F8]"><X className="w-5 h-5" /></button>
+    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <motion.div
+        initial={{ opacity: 0, y: "100%" }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: "100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"
+      >
+        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center">
+          <h3 className="font-black uppercase tracking-tight text-lg">Creator Details</h3>
+          <button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <div className="p-6 space-y-5">
-          <div className="flex items-center gap-5">
+        
+        <div className="p-5 space-y-5">
+          {/* Profile header */}
+          <div className="flex items-center gap-4">
             {creator.avatar_url ? (
-              <img src={creator.avatar_url} alt={creator.full_name} className="w-20 h-20 border-2 border-[#1D1D1D] object-cover" />
+              <img src={creator.avatar_url} alt={creator.full_name} className="w-20 h-20 border-2 border-[#1D1D1D] object-cover rounded-xl" />
             ) : (
-              <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center">
-                <User className="w-7 h-7 text-gray-400" />
+              <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center rounded-xl">
+                <User className="w-8 h-8 text-gray-400" />
               </div>
             )}
-            <div>
+            <div className="flex-1">
               <h2 className="text-xl font-black uppercase tracking-tight">{creator.full_name || creator.username}</h2>
-              <p className="text-sm text-gray-500">{creator.email}</p>
-              <div className="flex gap-2 mt-2">
-                <span className={`text-[8px] font-black px-2 py-1 rounded-full ${
+              <p className="text-sm text-gray-500 mb-2">{creator.email}</p>
+              <div className="flex flex-wrap gap-2">
+                <span className={`text-[9px] font-black px-3 py-1 rounded-full ${
                   creator.status === "active" ? "bg-green-100 text-green-700" :
                   creator.status === "suspended" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                }`}>{creator.status}</span>
-                {creator.verified && <span className="text-[8px] bg-blue-100 text-blue-700 px-2 py-1 rounded-full">Verified</span>}
+                }`}>
+                  {creator.status}
+                </span>
+                {creator.verified && (
+                  <span className="text-[9px] bg-blue-100 text-blue-700 px-3 py-1 rounded-full">Verified</span>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          {/* Stats grid */}
+          <div className="grid grid-cols-3 gap-2">
             {[
               { label: "Followers", value: creator.followers?.toLocaleString() || "0" },
               { label: "Avg Viewers", value: creator.avg_viewers?.toLocaleString() || "0" },
               { label: "Rate", value: creator.rate ? `₦${creator.rate}` : "—" },
             ].map((s, i) => (
-              <div key={i} className="border-2 border-[#1D1D1D] p-3 text-center">
-                <p className="text-xl font-black">{s.value}</p>
+              <div key={i} className="border-2 border-[#1D1D1D] p-3 text-center rounded-xl">
+                <p className="text-lg font-black">{s.value}</p>
                 <p className="text-[8px] uppercase tracking-widest opacity-60">{s.label}</p>
               </div>
             ))}
           </div>
 
+          {/* Platforms */}
           {creator.platforms?.length > 0 && (
             <div>
-              <h4 className="font-black text-xs mb-2 uppercase tracking-widest">Connected Platforms</h4>
+              <h4 className="font-black text-xs mb-3 uppercase tracking-widest">Connected Platforms</h4>
               <div className="space-y-2">
                 {creator.platforms.map((p: any, idx: number) => (
-                  <div key={idx} className="border-2 border-[#1D1D1D] px-4 py-3 flex justify-between items-center">
+                  <div key={idx} className="border-2 border-[#1D1D1D] px-4 py-3 flex justify-between items-center rounded-xl">
                     <div>
                       <p className="font-black text-sm">{p.platform_type || p.platform}</p>
-                      <p className="text-[8px] text-gray-500">@{p.username}</p>
+                      <p className="text-[9px] text-gray-500">@{p.username}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-black">{(p.followers_count || p.followers)?.toLocaleString()}</p>
@@ -972,34 +1080,41 @@ function CreatorDetailModal({ creator, onClose, onUpdate }: { creator: any; onCl
             </div>
           )}
 
+          {/* Bio */}
           {creator.bio && (
             <div>
               <h4 className="font-black text-xs mb-2 uppercase tracking-widest">Bio</h4>
-              <p className="text-sm text-gray-700">{creator.bio}</p>
+              <p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{creator.bio}</p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          {/* Details grid */}
+          <div className="grid grid-cols-2 gap-3">
             {[
               { label: "Location", value: creator.location || creator.city || "Not specified" },
               { label: "Joined", value: new Date(creator.created_at).toLocaleDateString() },
               { label: "Category", value: creator.niche || creator.category || "General" },
-              { label: "User ID", value: creator.user_id || creator.id, mono: true },
+              { label: "User ID", value: (creator.user_id || creator.id)?.slice(0, 12), mono: true },
             ].map((item, i) => (
-              <div key={i}>
-                <p className="text-[8px] uppercase tracking-widest opacity-50 mb-0.5">{item.label}</p>
-                <p className={item.mono ? "text-[9px] font-mono" : ""}>{item.value}</p>
+              <div key={i} className="border-2 border-[#1D1D1D] p-3 rounded-xl">
+                <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p>
+                <p className={`text-xs ${item.mono ? "font-mono" : "font-medium"}`}>{item.value}</p>
               </div>
             ))}
           </div>
 
-          <div className="flex gap-3 pt-4 border-t border-[#1D1D1D]/10">
-            <button onClick={onClose}
-              className="flex-1 border-2 border-[#1D1D1D] py-2.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors">
+          {/* Action buttons */}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 border-2 border-[#1D1D1D] py-3 text-xs font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-xl"
+            >
               Close
             </button>
-            <button onClick={() => toast.info("Messaging feature coming soon")}
-              className="flex-1 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors">
+            <button
+              onClick={() => toast.info("Messaging feature coming soon")}
+              className="flex-1 bg-[#1D1D1D] text-white py-3 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl"
+            >
               Send Message
             </button>
           </div>
@@ -1010,7 +1125,7 @@ function CreatorDetailModal({ creator, onClose, onUpdate }: { creator: any; onCl
 }
 
 // ─────────────────────────────────────────────
-// BUSINESSES TAB
+// BUSINESSES TAB - Mobile First
 // ─────────────────────────────────────────────
 
 function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
@@ -1020,6 +1135,7 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchBusinesses = async () => {
     setLoading(true);
@@ -1060,99 +1176,181 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
   const getStatusDisplay = (b: any) => b.application_status || b.status || "pending";
 
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <h3 className="font-black uppercase tracking-tight">Business Applications</h3>
-        <div className="flex gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:flex-initial">
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Business Applications</h3>
+        
+        <div className="flex gap-2">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input type="text" placeholder="Search businesses..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors w-full md:w-64 text-sm" />
+            <input
+              type="text"
+              placeholder="Search businesses..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm rounded-xl"
+            />
           </div>
-          <button className="p-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors"><Filter className="w-4 h-4" /></button>
-          <button className="p-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors"><Download className="w-4 h-4" /></button>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+          >
+            <Filter className="w-5 h-5" />
+          </button>
+          <button className="px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl">
+            <Download className="w-5 h-5" />
+          </button>
         </div>
-      </div>
 
-      <div className="flex gap-2 mb-6 border-b border-[#1D1D1D]/10 overflow-x-auto">
-        {(["pending", "approved", "rejected", "all"] as const).map(tab => (
-          <button key={tab} onClick={() => setFilter(tab)}
-            className={`px-4 py-3 text-[9px] font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
-              filter === tab ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400 hover:text-[#1D1D1D]"
-            }`}
-          >{tab === "all" ? "All Businesses" : tab}</button>
-        ))}
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
+            {(["pending", "approved", "rejected", "all"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
+                  filter === tab 
+                    ? "bg-[#1D1D1D] text-white" 
+                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                }`}
+              >
+                {tab === "all" ? "All" : tab}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!showFilters && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">
+              Filter: {filter === "all" ? "All Businesses" : filter}
+            </span>
+            <span className="text-xs text-gray-400">({businesses.length})</span>
+          </div>
+        )}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-[#1D1D1D] border-t-transparent animate-spin" /></div>
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
       ) : businesses.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-16 text-center">
-          <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No businesses found</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {businesses.map((biz) => {
-            const status = getStatusDisplay(biz);
-            const verificationStatus = biz.verification_status || "pending";
+        <div className="space-y-3">
+          {businesses.map((business) => {
+            const status = getStatusDisplay(business);
+            const verificationStatus = business.verification_status || "pending";
             return (
-              <motion.div key={biz.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-5 transition-all">
-                <div className="flex items-start justify-between gap-4 mb-4">
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    {biz.logo_url ? (
-                      <img src={biz.logo_url} alt={getBusinessName(biz)} onClick={() => { setSelectedBusiness(biz); setShowDetailModal(true); }}
-                        className="w-14 h-14 border-2 border-[#1D1D1D] object-cover cursor-pointer hover:opacity-80 shrink-0" />
-                    ) : (
-                      <div onClick={() => { setSelectedBusiness(biz); setShowDetailModal(true); }}
-                        className="w-14 h-14 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center cursor-pointer hover:bg-gray-200 shrink-0">
-                        <Building2 className="w-5 h-5 text-gray-400" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-black text-base uppercase tracking-tight truncate mb-1">{getBusinessName(biz)}</h4>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-gray-500">
-                        <span className="flex items-center gap-1"><User className="w-3 h-3" />{getContactName(biz)}</span>
-                        <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{getContactEmail(biz)}</span>
-                        {biz.phone_number && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{biz.phone_number}</span>}
-                        <span className="flex items-center gap-1"><Briefcase className="w-3 h-3" />{biz.industry || biz.sector || "—"}</span>
-                        {(biz.city || biz.location) && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{biz.city || biz.location}</span>}
-                      </div>
-                      {biz.description && <p className="text-xs text-gray-500 mt-2 line-clamp-1">{biz.description}</p>}
+              <motion.div
+                key={business.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  {business.logo_url ? (
+                    <img
+                      src={business.logo_url}
+                      alt={getBusinessName(business)}
+                      onClick={() => { setSelectedBusiness(business); setShowDetailModal(true); }}
+                      className="w-14 h-14 border-2 border-[#1D1D1D] object-cover cursor-pointer hover:opacity-80 shrink-0 rounded-xl"
+                    />
+                  ) : (
+                    <div
+                      onClick={() => { setSelectedBusiness(business); setShowDetailModal(true); }}
+                      className="w-14 h-14 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center cursor-pointer hover:bg-gray-200 shrink-0 rounded-xl"
+                    >
+                      <Building2 className="w-6 h-6 text-gray-400" />
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full whitespace-nowrap ${
-                      status === "approved" || status === "active" ? "bg-green-100 text-green-700" :
-                      status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                    }`}>{status}</span>
-                    <span className={`text-[8px] px-2 py-0.5 rounded-full ${
-                      verificationStatus === "verified" ? "bg-blue-100 text-blue-700" :
-                      verificationStatus === "rejected" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"
-                    }`}>{verificationStatus}</span>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-black text-base uppercase tracking-tight truncate mb-1">{getBusinessName(business)}</h4>
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                      <User className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{getContactName(business)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                      <Mail className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{getContactEmail(business)}</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2 pt-3 border-t border-[#1D1D1D]/5">
-                  <button onClick={() => { setSelectedBusiness(biz); setShowDetailModal(true); }}
-                    className="px-3 py-1.5 border-2 border-[#1D1D1D] text-[8px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors flex items-center gap-1">
-                    <Eye className="w-3 h-3" /> Details
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {business.phone_number && (
+                    <div className="flex items-center gap-1 text-[10px] text-gray-600">
+                      <Phone className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{business.phone_number}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 text-[10px] text-gray-600">
+                    <Briefcase className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{business.industry || business.sector || "—"}</span>
+                  </div>
+                  {(business.city || business.location) && (
+                    <div className="flex items-center gap-1 text-[10px] text-gray-600">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{business.city || business.location}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 mb-3">
+                  <span className={`text-[9px] font-black px-2 py-1 rounded-full ${
+                    status === "approved" || status === "active" ? "bg-green-100 text-green-700" :
+                    status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                  }`}>
+                    {status}
+                  </span>
+                  <span className={`text-[9px] px-2 py-1 rounded-full ${
+                    verificationStatus === "verified" ? "bg-blue-100 text-blue-700" :
+                    verificationStatus === "rejected" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"
+                  }`}>
+                    {verificationStatus}
+                  </span>
+                </div>
+
+                {business.description && (
+                  <p className="text-xs text-gray-500 mb-3 line-clamp-2">{business.description}</p>
+                )}
+
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                  <button
+                    onClick={() => { setSelectedBusiness(business); setShowDetailModal(true); }}
+                    className="px-3 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
+                  >
+                    <Eye className="w-3 h-3" /> View
                   </button>
-                  {filter === "pending" && <>
-                    <button onClick={() => updateBusinessStatus(biz.id, "approved")}
-                      className="flex-1 bg-[#1D1D1D] text-white py-1.5 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-1">
-                      <CheckCircle className="w-3 h-3" /> Approve
+                  
+                  {filter === "pending" && (
+                    <>
+                      <button
+                        onClick={() => updateBusinessStatus(business.id, "approved")}
+                        className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1"
+                      >
+                        <CheckCircle className="w-3 h-3" /> Approve
+                      </button>
+                      <button
+                        onClick={() => updateBusinessStatus(business.id, "rejected")}
+                        className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
+                      >
+                        <XCircle className="w-3 h-3" /> Reject
+                      </button>
+                    </>
+                  )}
+                  
+                  {filter !== "pending" && (
+                    <button
+                      onClick={() => deleteBusiness(business.id)}
+                      className="col-span-2 border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3" /> Delete
                     </button>
-                    <button onClick={() => updateBusinessStatus(biz.id, "rejected")}
-                      className="flex-1 border-2 border-[#1D1D1D] py-1.5 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors flex items-center justify-center gap-1">
-                      <XCircle className="w-3 h-3" /> Reject
-                    </button>
-                  </>}
-                  <button onClick={() => deleteBusiness(biz.id)}
-                    className="px-3 py-1.5 border-2 border-red-500 text-red-500 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  )}
                 </div>
               </motion.div>
             );
@@ -1161,47 +1359,58 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
       )}
 
       {showDetailModal && selectedBusiness && (
-        <BusinessDetailModal business={selectedBusiness} onClose={() => setShowDetailModal(false)}
-          onUpdate={() => { setShowDetailModal(false); fetchBusinesses(); }} />
+        <BusinessDetailModal business={selectedBusiness} onClose={() => setShowDetailModal(false)} />
       )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// BUSINESS DETAIL MODAL
+// BUSINESS DETAIL MODAL - Mobile Optimized
 // ─────────────────────────────────────────────
 
-function BusinessDetailModal({ business, onClose, onUpdate }: { business: any; onClose: () => void; onUpdate: () => void }) {
+function BusinessDetailModal({ business, onClose }: { business: any; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-        className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[88vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-6 py-4 flex justify-between items-center">
-          <h3 className="font-black uppercase tracking-tight">Business Details</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-[#F8F8F8]"><X className="w-5 h-5" /></button>
+    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <motion.div
+        initial={{ opacity: 0, y: "100%" }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: "100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"
+      >
+        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center">
+          <h3 className="font-black uppercase tracking-tight text-lg">Business Details</h3>
+          <button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <div className="p-6 space-y-5">
-          <div className="flex items-center gap-5">
+        
+        <div className="p-5 space-y-5">
+          <div className="flex items-center gap-4">
             {business.logo_url ? (
-              <img src={business.logo_url} alt={business.business_name} className="w-20 h-20 border-2 border-[#1D1D1D] object-cover" />
+              <img src={business.logo_url} alt={business.business_name} className="w-20 h-20 border-2 border-[#1D1D1D] object-cover rounded-xl" />
             ) : (
-              <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center">
-                <Building2 className="w-7 h-7 text-gray-400" />
+              <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center rounded-xl">
+                <Building2 className="w-8 h-8 text-gray-400" />
               </div>
             )}
-            <div>
+            <div className="flex-1">
               <h2 className="text-xl font-black uppercase tracking-tight">{business.business_name || business.name}</h2>
-              <p className="text-sm text-gray-500">{business.email}</p>
-              <div className="flex gap-2 mt-2">
-                <span className={`text-[8px] font-black px-2 py-1 rounded-full ${
+              <p className="text-sm text-gray-500 mb-2">{business.email}</p>
+              <div className="flex flex-wrap gap-2">
+                <span className={`text-[9px] font-black px-3 py-1 rounded-full ${
                   (business.application_status === "approved" || business.status === "active") ? "bg-green-100 text-green-700" :
                   (business.application_status === "rejected" || business.status === "rejected") ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                }`}>{business.application_status || business.status}</span>
-                <span className={`text-[8px] px-2 py-1 rounded-full ${
+                }`}>
+                  {business.application_status || business.status}
+                </span>
+                <span className={`text-[9px] px-3 py-1 rounded-full ${
                   business.verification_status === "verified" ? "bg-blue-100 text-blue-700" :
                   business.verification_status === "rejected" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"
-                }`}>{business.verification_status || "pending"}</span>
+                }`}>
+                  {business.verification_status || "pending"}
+                </span>
               </div>
             </div>
           </div>
@@ -1214,13 +1423,13 @@ function BusinessDetailModal({ business, onClose, onUpdate }: { business: any; o
               { label: "Location", value: `${business.city || business.location || "—"}${business.country ? `, ${business.country}` : ""}` },
               { label: "Joined", value: new Date(business.created_at).toLocaleDateString() },
             ].map((item, i) => (
-              <div key={i} className="border-2 border-[#1D1D1D] p-3">
+              <div key={i} className="border-2 border-[#1D1D1D] p-3 rounded-xl">
                 <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p>
                 <p className="font-black text-sm">{item.value}</p>
               </div>
             ))}
             {business.website && (
-              <div className="border-2 border-[#1D1D1D] p-3">
+              <div className="border-2 border-[#1D1D1D] p-3 rounded-xl">
                 <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">Website</p>
                 <a href={business.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm font-black truncate block">
                   {business.website}
@@ -1232,26 +1441,30 @@ function BusinessDetailModal({ business, onClose, onUpdate }: { business: any; o
           {business.description && (
             <div>
               <h4 className="font-black text-xs mb-2 uppercase tracking-widest">About</h4>
-              <p className="text-sm text-gray-700">{business.description}</p>
+              <p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{business.description}</p>
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2">
             {[{ label: "Campaigns", value: "0" }, { label: "Spent", value: "₦0" }, { label: "Reviews", value: "0" }].map((s, i) => (
-              <div key={i} className="border-2 border-[#1D1D1D] p-3 text-center">
-                <p className="text-xl font-black">{s.value}</p>
+              <div key={i} className="border-2 border-[#1D1D1D] p-3 text-center rounded-xl">
+                <p className="text-lg font-black">{s.value}</p>
                 <p className="text-[8px] uppercase tracking-widest opacity-60">{s.label}</p>
               </div>
             ))}
           </div>
 
-          <div className="flex gap-3 pt-4 border-t border-[#1D1D1D]/10">
-            <button onClick={onClose}
-              className="flex-1 border-2 border-[#1D1D1D] py-2.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors">
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 border-2 border-[#1D1D1D] py-3 text-xs font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-xl"
+            >
               Close
             </button>
-            <button onClick={() => toast.info("Messaging feature coming soon")}
-              className="flex-1 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors">
+            <button
+              onClick={() => toast.info("Messaging feature coming soon")}
+              className="flex-1 bg-[#1D1D1D] text-white py-3 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl"
+            >
               Send Message
             </button>
           </div>
@@ -1262,7 +1475,7 @@ function BusinessDetailModal({ business, onClose, onUpdate }: { business: any; o
 }
 
 // ─────────────────────────────────────────────
-// CAMPAIGNS TAB
+// CAMPAIGNS TAB - Mobile First
 // ─────────────────────────────────────────────
 
 function AdminCampaigns() {
@@ -1270,6 +1483,7 @@ function AdminCampaigns() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"pending_review" | "active" | "completed" | "rejected" | "all">("pending_review");
   const [searchTerm, setSearchTerm] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchCampaigns = async () => {
     setLoading(true);
@@ -1303,104 +1517,152 @@ function AdminCampaigns() {
   const getPrice = (c: any) => c.pay_rate ?? c.bid_amount ?? c.budget ?? 0;
 
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <h3 className="font-black uppercase tracking-tight">Campaigns</h3>
-        <div className="flex gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:flex-initial">
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Campaigns</h3>
+        
+        <div className="flex gap-2">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input type="text" placeholder="Search campaigns..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors w-full md:w-64 text-sm" />
+            <input
+              type="text"
+              placeholder="Search campaigns..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm rounded-xl"
+            />
           </div>
-          <button className="p-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors"><Filter className="w-4 h-4" /></button>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+          >
+            <Filter className="w-5 h-5" />
+          </button>
         </div>
-      </div>
 
-      <div className="flex gap-2 mb-6 border-b border-[#1D1D1D]/10 overflow-x-auto">
-        {(["pending_review", "active", "completed", "rejected", "all"] as const).map(tab => (
-          <button key={tab} onClick={() => setFilter(tab)}
-            className={`px-4 py-3 text-[9px] font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
-              filter === tab ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400 hover:text-[#1D1D1D]"
-            }`}>{tab.replace("_", " ")}</button>
-        ))}
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
+            {(["pending_review", "active", "completed", "rejected", "all"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
+                  filter === tab 
+                    ? "bg-[#1D1D1D] text-white" 
+                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                }`}
+              >
+                {tab === "all" ? "All" : tab.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!showFilters && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">
+              Filter: {filter === "all" ? "All Campaigns" : filter.replace("_", " ")}
+            </span>
+            <span className="text-xs text-gray-400">({campaigns.length})</span>
+          </div>
+        )}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-[#1D1D1D] border-t-transparent animate-spin" /></div>
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
       ) : campaigns.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-16 text-center">
-          <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No campaigns found</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {campaigns.map((camp) => {
-            const biz = camp.businesses;
+            const business = camp.businesses;
             const price = getPrice(camp);
             return (
-              <motion.div key={camp.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-5 transition-all">
-                <div className="flex items-start justify-between gap-4 mb-4">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {biz?.logo_url ? (
-                      <img src={biz.logo_url} alt={getBusinessName(biz)} className="w-11 h-11 border-2 border-[#1D1D1D] object-cover shrink-0" />
-                    ) : (
-                      <div className="w-11 h-11 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center shrink-0">
-                        <Building2 className="w-4 h-4 text-gray-400" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-black text-sm uppercase tracking-tight truncate">{getCampaignName(camp)}</h4>
-                      <div className="flex flex-wrap gap-2 text-[9px] text-gray-500 mt-0.5">
-                        <span>{getBusinessName(biz)}</span>
-                        <span>•</span>
-                        <span className="capitalize">{camp.type?.replace("_", " ") || "Standard"}</span>
-                        <span>•</span>
-                        <span>ID: {camp.id.slice(0, 8)}</span>
-                      </div>
+              <motion.div
+                key={camp.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  {business?.logo_url ? (
+                    <img src={business.logo_url} alt={getBusinessName(business)} className="w-12 h-12 border-2 border-[#1D1D1D] object-cover shrink-0 rounded-xl" />
+                  ) : (
+                    <div className="w-12 h-12 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center shrink-0 rounded-xl">
+                      <Building2 className="w-5 h-5 text-gray-400" />
                     </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-black text-sm uppercase tracking-tight truncate">{getCampaignName(camp)}</h4>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{getBusinessName(business)}</p>
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right">
                     <p className="font-black text-lg text-[#389C9A]">₦{Number(price).toLocaleString()}</p>
                     <p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p>
-                    <span className={`text-[7px] font-black px-2 py-0.5 rounded-full mt-1 inline-block ${
-                      camp.status === "active" ? "bg-green-100 text-green-700" :
-                      camp.status === "completed" ? "bg-blue-100 text-blue-700" :
-                      camp.status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                    }`}>{camp.status?.replace("_", " ")}</span>
                   </div>
                 </div>
+
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[9px] capitalize bg-gray-100 px-3 py-1 rounded-full">
+                    {camp.type?.replace("_", " ") || "Standard"}
+                  </span>
+                  <span className={`text-[8px] font-black px-2 py-1 rounded-full ${
+                    camp.status === "active" ? "bg-green-100 text-green-700" :
+                    camp.status === "completed" ? "bg-blue-100 text-blue-700" :
+                    camp.status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                  }`}>
+                    {camp.status?.replace("_", " ")}
+                  </span>
+                </div>
+
                 {camp.admin_notes && (
-                  <div className="mb-3 p-2 bg-gray-50 border border-gray-200">
-                    <p className="text-[8px] font-black uppercase tracking-widest mb-0.5">Admin Notes:</p>
+                  <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                    <p className="text-[8px] font-black uppercase tracking-widest mb-1">Admin Notes:</p>
                     <p className="text-xs text-gray-700">{camp.admin_notes}</p>
                   </div>
                 )}
+
                 {filter === "pending_review" && (
-                  <div className="flex gap-2 pt-3 border-t border-[#1D1D1D]/5">
-                    <button onClick={() => updateCampaignStatus(camp.id, "active")}
-                      className="flex-1 bg-[#1D1D1D] text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-1">
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                    <button
+                      onClick={() => updateCampaignStatus(camp.id, "active")}
+                      className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1"
+                    >
                       <CheckCircle className="w-3 h-3" /> Approve
                     </button>
-                    <button onClick={() => updateCampaignStatus(camp.id, "rejected")}
-                      className="flex-1 border-2 border-[#1D1D1D] py-2 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors flex items-center justify-center gap-1">
+                    <button
+                      onClick={() => updateCampaignStatus(camp.id, "rejected")}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
+                    >
                       <XCircle className="w-3 h-3" /> Reject
                     </button>
-                    <button onClick={() => deleteCampaign(camp.id)}
-                      className="px-3 py-2 border-2 border-red-500 text-red-500 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors">
+                    <button
+                      onClick={() => deleteCampaign(camp.id)}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg"
+                    >
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 )}
+
                 {filter === "active" && (
-                  <div className="flex gap-2 pt-3 border-t border-[#1D1D1D]/5">
-                    <button onClick={() => updateCampaignStatus(camp.id, "completed")}
-                      className="flex-1 bg-[#1D1D1D] text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors">
-                      Mark Completed
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                    <button
+                      onClick={() => updateCampaignStatus(camp.id, "completed")}
+                      className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg col-span-1"
+                    >
+                      Complete
                     </button>
-                    <button onClick={() => updateCampaignStatus(camp.id, "rejected")}
-                      className="flex-1 border-2 border-red-500 text-red-500 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors">
-                      Reject Campaign
+                    <button
+                      onClick={() => updateCampaignStatus(camp.id, "rejected")}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg col-span-1"
+                    >
+                      Reject
                     </button>
                   </div>
                 )}
@@ -1414,7 +1676,7 @@ function AdminCampaigns() {
 }
 
 // ─────────────────────────────────────────────
-// SUPPORT TAB
+// SUPPORT TAB - Mobile First
 // ─────────────────────────────────────────────
 
 function AdminSupport() {
@@ -1422,6 +1684,7 @@ function AdminSupport() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"open" | "in_progress" | "resolved" | "all">("open");
   const [replyText, setReplyText] = useState<{ [key: string]: string }>({});
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -1446,51 +1709,83 @@ function AdminSupport() {
   };
 
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-6">
-      <h3 className="font-black uppercase tracking-tight mb-6">Support Tickets</h3>
-      <div className="flex gap-2 mb-6 border-b border-[#1D1D1D]/10 overflow-x-auto">
-        {(["open", "in_progress", "resolved", "all"] as const).map(tab => (
-          <button key={tab} onClick={() => setFilter(tab)}
-            className={`px-4 py-3 text-[9px] font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
-              filter === tab ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400 hover:text-[#1D1D1D]"
-            }`}>{tab === "all" ? "All Tickets" : tab.replace("_", " ")}</button>
-        ))}
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Support Tickets</h3>
+        
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+        >
+          <Filter className="w-5 h-5" />
+          <span className="text-xs font-black uppercase tracking-widest">
+            Filter: {filter === "all" ? "All Tickets" : filter.replace("_", " ")}
+          </span>
+        </button>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
+            {(["open", "in_progress", "resolved", "all"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
+                  filter === tab 
+                    ? "bg-[#1D1D1D] text-white" 
+                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                }`}
+              >
+                {tab === "all" ? "All" : tab.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-[#1D1D1D] border-t-transparent animate-spin" /></div>
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
       ) : tickets.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-16 text-center">
-          <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No tickets found</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {tickets.map(ticket => (
-            <motion.div key={ticket.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-5 transition-all">
-              <div className="flex justify-between items-start mb-3 gap-4">
-                <div className="flex-1 min-w-0">
+            <motion.div
+              key={ticket.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[8px] font-black uppercase tracking-widest bg-[#F4F4F4] px-2 py-0.5 rounded-full">
+                    <span className="text-[9px] font-black bg-[#F4F4F4] px-2 py-1 rounded-full">
                       {ticket.category || "General"}
                     </span>
                     <span className="text-[8px] text-gray-400">#{ticket.id.slice(0, 8)}</span>
                   </div>
-                  {ticket.subject && <h4 className="font-black text-sm mb-1">{ticket.subject}</h4>}
-                  <p className="text-sm text-[#1D1D1D] mb-2 line-clamp-3">{ticket.message}</p>
+                  {ticket.subject && (
+                    <h4 className="font-black text-sm mb-2">{ticket.subject}</h4>
+                  )}
+                  <p className="text-sm text-[#1D1D1D] mb-3">{ticket.message}</p>
                   <p className="text-[8px] text-gray-400">
                     From: {ticket.user_email || ticket.user_id.slice(0, 8)} · {new Date(ticket.created_at).toLocaleString()}
                   </p>
                 </div>
-                <span className={`text-[7px] font-black uppercase tracking-widest px-2 py-1 rounded-full whitespace-nowrap shrink-0 ${
+                <span className={`text-[8px] font-black px-2 py-1 rounded-full whitespace-nowrap ${
                   ticket.status === "open" ? "bg-yellow-100 text-yellow-700" :
                   ticket.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
-                }`}>{ticket.status.replace("_", " ")}</span>
+                }`}>
+                  {ticket.status.replace("_", " ")}
+                </span>
               </div>
 
               {ticket.admin_reply && (
-                <div className="mb-3 p-3 bg-gray-50 border border-gray-200">
+                <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
                   <p className="text-[8px] font-black uppercase tracking-widest mb-1">Admin Reply:</p>
                   <p className="text-xs text-gray-700">{ticket.admin_reply}</p>
                 </div>
@@ -1502,19 +1797,23 @@ function AdminSupport() {
                     placeholder="Type your reply..."
                     value={replyText[ticket.id] || ""}
                     onChange={(e) => setReplyText(prev => ({ ...prev, [ticket.id]: e.target.value }))}
-                    className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm mb-2"
-                    rows={2}
+                    className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm mb-2 rounded-xl"
+                    rows={3}
                   />
                   <div className="flex gap-2">
                     {filter === "open" && (
-                      <button onClick={() => updateTicketStatus(ticket.id, "in_progress")}
-                        className="px-4 py-2 border-2 border-[#1D1D1D] text-[8px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors">
+                      <button
+                        onClick={() => updateTicketStatus(ticket.id, "in_progress")}
+                        className="flex-1 border-2 border-[#1D1D1D] py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg"
+                      >
                         In Progress
                       </button>
                     )}
-                    <button onClick={() => updateTicketStatus(ticket.id, "resolved", replyText[ticket.id])}
+                    <button
+                      onClick={() => updateTicketStatus(ticket.id, "resolved", replyText[ticket.id])}
                       disabled={!replyText[ticket.id]?.trim()}
-                      className="flex-1 bg-[#1D1D1D] text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      className="flex-1 bg-[#1D1D1D] text-white py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                       Reply & Resolve
                     </button>
                   </div>
@@ -1529,13 +1828,14 @@ function AdminSupport() {
 }
 
 // ─────────────────────────────────────────────
-// REPORTS TAB
+// REPORTS TAB - Mobile First
 // ─────────────────────────────────────────────
 
 function AdminReports() {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"pending" | "resolved" | "dismissed" | "all">("pending");
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchReports = async () => {
     setLoading(true);
@@ -1568,41 +1868,69 @@ function AdminReports() {
   };
 
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-6">
-      <h3 className="font-black uppercase tracking-tight mb-6">Reported Content</h3>
-      <div className="flex gap-2 mb-6 border-b border-[#1D1D1D]/10 overflow-x-auto">
-        {(["pending", "resolved", "dismissed", "all"] as const).map(tab => (
-          <button key={tab} onClick={() => setFilter(tab)}
-            className={`px-4 py-3 text-[9px] font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
-              filter === tab ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400 hover:text-[#1D1D1D]"
-            }`}>{tab}</button>
-        ))}
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Reported Content</h3>
+        
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+        >
+          <Filter className="w-5 h-5" />
+          <span className="text-xs font-black uppercase tracking-widest">
+            Filter: {filter === "all" ? "All Reports" : filter}
+          </span>
+        </button>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
+            {(["pending", "resolved", "dismissed", "all"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
+                  filter === tab 
+                    ? "bg-[#1D1D1D] text-white" 
+                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-[#1D1D1D] border-t-transparent animate-spin" /></div>
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
       ) : reports.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-16 text-center">
-          <Flag className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <Flag className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No reports found</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {reports.map(report => (
-            <motion.div key={report.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-5 transition-all">
-              <div className="flex justify-between items-start mb-3 gap-4">
-                <div className="flex-1 min-w-0">
+            <motion.div
+              key={report.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[8px] font-black uppercase tracking-widest bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                    <span className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-1 rounded-full">
                       {report.content_type}
                     </span>
                     <span className="text-[8px] text-gray-400">#{report.id.slice(0, 8)}</span>
                   </div>
-                  <p className="text-sm font-medium mb-1">Reason: {report.reason}</p>
+                  <p className="text-sm font-medium mb-2">Reason: {report.reason}</p>
                   <p className="text-xs text-gray-500 mb-2">Content ID: {report.content_id}</p>
                   {report.details && (
-                    <pre className="text-[8px] bg-gray-50 p-2 rounded mb-2 overflow-x-auto max-h-24">
+                    <pre className="text-[8px] bg-gray-50 p-2 rounded-xl mb-2 overflow-x-auto max-h-24">
                       {JSON.stringify(report.details, null, 2)}
                     </pre>
                   )}
@@ -1610,23 +1938,32 @@ function AdminReports() {
                     Reported by: {report.reported_by} · {new Date(report.created_at).toLocaleString()}
                   </p>
                 </div>
-                <span className={`text-[7px] font-black uppercase tracking-widest px-2 py-1 rounded-full whitespace-nowrap shrink-0 ${
+                <span className={`text-[8px] font-black px-2 py-1 rounded-full whitespace-nowrap ${
                   report.status === "pending" ? "bg-yellow-100 text-yellow-700" :
                   report.status === "resolved" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
-                }`}>{report.status}</span>
+                }`}>
+                  {report.status}
+                </span>
               </div>
+
               {filter === "pending" && (
-                <div className="flex gap-2 pt-3 border-t border-[#1D1D1D]/5">
-                  <button onClick={() => deleteReportedContent(report.content_type, report.content_id, report.id)}
-                    className="flex-1 bg-red-500 text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors flex items-center justify-center gap-1">
-                    <Trash2 className="w-3 h-3" /> Delete Content
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                  <button
+                    onClick={() => deleteReportedContent(report.content_type, report.content_id, report.id)}
+                    className="bg-red-500 text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete
                   </button>
-                  <button onClick={() => updateReportStatus(report.id, "resolved")}
-                    className="flex-1 bg-[#1D1D1D] text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-1">
-                    <CheckCircle className="w-3 h-3" /> Keep & Resolve
+                  <button
+                    onClick={() => updateReportStatus(report.id, "resolved")}
+                    className="bg-[#1D1D1D] text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
+                  >
+                    <CheckCircle className="w-3 h-3" /> Keep
                   </button>
-                  <button onClick={() => updateReportStatus(report.id, "dismissed")}
-                    className="flex-1 border-2 border-[#1D1D1D] py-2 text-[8px] font-black uppercase tracking-widest hover:bg-gray-500 hover:text-white transition-colors flex items-center justify-center gap-1">
+                  <button
+                    onClick={() => updateReportStatus(report.id, "dismissed")}
+                    className="border-2 border-gray-500 text-gray-500 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-gray-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
+                  >
                     <XCircle className="w-3 h-3" /> Dismiss
                   </button>
                 </div>
@@ -1640,7 +1977,7 @@ function AdminReports() {
 }
 
 // ─────────────────────────────────────────────
-// TRANSACTIONS TAB
+// TRANSACTIONS TAB - Mobile First
 // ─────────────────────────────────────────────
 
 function AdminTransactions() {
@@ -1648,6 +1985,7 @@ function AdminTransactions() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "payment" | "withdrawal" | "refund">("all");
   const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("all");
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchTransactions = async () => {
     setLoading(true);
@@ -1670,85 +2008,111 @@ function AdminTransactions() {
   const getCompletedCount = () => transactions.filter(t => t.status === "completed").length;
 
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <h3 className="font-black uppercase tracking-tight">Transactions</h3>
-        <div className="flex gap-2 flex-wrap">
-          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}
-            className="px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-[9px] font-black uppercase tracking-widest">
-            <option value="all">All Types</option>
-            <option value="payment">Payments</option>
-            <option value="withdrawal">Withdrawals</option>
-            <option value="refund">Refunds</option>
-          </select>
-          <select value={dateRange} onChange={(e) => setDateRange(e.target.value as any)}
-            className="px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-[9px] font-black uppercase tracking-widest">
-            <option value="all">All Time</option>
-            <option value="today">Today</option>
-            <option value="week">Last 7 Days</option>
-            <option value="month">Last 30 Days</option>
-          </select>
-          <button className="p-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors"><Download className="w-4 h-4" /></button>
-        </div>
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Transactions</h3>
+        
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+        >
+          <Filter className="w-5 h-5" />
+          <span className="text-xs font-black uppercase tracking-widest">Filter Transactions</span>
+        </button>
+
+        {showFilters && (
+          <div className="space-y-3 p-3 bg-[#F8F8F8] rounded-xl">
+            <div>
+              <label className="block text-[9px] font-black uppercase tracking-widest mb-2">Type</label>
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as any)}
+                className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-xs rounded-lg"
+              >
+                <option value="all">All Types</option>
+                <option value="payment">Payments</option>
+                <option value="withdrawal">Withdrawals</option>
+                <option value="refund">Refunds</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[9px] font-black uppercase tracking-widest mb-2">Date Range</label>
+              <select
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value as any)}
+                className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-xs rounded-lg"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">Last 7 Days</option>
+                <option value="month">Last 30 Days</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="bg-[#1D1D1D] text-white p-5">
-          <p className="text-[8px] opacity-60 uppercase tracking-widest mb-1">Total Volume</p>
+      <div className="grid grid-cols-1 gap-3 mb-4">
+        <div className="bg-[#1D1D1D] text-white p-4 rounded-xl">
+          <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Total Volume</p>
           <p className="text-2xl font-black">₦{getTotalAmount().toLocaleString()}</p>
         </div>
-        <div className="border-2 border-[#1D1D1D] p-5">
-          <p className="text-[8px] opacity-60 uppercase tracking-widest mb-1">Transactions</p>
-          <p className="text-2xl font-black">{transactions.length}</p>
-        </div>
-        <div className="border-2 border-[#1D1D1D] p-5">
-          <p className="text-[8px] opacity-60 uppercase tracking-widest mb-1">Completed</p>
-          <p className="text-2xl font-black">{getCompletedCount()}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="border-2 border-[#1D1D1D] p-4 rounded-xl">
+            <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Transactions</p>
+            <p className="text-2xl font-black">{transactions.length}</p>
+          </div>
+          <div className="border-2 border-[#1D1D1D] p-4 rounded-xl">
+            <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Completed</p>
+            <p className="text-2xl font-black">{getCompletedCount()}</p>
+          </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-[#1D1D1D] border-t-transparent animate-spin" /></div>
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
       ) : transactions.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-16 text-center">
-          <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No transactions found</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b-2 border-[#1D1D1D]">
-                {["ID", "Date", "Type", "Amount", "Status", "Actions"].map(h => (
-                  <th key={h} className="text-left py-3 px-2 text-[8px] font-black uppercase tracking-widest">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map((tx) => (
-                <tr key={tx.id} className="border-b border-[#1D1D1D]/10 hover:bg-[#F8F8F8]">
-                  <td className="py-3 px-2 text-[9px] font-mono text-gray-500">{tx.id.slice(0, 8)}</td>
-                  <td className="py-3 px-2 text-[9px]">{new Date(tx.created_at).toLocaleDateString()}</td>
-                  <td className="py-3 px-2">
-                    <span className={`text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest ${
-                      tx.type === "payment" ? "bg-green-100 text-green-700" :
-                      tx.type === "withdrawal" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
-                    }`}>{tx.type}</span>
-                  </td>
-                  <td className="py-3 px-2 font-black text-sm">₦{tx.amount?.toLocaleString()}</td>
-                  <td className="py-3 px-2">
-                    <span className={`text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest ${
-                      tx.status === "completed" ? "bg-green-100 text-green-700" :
-                      tx.status === "failed" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                    }`}>{tx.status}</span>
-                  </td>
-                  <td className="py-3 px-2">
-                    <button className="text-[8px] font-black underline hover:no-underline uppercase tracking-widest">View</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-2">
+          {transactions.map((tx) => (
+            <motion.div
+              key={tx.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl"
+            >
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
+                    tx.type === "payment" ? "bg-green-100 text-green-700" :
+                    tx.type === "withdrawal" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
+                  }`}>
+                    {tx.type}
+                  </span>
+                  <p className="text-[9px] font-mono text-gray-500 mt-1">#{tx.id.slice(0, 8)}</p>
+                </div>
+                <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
+                  tx.status === "completed" ? "bg-green-100 text-green-700" :
+                  tx.status === "failed" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {tx.status}
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-[9px] text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</p>
+                </div>
+                <p className="font-black text-lg text-[#389C9A]">₦{tx.amount?.toLocaleString()}</p>
+              </div>
+            </motion.div>
+          ))}
         </div>
       )}
     </div>
@@ -1756,7 +2120,7 @@ function AdminTransactions() {
 }
 
 // ─────────────────────────────────────────────
-// SETTINGS TAB
+// SETTINGS TAB - Mobile First
 // ─────────────────────────────────────────────
 
 function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: any }) {
@@ -1777,109 +2141,110 @@ function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: a
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Settings panels */}
-      <div className="lg:col-span-2 space-y-5">
-        {/* Fee Settings */}
-        <div className="bg-white border-2 border-[#1D1D1D] p-6">
-          <h4 className="font-black text-sm uppercase tracking-tight mb-4">Fee Settings</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[9px] font-black uppercase tracking-widest mb-1.5">Platform Fee (%)</label>
-              <input type="number" value={platformSettings.platformFee}
-                onChange={(e) => setPlatformSettings(prev => ({ ...prev, platformFee: parseInt(e.target.value) }))}
-                className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors" min="0" max="100" />
-              <p className="text-[9px] text-gray-500 mt-1">% taken from each transaction</p>
-            </div>
-            <div>
-              <label className="block text-[9px] font-black uppercase tracking-widest mb-1.5">Minimum Payout (₦)</label>
-              <input type="number" value={platformSettings.minPayout}
-                onChange={(e) => setPlatformSettings(prev => ({ ...prev, minPayout: parseInt(e.target.value) }))}
-                className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors" min="0" />
-            </div>
-          </div>
-        </div>
-
-        {/* Campaign Settings */}
-        <div className="bg-white border-2 border-[#1D1D1D] p-6">
-          <h4 className="font-black text-sm uppercase tracking-tight mb-4">Campaign Settings</h4>
+    <div className="space-y-4">
+      {/* Fee Settings */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
+        <h4 className="font-black text-base uppercase tracking-tight mb-4">Fee Settings</h4>
+        <div className="space-y-4">
           <div>
-            <label className="block text-[9px] font-black uppercase tracking-widest mb-1.5">Max Campaign Duration (days)</label>
-            <input type="number" value={platformSettings.maxCampaignDuration}
-              onChange={(e) => setPlatformSettings(prev => ({ ...prev, maxCampaignDuration: parseInt(e.target.value) }))}
-              className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors" min="1" />
+            <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Platform Fee (%)</label>
+            <input
+              type="number"
+              value={platformSettings.platformFee}
+              onChange={(e) => setPlatformSettings(prev => ({ ...prev, platformFee: parseInt(e.target.value) }))}
+              className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
+              min="0"
+              max="100"
+            />
+            <p className="text-[9px] text-gray-500 mt-1">% taken from each transaction</p>
+          </div>
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Minimum Payout (₦)</label>
+            <input
+              type="number"
+              value={platformSettings.minPayout}
+              onChange={(e) => setPlatformSettings(prev => ({ ...prev, minPayout: parseInt(e.target.value) }))}
+              className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
+              min="0"
+            />
           </div>
         </div>
+      </div>
 
-        {/* Approval & System Settings */}
-        <div className="bg-white border-2 border-[#1D1D1D] p-6">
-          <h4 className="font-black text-sm uppercase tracking-tight mb-4">Approval & System Settings</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              { key: "autoApproveCreators", label: "Auto-approve creators" },
-              { key: "requireBusinessVerification", label: "Require business verification" },
-              { key: "requireEmailVerification", label: "Require email verification" },
-              { key: "allowGuestBrowsing", label: "Allow guest browsing" },
-            ].map(({ key, label }) => (
-              <label key={key} className="flex items-center gap-3 cursor-pointer p-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors">
-                <input type="checkbox" checked={(platformSettings as any)[key]}
-                  onChange={(e) => setPlatformSettings(prev => ({ ...prev, [key]: e.target.checked }))}
-                  className="w-4 h-4" />
-                <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
-              </label>
-            ))}
-          </div>
+      {/* Campaign Settings */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
+        <h4 className="font-black text-base uppercase tracking-tight mb-4">Campaign Settings</h4>
+        <div>
+          <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Max Campaign Duration (days)</label>
+          <input
+            type="number"
+            value={platformSettings.maxCampaignDuration}
+            onChange={(e) => setPlatformSettings(prev => ({ ...prev, maxCampaignDuration: parseInt(e.target.value) }))}
+            className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
+            min="1"
+          />
+        </div>
+      </div>
 
-          <div className="mt-3">
-            <label className="flex items-center gap-3 cursor-pointer p-3 border-2 border-red-200 hover:border-red-500 transition-colors bg-red-50">
-              <input type="checkbox" checked={platformSettings.maintenanceMode}
-                onChange={(e) => setPlatformSettings(prev => ({ ...prev, maintenanceMode: e.target.checked }))}
-                className="w-4 h-4" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-red-600">Maintenance Mode</span>
+      {/* Approval & System Settings */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
+        <h4 className="font-black text-base uppercase tracking-tight mb-4">Approval & System</h4>
+        <div className="space-y-2">
+          {[
+            { key: "autoApproveCreators", label: "Auto-approve creators" },
+            { key: "requireBusinessVerification", label: "Require business verification" },
+            { key: "requireEmailVerification", label: "Require email verification" },
+            { key: "allowGuestBrowsing", label: "Allow guest browsing" },
+          ].map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-3 cursor-pointer p-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl">
+              <input
+                type="checkbox"
+                checked={(platformSettings as any)[key]}
+                onChange={(e) => setPlatformSettings(prev => ({ ...prev, [key]: e.target.checked }))}
+                className="w-5 h-5"
+              />
+              <span className="text-xs font-black uppercase tracking-widest">{label}</span>
             </label>
-          </div>
+          ))}
         </div>
 
-        <button onClick={handleSaveSettings}
-          className="bg-[#1D1D1D] text-white px-8 py-4 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors w-full sm:w-auto">
-          Save Settings
-        </button>
-      </div>
-
-      {/* Right column: info summary */}
-      <div className="space-y-4">
-        <div className="bg-white border-2 border-[#1D1D1D] p-5">
-          <h4 className="font-black text-xs uppercase tracking-tight mb-4">Current Config</h4>
-          <div className="space-y-3">
-            {[
-              { label: "Platform Fee", value: `${platformSettings.platformFee}%` },
-              { label: "Min Payout", value: `₦${platformSettings.minPayout.toLocaleString()}` },
-              { label: "Max Campaign", value: `${platformSettings.maxCampaignDuration} days` },
-            ].map((item, i) => (
-              <div key={i} className="flex justify-between items-center py-2 border-b border-[#1D1D1D]/5 last:border-0">
-                <span className="text-[9px] uppercase tracking-widest opacity-50">{item.label}</span>
-                <span className="font-black text-sm">{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-[#1D1D1D] text-white p-5">
-          <h4 className="font-black text-xs uppercase tracking-tight mb-3 opacity-60">Platform Health</h4>
-          <div className="space-y-2">
-            {[
-              { label: "Total Users", value: "—" },
-              { label: "Active Campaigns", value: "—" },
-              { label: "Pending Reviews", value: "—" },
-            ].map((item, i) => (
-              <div key={i} className="flex justify-between items-center">
-                <span className="text-[9px] opacity-50 uppercase tracking-widest">{item.label}</span>
-                <span className="font-black">{item.value}</span>
-              </div>
-            ))}
-          </div>
+        <div className="mt-3">
+          <label className="flex items-center gap-3 cursor-pointer p-3 border-2 border-red-200 hover:border-red-500 transition-colors bg-red-50 rounded-xl">
+            <input
+              type="checkbox"
+              checked={platformSettings.maintenanceMode}
+              onChange={(e) => setPlatformSettings(prev => ({ ...prev, maintenanceMode: e.target.checked }))}
+              className="w-5 h-5"
+            />
+            <span className="text-xs font-black uppercase tracking-widest text-red-600">Maintenance Mode</span>
+          </label>
         </div>
       </div>
+
+      {/* Current Config Summary */}
+      <div className="bg-[#1D1D1D] text-white p-5 rounded-xl">
+        <h4 className="font-black text-base uppercase tracking-tight mb-3 opacity-60">Current Config</h4>
+        <div className="space-y-2">
+          {[
+            { label: "Platform Fee", value: `${platformSettings.platformFee}%` },
+            { label: "Min Payout", value: `₦${platformSettings.minPayout.toLocaleString()}` },
+            { label: "Max Campaign", value: `${platformSettings.maxCampaignDuration} days` },
+          ].map((item, i) => (
+            <div key={i} className="flex justify-between items-center py-2 border-b border-white/10 last:border-0">
+              <span className="text-[9px] uppercase tracking-widest opacity-50">{item.label}</span>
+              <span className="font-black text-sm">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <button
+        onClick={handleSaveSettings}
+        className="w-full bg-[#1D1D1D] text-white px-6 py-4 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl"
+      >
+        Save Settings
+      </button>
     </div>
   );
 }
