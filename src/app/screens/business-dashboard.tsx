@@ -65,6 +65,7 @@ interface BusinessProfile {
 
 export function BusinessDashboard() {
   const navigate = useNavigate();
+   const [showPendingBanner, setShowPendingBanner] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -74,7 +75,7 @@ export function BusinessDashboard() {
   const [campaignFilter, setCampaignFilter] = useState<"LIVE" | "PENDING" | "COMPLETED">("LIVE");
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  const [showPendingBanner, setShowPendingBanner] = useState(false);
+ 
 
   // ─── 1. AUTH + BUSINESS PROFILE ───────────────────────────────────────────
 
@@ -113,7 +114,7 @@ export function BusinessDashboard() {
         }
 
         // Check if business is pending
-        if (business.status === "pending_review" || business.application_status === "pending") {
+       if (business.status === "pending_review" || business.application_status === "pending") {
           setShowPendingBanner(true);
         }
 
@@ -350,25 +351,28 @@ export function BusinessDashboard() {
           </button>
         </div>
       </div>
-
+  
       {/* PENDING APPROVAL BANNER - THIS WAS MISSING */}
-      {showPendingBanner && (
-        <div className="mx-8 mt-4 p-4 bg-[#FEDB71]/20 border-2 border-[#FEDB71] rounded-xl">
-          <div className="flex items-center gap-3">
-            <Clock className="w-5 h-5 text-[#1D1D1D] shrink-0 animate-pulse" />
-            <div>
-              <p className="text-sm font-black uppercase tracking-widest">
-                Your business application is under review
-              </p>
-              <p className="text-xs text-gray-600 mt-1">
-                You'll be notified at <span className="font-bold underline">{businessProfile?.email}</span> once approved. 
-                In the meantime, you can browse and prepare campaigns.
-              </p>
-            </div>
-          </div>
+  {showPendingBanner && (
+  <div className="mx-8 mt-4 p-5 bg-[#FEDB71]/20 border-2 border-[#FEDB71] rounded-xl">
+    <div className="flex items-start gap-4">
+      <div className="w-10 h-10 bg-[#FEDB71] rounded-xl flex items-center justify-center shrink-0">
+        <Clock className="w-5 h-5 text-[#1D1D1D]" />
+      </div>
+      <div className="flex-1">
+        <h3 className="text-sm font-black uppercase tracking-tight mb-1">Business Application Under Review</h3>
+        <p className="text-xs text-gray-600 mb-2">
+          Your business application is being reviewed by our team. You'll be notified at{' '}
+          <span className="font-bold underline">{businessProfile?.email}</span> once approved.
+        </p>
+        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+          <span className="w-2 h-2 bg-[#FEDB71] rounded-full animate-pulse" />
+          <span>Estimated review time: 24-48 hours</span>
         </div>
-      )}
-
+      </div>
+    </div>
+  </div>
+)}
       {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-8">
         {stats.map((stat, i) => {
