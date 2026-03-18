@@ -38,6 +38,7 @@ import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
 import { AdminDashboard } from "../app/components/AdminDashboard"; // 👈 Direct import from components
+import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
