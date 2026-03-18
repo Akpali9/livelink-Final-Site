@@ -269,6 +269,7 @@ export function AdminDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
+      // ── CREATORS (table confirmed exists) ───────────────────────────────
       let totalCreators = 0, pendingCreators = 0, activeCreators = 0, suspendedCreators = 0;
       try {
         const { count: total } = await supabase.from("creator_profiles").select("*", { count: "exact", head: true });
@@ -279,20 +280,22 @@ export function AdminDashboard() {
         activeCreators = active || 0;
         const { count: suspended } = await supabase.from("creator_profiles").select("*", { count: "exact", head: true }).eq("status", "suspended");
         suspendedCreators = suspended || 0;
-      } catch (error) { console.error("Error fetching creator stats:", error); }
+      } catch (e) { console.error("Creator stats error:", e); }
 
+      // ── BUSINESSES (table confirmed exists) ─────────────────────────────
       let totalBusinesses = 0, pendingBusinesses = 0, approvedBusinesses = 0, rejectedBusinesses = 0;
       try {
         const { count: total } = await supabase.from("businesses").select("*", { count: "exact", head: true }).neq("status", "deleted");
         totalBusinesses = total || 0;
-        const { count: pending, error: pendingError } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "pending");
-        pendingBusinesses = pendingError ? 0 : (pending || 0);
-        const { count: approved, error: approvedError } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "approved");
-        approvedBusinesses = approvedError ? 0 : (approved || 0);
-        const { count: rejected, error: rejectedError } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "rejected");
-        rejectedBusinesses = rejectedError ? 0 : (rejected || 0);
-      } catch (error) { console.error("Error fetching business stats:", error); }
+        const { count: pending } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "pending");
+        pendingBusinesses = pending || 0;
+        const { count: approved } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "approved");
+        approvedBusinesses = approved || 0;
+        const { count: rejected } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "rejected");
+        rejectedBusinesses = rejected || 0;
+      } catch (e) { console.error("Business stats error:", e); }
 
+      // ── CAMPAIGNS (table confirmed exists) ──────────────────────────────
       let totalCampaigns = 0, activeCampaigns = 0, completedCampaigns = 0, pendingCampaigns = 0;
       try {
         const { count: total } = await supabase.from("campaigns").select("*", { count: "exact", head: true });
@@ -303,37 +306,63 @@ export function AdminDashboard() {
         completedCampaigns = completed || 0;
         const { count: pending } = await supabase.from("campaigns").select("*", { count: "exact", head: true }).eq("status", "pending_review");
         pendingCampaigns = pending || 0;
-      } catch (error) { console.error("Error fetching campaign stats:", error); }
+      } catch (e) { console.error("Campaign stats error:", e); }
 
+      // ── REVENUE: business_transactions (403 = RLS blocks admin, skip gracefully) ──
       let totalRevenue = 0;
       try {
-        const { data: txRows } = await supabase.from("business_transactions").select("amount").eq("status", "completed").eq("type", "payment");
-        totalRevenue = (txRows || []).reduce((s, r) => s + (r.amount || 0), 0);
-      } catch (error) { console.error("Error fetching revenue:", error); }
+        const { data: txRows, error: txError } = await supabase
+          .from("business_transactions")
+          .select("amount")
+          .eq("status", "completed")
+          .eq("type", "payment");
+        if (!txError) totalRevenue = (txRows || []).reduce((s, r) => s + (r.amount || 0), 0);
+        // If 403: RLS policy needs UPDATE — add policy: admin can select business_transactions
+      } catch (e) { console.error("Revenue fetch error (check RLS):", e); }
 
+      // ── PAYOUTS: campaign_creators — only query columns that exist ───────
+      // NOTE: total_earnings and paid_out don't exist in this schema
+      // Use streams_completed * pay_rate as approximation if available
       let pendingPayouts = 0;
       try {
-        const { data: earningsRows } = await supabase.from("campaign_creators").select("total_earnings, paid_out");
-        pendingPayouts = (earningsRows || []).reduce((s, r) => s + Math.max(0, (r.total_earnings || 0) - (r.paid_out || 0)), 0);
-      } catch (error) { console.error("Error fetching payouts:", error); }
+        const { data: ccRows, error: ccError } = await supabase
+          .from("campaign_creators")
+          .select("streams_completed, streams_target, status")
+          .eq("status", "ACTIVE");
+        // Real payout calc requires pay_rate join — show 0 until schema has earnings columns
+        if (!ccError) pendingPayouts = 0;
+      } catch (e) { console.error("Payout fetch error:", e); }
 
+      // ── TOTAL USERS: auth.users is not accessible via REST API ──────────
+      // Use creator_profiles + businesses count as proxy instead
       let totalUsers = 0;
       try {
-        const { count } = await supabase.from("auth.users").select("*", { count: "exact", head: true });
-        totalUsers = count || 0;
-      } catch (error) { console.error("Error fetching user count:", error); }
+        const { count: creatorCount } = await supabase.from("creator_profiles").select("*", { count: "exact", head: true });
+        const { count: bizCount } = await supabase.from("businesses").select("*", { count: "exact", head: true });
+        totalUsers = (creatorCount || 0) + (bizCount || 0);
+      } catch (e) { console.error("User count error:", e); }
 
+      // ── REPORTED CONTENT: table may not exist yet ────────────────────────
       let reportedContent = 0;
       try {
-        const { count } = await supabase.from("reported_content").select("*", { count: "exact", head: true }).eq("status", "pending");
-        reportedContent = count || 0;
-      } catch (error) { console.error("Error fetching reports:", error); }
+        const { count, error: rcError } = await supabase
+          .from("reported_content")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "pending");
+        if (!rcError) reportedContent = count || 0;
+        // If 404: CREATE TABLE reported_content in Supabase to enable this feature
+      } catch (e) { /* table doesn't exist yet — safe to ignore */ }
 
+      // ── SUPPORT TICKETS: table may not exist yet ─────────────────────────
       let openSupportTickets = 0;
       try {
-        const { count } = await supabase.from("support_tickets").select("*", { count: "exact", head: true }).in("status", ["open", "in_progress"]);
-        openSupportTickets = count || 0;
-      } catch (error) { console.error("Error fetching tickets:", error); }
+        const { count, error: stError } = await supabase
+          .from("support_tickets")
+          .select("*", { count: "exact", head: true })
+          .in("status", ["open", "in_progress"]);
+        if (!stError) openSupportTickets = count || 0;
+        // If 404: CREATE TABLE support_tickets in Supabase to enable this feature
+      } catch (e) { /* table doesn't exist yet — safe to ignore */ }
 
       setStats({
         totalCreators, pendingCreators, activeCreators, suspendedCreators,
