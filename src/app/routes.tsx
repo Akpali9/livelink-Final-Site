@@ -41,6 +41,8 @@ import { AdminDashboard } from "../app/components/AdminDashboard";
 import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue"; // ✅ Fixed import
 import { ForgotPassword } from "./screens/forgot-password";
 import { ResetPassword } from "./screens/reset-password";
+import { Terms } from "./screens/terms";
+import { Privacy } from "./screens/privacy";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -117,6 +119,8 @@ const routes: RouteObject[] = [
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
       { path: "forgot-password", Component: ForgotPassword },
       { path: "reset-password", Component: ResetPassword },
+      { path: "terms", Component: Terms },
+      { path: "privacy", Component: Privacy },
       
       // ✅ ADMIN ROUTES - CORRECTED
       { 
