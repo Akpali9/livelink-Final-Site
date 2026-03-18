@@ -78,7 +78,37 @@ export function BecomeBusiness() {
   const [registeredEmail, setRegisteredEmail] = useState<string>("");
   
   const { submitRegistration, loading, error } = useBusinessRegistration();
-
+ useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return; // not logged in — show the form normally
+ 
+      const userType = user.user_metadata?.user_type || user.user_metadata?.role;
+ 
+      // Logged-in business user who already has a profile → go to dashboard
+      if (userType === "business") {
+        const { data: business } = await supabase
+          .from("businesses")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+ 
+        if (business) {
+          // Profile already exists — no need to be here
+          navigate("/business/dashboard", { replace: true });
+          return;
+        }
+        // No profile yet — allow them to complete registration (stay on form)
+        return;
+      }
+ 
+      // Any other logged-in user type gets redirected away
+      if (userType === "creator") navigate("/dashboard", { replace: true });
+      else if (userType === "admin") navigate("/admin", { replace: true });
+    };
+ 
+    checkAuth();
+  }, []);
   const { register, handleSubmit, watch, control, formState: { errors, isValid } } = useForm<BusinessFormData>({
     defaultValues: {
       socials: [{ platform: "Instagram", handle: "" }],
