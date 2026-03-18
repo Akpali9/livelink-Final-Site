@@ -48,25 +48,15 @@ export function useBusinessRegistration() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * Upload ID document to Supabase Storage
-   */
   const uploadIdDocument = async (file: File, userId: string): Promise<UploadResult> => {
     try {
-      // Validate file
       const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
       if (!allowedTypes.includes(file.type)) {
-        return { 
-          success: false, 
-          error: 'Invalid file type. Please upload JPG, PNG, or PDF.' 
-        };
+        return { success: false, error: 'Invalid file type. Please upload JPG, PNG, or PDF.' };
       }
 
       if (file.size > 5 * 1024 * 1024) {
-        return { 
-          success: false, 
-          error: 'File too large. Maximum size is 5MB.' 
-        };
+        return { success: false, error: 'File too large. Maximum size is 5MB.' };
       }
 
       const fileExt = file.name.split('.').pop();
@@ -88,24 +78,15 @@ export function useBusinessRegistration() {
       return { success: true, url: publicUrl };
     } catch (err: any) {
       console.error('ID upload error:', err);
-      return { 
-        success: false, 
-        error: err.message || 'Failed to upload ID document' 
-      };
+      return { success: false, error: err.message || 'Failed to upload ID document' };
     }
   };
 
-  /**
-   * Validate email format
-   */
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(email.trim().toLowerCase());
   };
 
-  /**
-   * Validate password strength
-   */
   const validatePassword = (password: string): { valid: boolean; message?: string } => {
     if (password.length < 6) {
       return { valid: false, message: 'Password must be at least 6 characters long' };
@@ -119,9 +100,6 @@ export function useBusinessRegistration() {
     return { valid: true };
   };
 
-  /**
-   * Main registration function
-   */
   const submitRegistration = async (
     formData: BusinessFormData, 
     idFile: File
@@ -130,10 +108,6 @@ export function useBusinessRegistration() {
     setError(null);
 
     try {
-      // ============================================
-      // STEP 1: Validate all inputs
-      // ============================================
-      
       // Validate email
       const cleanEmail = formData.email.trim().toLowerCase();
       if (!validateEmail(cleanEmail)) {
@@ -146,7 +120,6 @@ export function useBusinessRegistration() {
         throw new Error(passwordValidation.message);
       }
 
-      // Check password match
       if (formData.password !== formData.confirmPassword) {
         throw new Error('Passwords do not match');
       }
@@ -168,25 +141,19 @@ export function useBusinessRegistration() {
         }
       }
 
-      // Validate goals
       if (!formData.goals || formData.goals.length === 0) {
         throw new Error('Please select at least one advertising goal');
       }
 
-      // Validate campaign type
       if (!formData.campaignType) {
         throw new Error('Please select a campaign type');
       }
 
-      // Validate budget
       if (!formData.budget) {
         throw new Error('Please select a monthly budget range');
       }
 
-      // ============================================
-      // STEP 2: Create auth user
-      // ============================================
-      
+      // Create auth user
       console.log('Creating auth user for:', cleanEmail);
 
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
@@ -209,7 +176,6 @@ export function useBusinessRegistration() {
       if (signUpError) {
         console.error('Signup error details:', signUpError);
         
-        // Handle specific error codes from Supabase
         if (signUpError.message.includes('User already registered') || 
             signUpError.code === 'email_exists' ||
             signUpError.message.includes('already exists')) {
@@ -224,19 +190,6 @@ export function useBusinessRegistration() {
         else if (signUpError.message.includes('Password should be at least 6 characters')) {
           throw new Error('Password must be at least 6 characters long');
         }
-        else if (signUpError.status === 422) {
-          console.error('422 Unprocessable Entity - Check:', {
-            email: cleanEmail,
-            passwordLength: formData.password.length,
-            hasMetadata: !!formData.fullName
-          });
-          
-          if (cleanEmail.includes('@') && !cleanEmail.includes('.')) {
-            throw new Error('Invalid email domain. Please use a valid email address.');
-          } else {
-            throw new Error('Registration failed. Please check your email format and try again.');
-          }
-        }
         else {
           throw new Error(`Signup failed: ${signUpError.message}`);
         }
@@ -248,13 +201,9 @@ export function useBusinessRegistration() {
 
       console.log('Auth user created successfully:', authData.user.id);
 
-      // Check if email confirmation is required
       const needsEmailConfirmation = !authData.user?.confirmed_at;
 
-      // ============================================
-      // STEP 3: Upload ID document
-      // ============================================
-      
+      // Upload ID document
       let idDocumentUrl = '';
       const uploadResult = await uploadIdDocument(idFile, authData.user.id);
       
@@ -266,10 +215,7 @@ export function useBusinessRegistration() {
         toast.warning('ID upload failed but we saved your application. Support will contact you.');
       }
 
-      // ============================================
-      // STEP 4: Create business profile
-      // ============================================
-      
+      // Create business profile
       console.log('Creating business profile...');
 
       const { error: profileError } = await supabase
@@ -298,7 +244,6 @@ export function useBusinessRegistration() {
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
-        
         toast.warning('Account created but profile setup incomplete. Support will contact you.');
         
         // Try to send a notification to admin
@@ -307,17 +252,13 @@ export function useBusinessRegistration() {
           title: 'Business Registration Issue',
           message: `Profile creation failed for ${formData.businessName}. Error: ${profileError.message}`,
           type: 'system',
-          data: { user_id: authData.user.id, email: cleanEmail }
+          data: { user_id: authData.user.id, email: cleanEmail },
+          created_at: new Date().toISOString()
         });
       }
 
-      // ============================================
-      // STEP 5: Store campaign preferences in creator_profiles? 
-      // Actually businesses don't have preferences table - store in metadata
-      // ============================================
-      
       // Update user metadata with preferences
-      const { error: metadataError } = await supabase.auth.updateUser({
+      await supabase.auth.updateUser({
         data: {
           goals: formData.goals,
           campaign_type_preference: formData.campaignType,
@@ -325,18 +266,13 @@ export function useBusinessRegistration() {
           target_age_range: { min: formData.ageMin, max: formData.ageMax },
           target_gender: formData.gender,
           target_location: formData.targetLocation?.trim() || null,
-          referral_code: formData.referral?.trim() || null
+          referral_code: formData.referral?.trim() || null,
+          application_submitted: true,
+          application_status: 'pending'
         }
       });
 
-      if (metadataError) {
-        console.error('Metadata update error:', metadataError);
-      }
-
-      // ============================================
-      // STEP 6: Send confirmation notification
-      // ============================================
-      
+      // Send confirmation notification
       await supabase.from('notifications').insert({
         user_id: authData.user.id,
         title: 'Registration Submitted',
@@ -346,7 +282,16 @@ export function useBusinessRegistration() {
         created_at: new Date().toISOString()
       });
 
-      // Success!
+      // Send admin notification
+      await supabase.from('notifications').insert({
+        user_id: 'admin', // This will be handled by a separate admin notification system
+        title: 'New Business Application',
+        message: `${formData.businessName} has submitted an application for review.`,
+        type: 'admin_notification',
+        data: { business_name: formData.businessName, user_id: authData.user.id },
+        created_at: new Date().toISOString()
+      });
+
       const successMessage = needsEmailConfirmation
         ? 'Registration submitted! Please check your email to confirm your account.'
         : 'Registration submitted successfully! You can now log in.';
@@ -369,9 +314,6 @@ export function useBusinessRegistration() {
     }
   };
 
-  /**
-   * Resend confirmation email
-   */
   const resendConfirmationEmail = async (email: string): Promise<boolean> => {
     try {
       const { error } = await supabase.auth.resend({
