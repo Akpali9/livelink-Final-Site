@@ -1,33 +1,61 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { IncomingRequest } from '../types/dashboard';
 
 interface DashboardProfile {
-  total_earned: number;
-  pending: number;
-  paid_out: number;
+  id: string;
+  full_name: string;
+  username: string;
+  avatar_url: string | null;
+  avg_viewers: number;
+  rating: number;
+  status: string;
+}
+
+interface EarningsData {
+  totalEarned: number;
+  pendingEarnings: number;
+  paidOut: number;
 }
 
 interface StatusCounts {
-  requested: number;
-  pending: number;
-  completed: number;
+  requested: number; // pending offers
+  active: number;    // active campaigns
+  completed: number; // completed campaigns
+}
+
+interface IncomingRequest {
+  id: string;
+  business_id: string;
+  business: string;
+  logo: string | null;
+  name: string;
+  type: string;
+  price: number;
+  streams: number;
+  status: 'pending' | 'active' | 'completed' | 'declined';
+  created_at: string;
 }
 
 interface LiveCampaign {
   id: string;
+  campaign_id: string;
   business: string;
+  business_id: string;
   name: string;
   logo: string | null;
   session_earnings: number;
   stream_time: string;
   progress: number;
   remaining_mins: number;
+  streams_completed: number;
+  streams_target: number;
 }
 
 interface Application {
   id: string;
+  campaign_id: string;
   business: string;
+  business_id: string;
   logo: string | null;
   type: string;
   status: string;
@@ -37,14 +65,18 @@ interface Application {
 
 interface UpcomingCampaign {
   id: string;
+  campaign_id: string;
   business: string;
+  business_id: string;
   logo: string | null;
   start_date: string;
   package: string;
+  streams_target: number;
 }
 
 export function useDashboardData(creatorId: string | null) {
-  const [profile, setProfile] = useState<DashboardProfile | null>(null);
+  const [profile, setProfile] = useState<CreatorProfile | null>(null);
+  const [earnings, setEarnings] = useState<EarningsData | null>(null);
   const [statusCounts, setStatusCounts] = useState<StatusCounts | null>(null);
   const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
   const [liveCampaign, setLiveCampaign] = useState<LiveCampaign | null>(null);
@@ -59,116 +91,293 @@ export function useDashboardData(creatorId: string | null) {
     const newErrors: Record<string, string> = {};
 
     try {
-      // Fetch creator profile stats
+      // ============================================
+      // 1. Fetch creator profile
+      // ============================================
       const { data: creatorData, error: profileError } = await supabase
-        .from('creators')
-        .select('total_earned, pending, paid_out')
-        .eq('user_id', creatorId)
+        .from('creator_profiles') // ✅ Fixed: correct table name
+        .select('id, full_name, username, avatar_url, avg_viewers, rating, status')
+        .eq('id', creatorId)
         .single();
 
-      if (profileError) newErrors.profile = 'Could not load earnings';
-      else setProfile(creatorData as DashboardProfile);
-    } catch { newErrors.profile = 'Could not load earnings'; }
+      if (profileError) {
+        newErrors.profile = 'Could not load profile';
+        console.error('Profile error:', profileError);
+      } else {
+        setProfile(creatorData);
+      }
+    } catch (err) {
+      newErrors.profile = 'Could not load profile';
+    }
 
     try {
-      // Fetch campaign status counts
-      const { data: campaigns } = await supabase
-        .from('campaign_requests')
+      // ============================================
+      // 2. Fetch earnings from campaign_creators
+      // ============================================
+      const { data: earningsRows, error: earningsError } = await supabase
+        .from('campaign_creators') // ✅ Fixed: correct table
+        .select('total_earnings, paid_out')
+        .eq('creator_id', creatorId);
+
+      if (earningsError) {
+        newErrors.earnings = 'Could not load earnings';
+        console.error('Earnings error:', earningsError);
+      } else if (earningsRows) {
+        const totalEarned = earningsRows.reduce((sum, r) => sum + (r.total_earnings || 0), 0);
+        const paidOut = earningsRows.reduce((sum, r) => sum + (r.paid_out || 0), 0);
+        const pendingEarnings = totalEarned - paidOut;
+
+        setEarnings({ totalEarned, pendingEarnings, paidOut });
+      }
+    } catch (err) {
+      newErrors.earnings = 'Could not load earnings';
+    }
+
+    try {
+      // ============================================
+      // 3. Fetch status counts from campaign_creators
+      // ============================================
+      const { data: campaigns, error: countsError } = await supabase
+        .from('campaign_creators') // ✅ Fixed: correct table
         .select('status')
         .eq('creator_id', creatorId);
 
-      if (campaigns) {
+      if (countsError) {
+        newErrors.counts = 'Could not load counts';
+        console.error('Counts error:', countsError);
+      } else if (campaigns) {
+        const normalize = (s: string) => s?.toLowerCase();
         setStatusCounts({
-          requested: campaigns.filter(c => c.status === 'requested').length,
-          pending: campaigns.filter(c => c.status === 'pending').length,
-          completed: campaigns.filter(c => c.status === 'completed').length,
+          requested: campaigns.filter(c => normalize(c.status) === 'pending').length,
+          active: campaigns.filter(c => normalize(c.status) === 'active').length,
+          completed: campaigns.filter(c => normalize(c.status) === 'completed').length,
         });
       }
-    } catch { newErrors.counts = 'Could not load counts'; }
+    } catch (err) {
+      newErrors.counts = 'Could not load counts';
+    }
 
     try {
-      // Fetch incoming requests
-      const { data: requests } = await supabase
-        .from('campaign_requests')
+      // ============================================
+      // 4. Fetch incoming requests (pending offers)
+      // ============================================
+      const { data: requests, error: requestsError } = await supabase
+        .from('campaign_creators') // ✅ Fixed: correct table
         .select(`
           id,
           status,
-          price,
-          campaign_type,
-          streams_required,
-          expires_at,
-          campaigns(id, name, type),
-          businesses(id, name, logo)
+          streams_target,
+          created_at,
+          campaigns!inner (
+            id,
+            name,
+            type,
+            pay_rate,
+            bid_amount,
+            budget,
+            businesses (
+              id,
+              business_name,
+              logo_url
+            )
+          )
         `)
         .eq('creator_id', creatorId)
-        .eq('status', 'pending');
+        .in('status', ['pending', 'PENDING']);
 
-      if (requests) {
-        setIncomingRequests(requests.map((r: any) => ({
-          id: r.id,
-          business: r.businesses?.name || 'Unknown',
-          logo: r.businesses?.logo || null,
-          name: r.campaigns?.name || 'Campaign',
-          type: r.campaign_type || r.campaigns?.type || 'Banner',
-          price: r.price || 0,
-          streams: r.streams_required || 4,
-          days_left: r.expires_at
-            ? Math.max(0, Math.ceil((new Date(r.expires_at).getTime() - Date.now()) / 86400000))
-            : 3,
-        })));
+      if (requestsError) {
+        newErrors.requests = 'Could not load requests';
+        console.error('Requests error:', requestsError);
+      } else if (requests) {
+        const formatted = requests
+          .filter((r: any) => r.campaigns !== null)
+          .map((r: any) => ({
+            id: r.id,
+            business_id: r.campaigns.businesses?.id || '',
+            business: r.campaigns.businesses?.business_name || 'Unknown Business',
+            logo: r.campaigns.businesses?.logo_url || null,
+            name: r.campaigns.name,
+            type: r.campaigns.type,
+            price: r.campaigns.pay_rate ?? r.campaigns.bid_amount ?? r.campaigns.budget ?? 0,
+            streams: r.streams_target || 4,
+            status: r.status.toLowerCase(),
+            created_at: r.created_at,
+          }));
+        
+        setIncomingRequests(formatted);
       }
-    } catch { newErrors.requests = 'Could not load requests'; }
+    } catch (err) {
+      newErrors.requests = 'Could not load requests';
+    }
 
     try {
-      // Fetch applications
-      const { data: apps } = await supabase
-        .from('campaign_requests')
+      // ============================================
+      // 5. Fetch live campaign
+      // ============================================
+      const { data: live, error: liveError } = await supabase
+        .from('campaign_creators') // ✅ Fixed: correct table
         .select(`
-          id, status, price, campaign_type, created_at,
-          businesses(id, name, logo)
+          id,
+          streams_completed,
+          streams_target,
+          total_earnings,
+          status,
+          campaigns (
+            id,
+            name,
+            pay_rate,
+            bid_amount,
+            businesses (
+              id,
+              business_name,
+              logo_url
+            )
+          )
         `)
         .eq('creator_id', creatorId)
-        .in('status', ['applied', 'under_review', 'accepted', 'rejected'])
+        .in('status', ['active', 'ACTIVE'])
+        .maybeSingle();
+
+      if (liveError) {
+        newErrors.live = 'Could not load live campaign';
+        console.error('Live error:', liveError);
+      } else if (live && live.campaigns) {
+        const camp = live.campaigns;
+        const biz = camp.businesses;
+        const progress = live.streams_target > 0
+          ? (live.streams_completed / live.streams_target) * 100
+          : 0;
+
+        const formatStreamTime = (completed: number): string => {
+          const totalMins = completed * 45;
+          const hours = Math.floor(totalMins / 60);
+          const mins = totalMins % 60;
+          return `${hours}h ${mins}m`;
+        };
+
+        setLiveCampaign({
+          id: live.id,
+          campaign_id: camp.id,
+          business_id: biz?.id || '',
+          business: biz?.business_name || 'Unknown',
+          name: camp.name,
+          logo: biz?.logo_url || null,
+          session_earnings: live.total_earnings || 0,
+          stream_time: formatStreamTime(live.streams_completed || 0),
+          progress,
+          remaining_mins: (live.streams_target - live.streams_completed) * 45,
+          streams_completed: live.streams_completed || 0,
+          streams_target: live.streams_target || 4,
+        });
+      }
+    } catch (err) {
+      newErrors.live = 'Could not load live campaign';
+    }
+
+    try {
+      // ============================================
+      // 6. Fetch applications (non-live campaign_creators)
+      // ============================================
+      const { data: apps, error: appsError } = await supabase
+        .from('campaign_creators') // ✅ Fixed: correct table
+        .select(`
+          id,
+          status,
+          total_earnings,
+          created_at,
+          campaigns (
+            id,
+            name,
+            type,
+            pay_rate,
+            bid_amount,
+            businesses (
+              id,
+              business_name,
+              logo_url
+            )
+          )
+        `)
+        .eq('creator_id', creatorId)
+        .not('status', 'in', '("active","ACTIVE")')
         .order('created_at', { ascending: false })
         .limit(10);
 
-      if (apps) {
-        setApplications(apps.map((a: any) => ({
-          id: a.id,
-          business: a.businesses?.name || 'Unknown',
-          logo: a.businesses?.logo || null,
-          type: a.campaign_type || 'Banner',
-          status: a.status,
-          amount: a.price,
-          applied_at: a.created_at,
-        })));
+      if (appsError) {
+        newErrors.applications = 'Could not load applications';
+        console.error('Applications error:', appsError);
+      } else if (apps) {
+        const formatted = apps
+          .filter((a: any) => a.campaigns !== null)
+          .map((a: any) => ({
+            id: a.id,
+            campaign_id: a.campaigns.id,
+            business_id: a.campaigns.businesses?.id || '',
+            business: a.campaigns.businesses?.business_name || 'Unknown',
+            logo: a.campaigns.businesses?.logo_url || null,
+            type: a.campaigns.type,
+            status: a.status,
+            amount: a.campaigns.pay_rate ?? a.campaigns.bid_amount ?? null,
+            applied_at: a.created_at,
+          }));
+        
+        setApplications(formatted);
       }
-    } catch { newErrors.applications = 'Could not load applications'; }
+    } catch (err) {
+      newErrors.applications = 'Could not load applications';
+    }
 
     try {
-      // Fetch upcoming campaigns
-      const { data: upcoming } = await supabase
-        .from('campaign_requests')
+      // ============================================
+      // 7. Fetch upcoming campaigns (accepted but not started)
+      // ============================================
+      const { data: upcoming, error: upcomingError } = await supabase
+        .from('campaign_creators') // ✅ Fixed: correct table
         .select(`
-          id, starts_at, campaign_type,
-          businesses(id, name, logo)
+          id,
+          status,
+          streams_target,
+          accepted_at,
+          campaigns (
+            id,
+            name,
+            type,
+            start_date,
+            businesses (
+              id,
+              business_name,
+              logo_url
+            )
+          )
         `)
         .eq('creator_id', creatorId)
-        .eq('status', 'accepted')
-        .gte('starts_at', new Date().toISOString())
-        .order('starts_at', { ascending: true })
+        .eq('status', 'active')
+        .gte('campaigns.start_date', new Date().toISOString())
+        .order('campaigns.start_date', { ascending: true })
         .limit(5);
 
-      if (upcoming) {
-        setUpcomingCampaigns(upcoming.map((u: any) => ({
-          id: u.id,
-          business: u.businesses?.name || 'Unknown',
-          logo: u.businesses?.logo || null,
-          start_date: u.starts_at,
-          package: u.campaign_type || 'Banner',
-        })));
+      if (upcomingError) {
+        newErrors.upcoming = 'Could not load upcoming campaigns';
+        console.error('Upcoming error:', upcomingError);
+      } else if (upcoming) {
+        const formatted = upcoming
+          .filter((u: any) => u.campaigns !== null)
+          .map((u: any) => ({
+            id: u.id,
+            campaign_id: u.campaigns.id,
+            business_id: u.campaigns.businesses?.id || '',
+            business: u.campaigns.businesses?.business_name || 'Unknown',
+            logo: u.campaigns.businesses?.logo_url || null,
+            start_date: u.campaigns.start_date,
+            package: u.campaigns.type,
+            streams_target: u.streams_target || 4,
+          }));
+        
+        setUpcomingCampaigns(formatted);
       }
-    } catch { newErrors.upcoming = 'Could not load upcoming campaigns'; }
+    } catch (err) {
+      newErrors.upcoming = 'Could not load upcoming campaigns';
+    }
 
     setErrors(newErrors);
     setLoading(false);
@@ -180,6 +389,7 @@ export function useDashboardData(creatorId: string | null) {
 
   return {
     profile,
+    earnings,
     statusCounts,
     incomingRequests,
     setIncomingRequests,
@@ -190,4 +400,14 @@ export function useDashboardData(creatorId: string | null) {
     errors,
     refetch: fetchData,
   };
+}
+
+interface CreatorProfile {
+  id: string;
+  full_name: string;
+  username: string;
+  avatar_url: string | null;
+  avg_viewers: number;
+  rating: number;
+  status: string;
 }
