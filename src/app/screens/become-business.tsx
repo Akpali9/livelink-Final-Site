@@ -78,15 +78,15 @@ export function BecomeBusiness() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [registeredEmail, setRegisteredEmail] = useState<string>("");
   
+  
   const { submitRegistration, loading, error } = useBusinessRegistration();
- useEffect(() => {
+  useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return; // not logged in — show the form normally
  
       const userType = user.user_metadata?.user_type || user.user_metadata?.role;
  
-      // Logged-in business user who already has a profile → go to dashboard
       if (userType === "business") {
         const { data: business } = await supabase
           .from("businesses")
@@ -95,11 +95,11 @@ export function BecomeBusiness() {
           .maybeSingle();
  
         if (business) {
-          // Profile already exists — no need to be here
+          // Profile already complete — go to dashboard
           navigate("/business/dashboard", { replace: true });
           return;
         }
-        // No profile yet — allow them to complete registration (stay on form)
+        // No profile yet — let them complete registration (stay on form)
         return;
       }
  
