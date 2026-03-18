@@ -21,20 +21,29 @@ type AccountType = "creator" | "business" | "admin";
 
 async function forceAssignAdminPrivileges(userId: string, email: string) {
   try {
-    try {
-      await supabase.auth.updateUser({
-        data: { role: "admin", user_type: "admin", is_admin: true, admin_granted_at: new Date().toISOString() }
-      });
-    } catch (e) { console.error("Method 1 exception:", e); }
+    // Method 1: Update user metadata (works)
+    await supabase.auth.updateUser({
+      data: { 
+        role: "admin", 
+        user_type: "admin", 
+        is_admin: true, 
+        admin_granted_at: new Date().toISOString() 
+      }
+    });
 
-    try {
-      await supabase.from("profiles").upsert(
-        { id: userId, email, role: "admin", updated_at: new Date().toISOString() },
-        { onConflict: "id" }
-      );
-    } catch (e) { console.error("Method 2 exception:", e); }
+    // Method 2: Log to admin_actions instead of non-existent profiles table
+    await supabase.from("admin_actions").insert({
+      admin_id: userId,
+      admin_email: email,
+      action_type: "ADMIN_GRANTED",
+      resource_type: "system",
+      details: { granted_at: new Date().toISOString() },
+      created_at: new Date().toISOString()
+    });
 
-    try { await supabase.auth.refreshSession(); } catch (e) {}
+    // Refresh session to get new metadata
+    await supabase.auth.refreshSession();
+    
     toast.success("Admin privileges granted!");
     return true;
   } catch (error) {
@@ -484,12 +493,12 @@ export function LoginPortal() {
                     </Link>
                   </p>
                   <div>
-                    <button
-                      onClick={() => toast.info("Password reset feature coming soon!")}
+                    <Link
+                      to="/forgot-password"
                       className="text-xs text-gray-400 hover:text-gray-600"
                     >
                       Forgot password?
-                    </button>
+                    </Link>
                   </div>
                 </>
               ) : (
