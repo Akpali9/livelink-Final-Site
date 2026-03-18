@@ -97,47 +97,47 @@ export function BusinessDashboard() {
   useEffect(() => {
     const fetchBusiness = async () => {
       try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+ 
         if (userError) throw userError;
         if (!user) {
           toast.error("Please log in to access your dashboard");
-          navigate("/login/business");
+          navigate("/login/portal", { replace: true });
           return;
         }
-
-        // ✅ Correct column names: business_name, contact_email (not company_name / email)
+ 
         const { data: business, error: businessError } = await supabase
           .from("businesses")
-          .select("id, business_name, logo_url, contact_email")
+          .select("id, business_name, logo_url, contact_email, application_status, status")
           .eq("user_id", user.id)
           .single();
-
+ 
         if (businessError) {
           if (businessError.code === "PGRST116") {
-            toast.error("Please complete your business profile first");
-            navigate("/become-business");
+            // No profile found — send back to registration (not yet complete)
+            navigate("/become-business", { replace: true });
             return;
           }
           throw businessError;
         }
-
-        if (business) {
-          setBusinessId(business.id);
-          setBusinessProfile(business as BusinessProfile);
+ 
+        if (business.status === "deleted") {
+          await supabase.auth.signOut();
+          navigate("/login/portal", { replace: true });
+          return;
         }
+ 
+        setBusinessId(business.id);
+        setBusinessProfile(business as BusinessProfile);
       } catch (error) {
         console.error("Error fetching business:", error);
         toast.error("Failed to load business profile");
       }
     };
-
+ 
     fetchBusiness();
   }, [navigate]);
-
+  
   // ─── 2. FETCH DASHBOARD DATA ──────────────────────────────────────────────
 
   useEffect(() => {
