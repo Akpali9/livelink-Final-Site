@@ -37,7 +37,7 @@ import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
-import { AdminDashboard } from "./screens/AdminDashboard"; // 👈 Direct import from components
+import { AdminDashboard } from "../components/AdminDashboard"; // 👈 Direct import from components
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
