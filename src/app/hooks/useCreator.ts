@@ -1,72 +1,121 @@
-// src/app/hooks/useCreator.ts
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 
 interface CreatorProfile {
   id: string;
+  user_id: string;
   full_name: string;
+  username: string;
   email: string;
-  category: string;
-  platform: string;
-  followers: string;
-  status: 'pending' | 'approved' | 'rejected';
+  avatar_url: string;
+  bio: string;
+  location: string;
+  niche: string[];
+  avg_viewers: number;
+  total_streams: number;
+  rating: number;
+  status: 'pending_review' | 'active' | 'suspended' | 'rejected';
   created_at: string;
-  updated_at?: string;
-  reviewed_at?: string;
-  bio?: string;
-  avatar_url?: string;
+  updated_at: string;
+  approved_at?: string;
+  rejected_at?: string;
 }
 
 interface CreatorPlatform {
   id: string;
   creator_id: string;
-  platform_name: string;
+  platform_type: string;
   username: string;
-  followers: number;
+  profile_url: string;
+  followers_count: number;
   verified: boolean;
   created_at: string;
 }
 
-interface CreatorStats {
+interface CreatorCampaign {
   id: string;
-  creator_id: string;
+  campaign_id: string;
+  status: 'pending' | 'active' | 'completed' | 'declined';
+  streams_completed: number;
+  streams_target: number;
   total_earnings: number;
-  total_campaigns: number;
-  avg_rating: number;
-  completed_campaigns: number;
-  updated_at: string;
-}
-
-interface StreamUpdate {
-  id: string;
-  creator_id: string;
-  stream_number: number;
-  stream_date: string;
-  duration: number;
-  viewer_count: number;
-  title?: string;
+  paid_out: number;
   created_at: string;
+  accepted_at?: string;
+  completed_at?: string;
+  campaign: {
+    id: string;
+    name: string;
+    type: string;
+    budget: number;
+    pay_rate: number;
+    business: {
+      id: string;
+      business_name: string;
+      logo_url: string;
+    };
+  };
 }
 
 export function useCreator(creatorId?: string) {
   const { user } = useAuth();
   const [profile, setProfile] = useState<CreatorProfile | null>(null);
   const [platforms, setPlatforms] = useState<CreatorPlatform[]>([]);
-  const [stats, setStats] = useState<CreatorStats | null>(null);
-  const [recentStreams, setRecentStreams] = useState<StreamUpdate[]>([]);
+  const [campaigns, setCampaigns] = useState<CreatorCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [creatorInternalId, setCreatorInternalId] = useState<string | null>(null);
 
-  const targetId = creatorId || user?.id;
+  const targetUserId = creatorId || user?.id;
 
+  // First, get the creator's internal ID if we have a user ID
   useEffect(() => {
-    if (targetId) {
+    const getCreatorId = async () => {
+      if (!targetUserId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // If creatorId is provided directly, use it
+        if (creatorId) {
+          setCreatorInternalId(creatorId);
+          return;
+        }
+
+        // Otherwise, look up by user_id
+        const { data, error } = await supabase
+          .from('creator_profiles')
+          .select('id')
+          .eq('user_id', targetUserId)
+          .maybeSingle();
+
+        if (error) throw error;
+        
+        if (data) {
+          setCreatorInternalId(data.id);
+        } else {
+          // No creator profile found
+          setProfile(null);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error getting creator ID:', err);
+        setError(err instanceof Error ? err : new Error('Failed to get creator ID'));
+        setLoading(false);
+      }
+    };
+
+    getCreatorId();
+  }, [targetUserId, creatorId]);
+
+  // Fetch all creator data once we have the internal ID
+  useEffect(() => {
+    if (creatorInternalId) {
       fetchAllCreatorData();
-    } else {
-      setLoading(false);
     }
-  }, [targetId]);
+  }, [creatorInternalId]);
 
   const fetchAllCreatorData = async () => {
     try {
@@ -76,8 +125,7 @@ export function useCreator(creatorId?: string) {
       await Promise.all([
         fetchProfile(),
         fetchPlatforms(),
-        fetchStats(),
-        fetchRecentStreams()
+        fetchCampaigns()
       ]);
 
     } catch (err) {
@@ -89,13 +137,13 @@ export function useCreator(creatorId?: string) {
   };
 
   const fetchProfile = async () => {
-    if (!targetId) return;
+    if (!creatorInternalId) return;
 
     try {
       const { data, error } = await supabase
         .from('creator_profiles')
         .select('*')
-        .eq('id', targetId)
+        .eq('id', creatorInternalId)
         .maybeSingle();
 
       if (error) throw error;
@@ -106,13 +154,13 @@ export function useCreator(creatorId?: string) {
   };
 
   const fetchPlatforms = async () => {
-    if (!targetId) return;
+    if (!creatorInternalId) return;
 
     try {
       const { data, error } = await supabase
         .from('creator_platforms')
         .select('*')
-        .eq('creator_id', targetId);
+        .eq('creator_id', creatorInternalId);
 
       if (error) throw error;
       setPlatforms(data || []);
@@ -121,51 +169,102 @@ export function useCreator(creatorId?: string) {
     }
   };
 
-  const fetchStats = async () => {
-    if (!targetId) return;
+  const fetchCampaigns = async () => {
+    if (!creatorInternalId) return;
 
     try {
       const { data, error } = await supabase
-        .from('creator_stats')
-        .select('*')
-        .eq('creator_id', targetId)
-        .maybeSingle();
+        .from('campaign_creators')
+        .select(`
+          id,
+          campaign_id,
+          status,
+          streams_completed,
+          streams_target,
+          total_earnings,
+          paid_out,
+          created_at,
+          accepted_at,
+          completed_at,
+          campaign:campaigns (
+            id,
+            name,
+            type,
+            budget,
+            pay_rate,
+            bid_amount,
+            business:businesses (
+              id,
+              business_name,
+              logo_url
+            )
+          )
+        `)
+        .eq('creator_id', creatorInternalId)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setStats(data);
+      
+      // Transform the data to match our interface
+      const formattedCampaigns = (data || []).map((item: any) => ({
+        ...item,
+        campaign: item.campaign ? {
+          ...item.campaign,
+          business: item.campaign.business
+        } : undefined
+      }));
+
+      setCampaigns(formattedCampaigns);
     } catch (err) {
-      console.error('Error fetching stats:', err);
+      console.error('Error fetching campaigns:', err);
     }
   };
 
-  const fetchRecentStreams = async () => {
-    if (!targetId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('stream_updates')
-        .select('*')
-        .eq('creator_id', targetId)
-        .order('stream_date', { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-      setRecentStreams(data || []);
-    } catch (err) {
-      console.error('Error fetching streams:', err);
+  // Calculate stats from campaigns
+  const getStats = () => {
+    if (!campaigns.length) {
+      return {
+        totalEarnings: 0,
+        totalCampaigns: 0,
+        completedCampaigns: 0,
+        activeCampaigns: 0,
+        pendingCampaigns: 0,
+        averageRating: profile?.rating || 0,
+        avgViewers: profile?.avg_viewers || 0
+      };
     }
+
+    const totalEarnings = campaigns.reduce((sum, c) => sum + (c.total_earnings || 0), 0);
+    const totalCampaigns = campaigns.length;
+    const completedCampaigns = campaigns.filter(c => c.status === 'completed').length;
+    const activeCampaigns = campaigns.filter(c => c.status === 'active').length;
+    const pendingCampaigns = campaigns.filter(c => c.status === 'pending').length;
+
+    return {
+      totalEarnings,
+      totalCampaigns,
+      completedCampaigns,
+      activeCampaigns,
+      pendingCampaigns,
+      averageRating: profile?.rating || 0,
+      avgViewers: profile?.avg_viewers || 0
+    };
   };
+
+  const stats = getStats();
 
   return {
     profile,
     platforms,
+    campaigns,
     stats,
-    recentStreams,
     loading,
     error,
     refresh: fetchAllCreatorData,
     isCreator: !!profile,
-    isApproved: profile?.status === 'approved',
-    isPending: profile?.status === 'pending'
+    isApproved: profile?.status === 'active',
+    isPending: profile?.status === 'pending_review',
+    isSuspended: profile?.status === 'suspended',
+    isRejected: profile?.status === 'rejected'
   };
 }
