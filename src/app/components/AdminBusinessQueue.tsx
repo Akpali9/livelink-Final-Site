@@ -574,4 +574,62 @@ export function AdminBusinessQueue() {
                     href={selectedApp.verification_document_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items
+                    className="inline-flex items-center gap-2 px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                  >
+                    <Download className="w-4 h-4" /> View ID Document
+                  </a>
+                </div>
+              )}
+
+              {/* Timestamps */}
+              <div className="grid grid-cols-2 gap-4 text-[9px] text-gray-500">
+                <div>
+                  <p className="opacity-40">Submitted</p>
+                  <p>{new Date(selectedApp.created_at).toLocaleString()}</p>
+                </div>
+                {selectedApp.approved_at && (
+                  <div>
+                    <p className="opacity-40">Approved</p>
+                    <p>{new Date(selectedApp.approved_at).toLocaleString()}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            {(selectedApp.status === 'pending_review' || selectedApp.application_status === 'pending') && (
+              <div className="flex gap-4 mt-8 pt-6 border-t-2">
+                <button
+                  onClick={() => handleApprove(selectedApp)}
+                  disabled={actionLoading}
+                  className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-[#389C9A] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Approve Application
+                </button>
+                <button
+                  onClick={() => handleReject(selectedApp)}
+                  disabled={actionLoading}
+                  className="flex-1 border-2 border-red-500 text-red-500 py-4 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <XCircle className="w-4 h-4" /> Reject Application
+                </button>
+              </div>
+            )}
+
+            {/* View Only for non-pending */}
+            {(selectedApp.status !== 'pending_review' && selectedApp.application_status !== 'pending') && (
+              <div className="mt-8 pt-6 border-t-2">
+                <button
+                  onClick={() => setSelectedApp(null)}
+                  className="w-full py-4 border-2 border-[#1D1D1D] text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
