@@ -17,100 +17,31 @@ import { supabase } from "../lib/supabase";
 import { toast, Toaster } from "sonner";
 import { useNavigate, Link } from "react-router";
 
-// ─────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────
-
 type AccountType = "creator" | "business" | "admin";
-
-// ─────────────────────────────────────────────
-// ADMIN ASSIGNMENT HELPER
-// ─────────────────────────────────────────────
 
 async function forceAssignAdminPrivileges(userId: string, email: string) {
   try {
-    console.log("🔐 Force-assigning admin privileges to:", email);
-    
-    // Method 1: Update user metadata via auth.updateUser
     try {
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: { 
-          role: "admin",
-          user_type: "admin",
-          is_admin: true,
-          admin_granted_at: new Date().toISOString()
-        }
+      await supabase.auth.updateUser({
+        data: { role: "admin", user_type: "admin", is_admin: true, admin_granted_at: new Date().toISOString() }
       });
-      
-      if (updateError) {
-        console.error("Method 1 failed (auth.updateUser):", updateError);
-      } else {
-        console.log("✅ Method 1 succeeded: auth.updateUser");
-      }
-    } catch (e) {
-      console.error("Method 1 exception:", e);
-    }
+    } catch (e) { console.error("Method 1 exception:", e); }
 
-    // Method 2: Try profiles table
     try {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert({
-          id: userId,
-          email: email,
-          role: "admin",
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+      await supabase.from("profiles").upsert(
+        { id: userId, email, role: "admin", updated_at: new Date().toISOString() },
+        { onConflict: "id" }
+      );
+    } catch (e) { console.error("Method 2 exception:", e); }
 
-      if (profileError) {
-        console.error("Method 2 failed (profiles table):", profileError);
-      } else {
-        console.log("✅ Method 2 succeeded: profiles table");
-      }
-    } catch (e) {
-      console.error("Method 2 exception:", e);
-    }
-
-    // Method 3: Try to update creator_profiles
-    try {
-      const { error: creatorError } = await supabase
-        .from("creator_profiles")
-        .update({ 
-          status: "active",
-          role: "admin" 
-        })
-        .eq("id", userId);
-
-      if (creatorError) {
-        console.log("Method 3 skipped:", creatorError.message);
-      } else {
-        console.log("✅ Method 3 succeeded: creator_profiles");
-      }
-    } catch (e) {
-      // Ignore
-    }
-
-    console.log("✅ Admin assignment completed for:", email);
-    
-    // Force a session refresh to get new metadata
-    try {
-      await supabase.auth.refreshSession();
-      console.log("🔄 Session refreshed");
-    } catch (refreshError) {
-      console.error("Session refresh failed:", refreshError);
-    }
-
+    try { await supabase.auth.refreshSession(); } catch (e) {}
     toast.success("Admin privileges granted!");
     return true;
   } catch (error) {
-    console.error("❌ Error in forceAssignAdminPrivileges:", error);
+    console.error("Error in forceAssignAdminPrivileges:", error);
     return false;
   }
 }
-
-// ─────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────
 
 export function LoginPortal() {
   const navigate = useNavigate();
@@ -124,165 +55,103 @@ export function LoginPortal() {
   const [isSignUp, setIsSignUp]             = useState(false);
   const [showAdminEntry, setShowAdminEntry] = useState(false);
 
-  // ─── AUTH HANDLER ─────────────────────────────────────────────────────────
-
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedType) {
-      setError("Please select an account type first");
-      return;
-    }
+    if (!selectedType) { setError("Please select an account type first"); return; }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      // ── SPECIAL HANDLER FOR ADMIN EMAIL ────────────────────────────────
-      // If this is admin@livelink.com, always try to assign admin and redirect
+      // ── ADMIN EMAIL SHORTCUT ─────────────────────────────────────────────
       if (email === "admin@livelink.com") {
-        console.log("🔑 Admin email detected - attempting login");
-        
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) {
-          if (signInError.message.includes("Invalid login credentials")) {
-            console.log("Admin account doesn't exist or wrong password");
-            setError("Admin account not found. Please ensure the account exists in Supabase Auth.");
-            setIsLoading(false);
-            return;
-          }
-          throw signInError;
+          setError("Admin account not found or incorrect password.");
+          setIsLoading(false);
+          return;
         }
-
         if (data.user) {
-          console.log("✅ Admin user authenticated:", data.user.id);
-          
-          // Force assign admin privileges
           await forceAssignAdminPrivileges(data.user.id, email);
-          
           toast.success("Welcome, Admin!");
-          navigate("/admin"); // ✅ FIXED: Changed from "/admin/dashboard"
+          navigate("/admin", { replace: true });
           return;
         }
       }
 
       // ── ADMIN LOGIN ──────────────────────────────────────────────────────
       if (selectedType === "admin") {
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw signInError;
 
-        // Check if this is the special admin email
-        const isAdminEmail = email === "admin@livelink.com";
-        
-        if (isAdminEmail) {
-          // Force assign admin privileges
-          await forceAssignAdminPrivileges(data.user.id, email);
-          toast.success("Welcome, Admin!");
-          navigate("/admin"); // ✅ FIXED: Changed from "/admin/dashboard"
-          return;
-        }
-
-        // Check user_metadata for admin status
-        const userType = data.user?.user_metadata?.user_type;
-        const userRole = data.user?.user_metadata?.role;
-        const isAdmin = userType === "admin" || userRole === "admin" || data.user?.user_metadata?.is_admin === true;
+        const meta = data.user?.user_metadata;
+        const isAdmin = meta?.user_type === "admin" || meta?.role === "admin" || meta?.is_admin === true;
 
         if (!isAdmin) {
-          // Not an admin — sign them back out immediately
           await supabase.auth.signOut();
           setError("Access denied. This account does not have admin privileges.");
           return;
         }
 
         toast.success("Welcome, Admin!");
-        navigate("/admin"); // ✅ FIXED: Changed from "/admin/dashboard"
+        navigate("/admin", { replace: true });
         return;
       }
 
       // ── SIGN UP ───────────────────────────────────────────────────────────
       if (isSignUp) {
-        // Prevent regular signup with admin email
         if (email === "admin@livelink.com") {
-          setError("This email is reserved for admin access. Please use the admin login option.");
+          setError("This email is reserved for admin access.");
           return;
         }
 
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          options: {
-            data: {
-              user_type: selectedType,
-              full_name: email.split("@")[0],
-            },
-          },
+          options: { data: { user_type: selectedType, full_name: email.split("@")[0] } },
         });
 
         if (signUpError) throw signUpError;
 
         if (data.user) {
-          toast.success("Account created! Please check your email for verification.", {
-            duration: 6000,
-          });
-
-          if (selectedType === "business") {
-            navigate("/become-business");
-          } else {
-            navigate("/become-creator");
-          }
+          toast.success("Account created! Please check your email for verification.", { duration: 6000 });
+          // Send to registration form to complete their profile
+          navigate(selectedType === "business" ? "/become-business" : "/become-creator", { replace: true });
         }
         return;
       }
 
       // ── REGULAR LOGIN ─────────────────────────────────────────────────────
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
 
       const userType = data.user?.user_metadata?.user_type;
 
-      // Guard: admin accounts cannot log in through creator/business portal
+      // Block admin accounts from using the regular portal
       if (userType === "admin") {
         await supabase.auth.signOut();
         setError("Admin accounts must use the admin login option.");
         return;
       }
 
+      // Mismatch: account type doesn't match selected portal
+      if (userType && userType !== selectedType) {
+        await supabase.auth.signOut();
+        setError(`This account is registered as a ${userType}. Please select the correct account type.`);
+        return;
+      }
+
       toast.success("Logged in successfully!");
 
-      if (!userType) {
-        // User exists but hasn't completed profile
-        toast.info("Please complete your profile");
-        if (selectedType === "business") {
-          navigate("/become-business");
-        } else {
-          navigate("/become-creator");
+      // ── BUSINESS ROUTING ──────────────────────────────────────────────────
+      if (selectedType === "business") {
+        // No user_type yet → incomplete signup, send to registration
+        if (!userType) {
+          navigate("/become-business", { replace: true });
+          return;
         }
-        return;
-      }
 
-      // ✅ Verify the logged-in user_type matches the selected portal type
-      if (userType !== selectedType) {
-        await supabase.auth.signOut();
-        setError(
-          `This account is registered as a ${userType}. Please select the correct account type.`
-        );
-        return;
-      }
-
-      // ✅ Check that the corresponding profile exists in the DB
-      if (userType === "business") {
         const { data: biz, error: bizError } = await supabase
           .from("businesses")
           .select("id, application_status, status")
@@ -291,8 +160,9 @@ export function LoginPortal() {
 
         if (bizError) throw bizError;
 
+        // No business profile at all → complete registration first
         if (!biz) {
-          navigate("/become-business");
+          navigate("/become-business", { replace: true });
           return;
         }
 
@@ -302,36 +172,43 @@ export function LoginPortal() {
           return;
         }
 
-        navigate("/business/dashboard");
-      } else {
-        // creator
-        const { data: creator, error: creatorError } = await supabase
-          .from("creator_profiles")
-          .select("id, status")
-          .eq("user_id", data.user.id)
-          .maybeSingle();
-
-        if (creatorError) throw creatorError;
-
-        if (!creator) {
-          navigate("/become-creator");
-          return;
-        }
-
-        if (creator.status === "suspended") {
-          await supabase.auth.signOut();
-          setError("Your creator account has been suspended. Please contact support.");
-          return;
-        }
-
-        if (creator.status === "pending_review") {
-          toast.info("Your application is still under review. You'll be notified when approved.");
-          navigate("/dashboard");
-          return;
-        }
-
-        navigate("/dashboard");
+        // ✅ ALL business users with a profile go to the dashboard
+        // The dashboard handles pending/approved states internally
+        navigate("/business/dashboard", { replace: true });
+        return;
       }
+
+      // ── CREATOR ROUTING ───────────────────────────────────────────────────
+      if (!userType) {
+        navigate("/become-creator", { replace: true });
+        return;
+      }
+
+      const { data: creator, error: creatorError } = await supabase
+        .from("creator_profiles")
+        .select("id, status")
+        .eq("user_id", data.user.id)
+        .maybeSingle();
+
+      if (creatorError) throw creatorError;
+
+      if (!creator) {
+        navigate("/become-creator", { replace: true });
+        return;
+      }
+
+      if (creator.status === "suspended") {
+        await supabase.auth.signOut();
+        setError("Your creator account has been suspended. Please contact support.");
+        return;
+      }
+
+      if (creator.status === "pending_review") {
+        toast.info("Your application is still under review. You'll be notified when approved.");
+      }
+
+      navigate("/dashboard", { replace: true });
+
     } catch (err: any) {
       console.error("Auth error:", err);
 
@@ -354,8 +231,6 @@ export function LoginPortal() {
     }
   };
 
-  // ─── HELPERS ──────────────────────────────────────────────────────────────
-
   const selectAccountType = (type: AccountType) => {
     setSelectedType(type);
     setError(null);
@@ -364,10 +239,7 @@ export function LoginPortal() {
     setPassword("");
   };
 
-  const toggleMode = () => {
-    setIsSignUp(!isSignUp);
-    setError(null);
-  };
+  const toggleMode = () => { setIsSignUp(!isSignUp); setError(null); };
 
   const headingText = () => {
     if (!selectedType) return "Who are you?";
@@ -378,12 +250,8 @@ export function LoginPortal() {
   const subText = () => {
     if (!selectedType) return "Choose your account type to continue";
     if (selectedType === "admin") return "Enter your admin credentials";
-    return isSignUp
-      ? "Fill in your details to get started"
-      : "Enter your credentials to access your dashboard";
+    return isSignUp ? "Fill in your details to get started" : "Enter your credentials to access your dashboard";
   };
-
-  // ─── RENDER ───────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-white flex flex-col px-8 pt-20 pb-12">
@@ -441,8 +309,6 @@ export function LoginPortal() {
       {/* ── ACCOUNT TYPE SELECTION ── */}
       {!selectedType ? (
         <div className="flex flex-col gap-6 max-w-md mx-auto w-full">
-
-          {/* Creator */}
           <motion.button
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -462,7 +328,6 @@ export function LoginPortal() {
             <ChevronRight className="w-6 h-6 transition-transform group-hover:translate-x-1" />
           </motion.button>
 
-          {/* Business */}
           <motion.button
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -482,7 +347,6 @@ export function LoginPortal() {
             <ChevronRight className="w-6 h-6 transition-transform group-hover:translate-x-1" />
           </motion.button>
 
-          {/* Quick signup */}
           <div className="mt-4 pt-4 border-t border-gray-100">
             <p className="text-xs text-center text-gray-500 mb-3">New here? Jump straight to signup:</p>
             <div className="flex gap-3 justify-center">
@@ -495,7 +359,6 @@ export function LoginPortal() {
             </div>
           </div>
 
-          {/* Admin entry — subtle, not prominent */}
           <div className="mt-2 text-center">
             {!showAdminEntry ? (
               <button
@@ -519,13 +382,11 @@ export function LoginPortal() {
         </div>
 
       ) : (
-        /* ── AUTH FORM ── */
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="max-w-md mx-auto w-full"
         >
-          {/* Back */}
           <button
             onClick={() => { setSelectedType(null); setShowAdminEntry(false); setError(null); }}
             className="flex items-center gap-2 text-sm text-gray-500 mb-6 hover:text-black transition-colors group"
@@ -534,7 +395,6 @@ export function LoginPortal() {
             Back to selection
           </button>
 
-          {/* Admin badge */}
           {selectedType === "admin" && (
             <div className="mb-6 p-3 bg-gray-50 border-2 border-gray-200 flex items-center gap-3">
               <Shield className="w-5 h-5 text-gray-500 flex-shrink-0" />
@@ -545,7 +405,6 @@ export function LoginPortal() {
           )}
 
           <form onSubmit={handleAuth} className="flex flex-col gap-4">
-            {/* Email */}
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -560,7 +419,6 @@ export function LoginPortal() {
               />
             </div>
 
-            {/* Password */}
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -588,7 +446,6 @@ export function LoginPortal() {
               <p className="text-xs text-gray-500">Password must be at least 6 characters long</p>
             )}
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={isLoading}
@@ -604,22 +461,15 @@ export function LoginPortal() {
                   Processing...
                 </>
               ) : selectedType === "admin" ? (
-                <>
-                  <Shield className="w-4 h-4" /> Admin Sign In
-                </>
+                <><Shield className="w-4 h-4" /> Admin Sign In</>
               ) : isSignUp ? (
-                <>
-                  <UserPlus className="w-4 h-4" /> Create Account
-                </>
+                <><UserPlus className="w-4 h-4" /> Create Account</>
               ) : (
-                <>
-                  <Lock className="w-4 h-4" /> Sign In
-                </>
+                <><Lock className="w-4 h-4" /> Sign In</>
               )}
             </button>
           </form>
 
-          {/* Footer links — hide for admin */}
           {selectedType !== "admin" && (
             <div className="mt-6 text-center space-y-2">
               {!isSignUp ? (
@@ -669,7 +519,6 @@ export function LoginPortal() {
             </div>
           )}
 
-          {/* Terms */}
           <div className="mt-8 pt-8 text-center border-t border-gray-100">
             <p className="text-xs text-gray-400">
               By continuing, you agree to LiveLink's{" "}
