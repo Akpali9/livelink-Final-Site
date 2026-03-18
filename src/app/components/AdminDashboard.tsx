@@ -384,7 +384,7 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F0F0F0]">
+    <div className="min-h-screen bg-[#F0F0F0] lg:flex">
       <Toaster position="top-center" richColors />
 
       {/* Mobile Header */}
@@ -411,13 +411,13 @@ export function AdminDashboard() {
       )}
 
       {/* ── SIDEBAR ─────────────────────────────────────────────────────── */}
-      {/* Fixed width 64 (256px) on desktop; slides in on mobile */}
+      {/* Mobile: fixed overlay. Desktop: sticky flex item. */}
       <aside
         className={`
-          fixed top-0 left-0 h-full w-64 bg-white border-r border-[#1D1D1D]/10 z-50
-          flex flex-col
+          fixed top-0 left-0 h-screen w-64 bg-white border-r border-[#1D1D1D]/10 z-50
+          flex flex-col shrink-0
           transform transition-transform duration-200
-          lg:translate-x-0
+          lg:sticky lg:translate-x-0
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
@@ -485,8 +485,8 @@ export function AdminDashboard() {
       </aside>
 
       {/* ── MAIN CONTENT ────────────────────────────────────────────────── */}
-      {/* lg:ml-64 matches sidebar width exactly */}
-      <div className="lg:ml-64 min-h-screen flex flex-col">
+      {/* lg:ml-64 matches sidebar width; flex-1 fills remaining horizontal space */}
+      <div className="flex-1 min-h-screen flex flex-col min-w-0">
         {/* Desktop top bar */}
         <header className="hidden lg:flex items-center justify-between bg-white border-b border-[#1D1D1D]/10 px-8 py-4 sticky top-0 z-20">
           <div>
