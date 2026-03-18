@@ -46,6 +46,8 @@ import {
   EyeOff,
   Check,
   AlertCircle,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast, Toaster } from "sonner";
@@ -111,6 +113,7 @@ interface CreatorPlatform {
 
 interface BusinessProfile {
   id: string;
+  user_id?: string;
   business_name?: string;
   name?: string;
   full_name?: string;
@@ -129,6 +132,7 @@ interface BusinessProfile {
   budget?: string;
   status: string;
   application_status?: string;
+  verification_status?: string;
   created_at: string;
 }
 
@@ -190,6 +194,16 @@ interface Transaction {
   campaign_id?: string;
 }
 
+interface AdminAction {
+  id: string;
+  admin_id: string;
+  action_type: string;
+  resource_type: string;
+  resource_id?: string;
+  details: any;
+  created_at: string;
+}
+
 // ─────────────────────────────────────────────
 // ADMIN DASHBOARD MAIN COMPONENT
 // ─────────────────────────────────────────────
@@ -198,12 +212,14 @@ export function AdminDashboard() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "overview" | "creators" | "businesses" | "campaigns" | "support" | "reports" | "transactions" | "settings"
   >("overview");
   const [adminUser, setAdminUser] = useState<any>(null);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
   const [stats, setStats] = useState<DashboardStats>({
     totalCreators: 0,
@@ -287,11 +303,11 @@ export function AdminDashboard() {
       try {
         const { count: total } = await supabase.from("businesses").select("*", { count: "exact", head: true }).neq("status", "deleted");
         totalBusinesses = total || 0;
-        const { count: pending } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "pending");
+        const { count: pending } = await supabase.from("businesses").select("*", { count: "exact", head: true }).or(`application_status.eq.pending,status.eq.pending_review`);
         pendingBusinesses = pending || 0;
-        const { count: approved } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "approved");
+        const { count: approved } = await supabase.from("businesses").select("*", { count: "exact", head: true }).or(`application_status.eq.approved,status.eq.active`);
         approvedBusinesses = approved || 0;
-        const { count: rejected } = await supabase.from("businesses").select("*", { count: "exact", head: true }).eq("application_status", "rejected");
+        const { count: rejected } = await supabase.from("businesses").select("*", { count: "exact", head: true }).or(`application_status.eq.rejected,status.eq.rejected`);
         rejectedBusinesses = rejected || 0;
       } catch (e) { console.error("Business stats error:", e); }
 
@@ -333,8 +349,8 @@ export function AdminDashboard() {
       let totalUsers = 0;
       try {
         const { count: creatorCount } = await supabase.from("creator_profiles").select("*", { count: "exact", head: true });
-        const { count: businessCount } = await supabase.from("businesses").select("*", { count: "exact", head: true });
-        totalUsers = (creatorCount || 0) + (businessCount || 0);
+        const { count: bizCount } = await supabase.from("businesses").select("*", { count: "exact", head: true });
+        totalUsers = (creatorCount || 0) + (bizCount || 0);
       } catch (e) { console.error("User count error:", e); }
 
       // ── REPORTED CONTENT ────────────────────────
@@ -372,6 +388,416 @@ export function AdminDashboard() {
     }
   };
 
+  // ─── BULK APPROVAL FUNCTIONS ────────────────────────────────────────
+
+  const getUserMetadata = async (userId: string) => {
+    try {
+      const { data, error } = await supabase.auth.admin.getUserById(userId);
+      if (error) throw error;
+      return data.user.user_metadata || {};
+    } catch (error) {
+      console.error("Error fetching user metadata:", error);
+      return {};
+    }
+  };
+
+  const logAdminAction = async (actionType: string, resourceType: string, details: any) => {
+    try {
+      await supabase.from("admin_actions").insert({
+        admin_id: adminUser?.id,
+        action_type: actionType,
+        resource_type: resourceType,
+        details,
+        created_at: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error logging admin action:", error);
+    }
+  };
+
+  const sendApprovalNotification = async (userId: string, type: 'business' | 'creator' | 'campaign', name: string) => {
+    try {
+      await supabase.from("notifications").insert({
+        user_id: userId,
+        type: `${type}_approved`,
+        title: `${type.charAt(0).toUpperCase() + type.slice(1)} Approved`,
+        message: `Your ${type} "${name}" has been approved and is now active on the platform.`,
+        data: { [type + "_id"]: userId },
+        created_at: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error sending notification:", error);
+    }
+  };
+
+  // Approve all pending businesses
+  const approveAllBusinesses = async () => {
+    if (!confirm(`Approve ${stats.pendingBusinesses} pending business applications?`)) return;
+    
+    setActionLoading(true);
+    try {
+      // Get all pending businesses with user_ids
+      const { data: pendingBusinesses, error: fetchError } = await supabase
+        .from("businesses")
+        .select("id, user_id, email, business_name")
+        .or(`application_status.eq.pending,status.eq.pending_review`);
+
+      if (fetchError) throw fetchError;
+
+      if (!pendingBusinesses || pendingBusinesses.length === 0) {
+        toast.info("No pending businesses to approve");
+        return;
+      }
+
+      // Update all businesses to approved
+      const { error: updateError } = await supabase
+        .from("businesses")
+        .update({ 
+          application_status: "approved", 
+          status: "active",
+          verification_status: "verified",
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .or(`application_status.eq.pending,status.eq.pending_review`);
+
+      if (updateError) throw updateError;
+
+      // Update user metadata and send notifications for each business owner
+      for (const business of pendingBusinesses) {
+        if (business.user_id) {
+          try {
+            // Update user metadata
+            const metadata = await getUserMetadata(business.user_id);
+            await supabase.auth.admin.updateUserById(
+              business.user_id,
+              {
+                user_metadata: {
+                  ...metadata,
+                  business_approved: true,
+                  approved_at: new Date().toISOString()
+                }
+              }
+            );
+
+            // Send notification
+            await sendApprovalNotification(
+              business.user_id, 
+              'business', 
+              business.business_name || 'Your business'
+            );
+          } catch (error) {
+            console.error(`Error updating user ${business.user_id}:`, error);
+          }
+        }
+      }
+
+      // Log admin action
+      await logAdminAction("BULK_APPROVE", "businesses", { 
+        count: pendingBusinesses.length,
+        business_ids: pendingBusinesses.map(b => b.id)
+      });
+
+      toast.success(`✅ Approved ${pendingBusinesses.length} businesses`);
+      await fetchDashboardData();
+      setActiveTab("businesses");
+      setSelectedItems([]);
+    } catch (error) {
+      console.error("Error approving businesses:", error);
+      toast.error("Failed to approve all businesses");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Approve all pending creators
+  const approveAllCreators = async () => {
+    if (!confirm(`Approve ${stats.pendingCreators} pending creator applications?`)) return;
+    
+    setActionLoading(true);
+    try {
+      // Get all pending creators with user_ids
+      const { data: pendingCreators, error: fetchError } = await supabase
+        .from("creator_profiles")
+        .select("id, user_id, full_name, email")
+        .eq("status", "pending_review");
+
+      if (fetchError) throw fetchError;
+
+      if (!pendingCreators || pendingCreators.length === 0) {
+        toast.info("No pending creators to approve");
+        return;
+      }
+
+      // Update all creators to active
+      const { error: updateError } = await supabase
+        .from("creator_profiles")
+        .update({ 
+          status: "active",
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq("status", "pending_review");
+
+      if (updateError) throw updateError;
+
+      // Update user metadata and send notifications for each creator
+      for (const creator of pendingCreators) {
+        if (creator.user_id) {
+          try {
+            // Update user metadata
+            const metadata = await getUserMetadata(creator.user_id);
+            await supabase.auth.admin.updateUserById(
+              creator.user_id,
+              {
+                user_metadata: {
+                  ...metadata,
+                  creator_approved: true,
+                  approved_at: new Date().toISOString()
+                }
+              }
+            );
+
+            // Send notification
+            await sendApprovalNotification(
+              creator.user_id, 
+              'creator', 
+              creator.full_name || 'Your creator profile'
+            );
+          } catch (error) {
+            console.error(`Error updating user ${creator.user_id}:`, error);
+          }
+        }
+      }
+
+      // Log admin action
+      await logAdminAction("BULK_APPROVE", "creators", { 
+        count: pendingCreators.length,
+        creator_ids: pendingCreators.map(c => c.id)
+      });
+
+      toast.success(`✅ Approved ${pendingCreators.length} creators`);
+      await fetchDashboardData();
+      setActiveTab("creators");
+      setSelectedItems([]);
+    } catch (error) {
+      console.error("Error approving creators:", error);
+      toast.error("Failed to approve all creators");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Approve all pending campaigns
+  const approveAllCampaigns = async () => {
+    if (!confirm(`Approve ${stats.pendingCampaigns} pending campaigns?`)) return;
+    
+    setActionLoading(true);
+    try {
+      // Get all pending campaigns with business info
+      const { data: pendingCampaigns, error: fetchError } = await supabase
+        .from("campaigns")
+        .select("id, business_id, name, title")
+        .eq("status", "pending_review");
+
+      if (fetchError) throw fetchError;
+
+      if (!pendingCampaigns || pendingCampaigns.length === 0) {
+        toast.info("No pending campaigns to approve");
+        return;
+      }
+
+      // Update all campaigns to active
+      const { error: updateError } = await supabase
+        .from("campaigns")
+        .update({ 
+          status: "active",
+          approved_at: new Date().toISOString(),
+          published_at: new Date().toISOString()
+        })
+        .eq("status", "pending_review");
+
+      if (updateError) throw updateError;
+
+      // Create notifications for businesses
+      for (const campaign of pendingCampaigns) {
+        if (campaign.business_id) {
+          try {
+            // Get business user_id
+            const { data: business } = await supabase
+              .from("businesses")
+              .select("user_id")
+              .eq("id", campaign.business_id)
+              .single();
+
+            if (business?.user_id) {
+              await supabase.from("notifications").insert({
+                user_id: business.user_id,
+                type: "campaign_approved",
+                title: "Campaign Approved",
+                message: `Your campaign "${campaign.name || campaign.title}" has been approved and is now live!`,
+                data: { campaign_id: campaign.id },
+                created_at: new Date().toISOString()
+              });
+            }
+          } catch (error) {
+            console.error(`Error notifying business for campaign ${campaign.id}:`, error);
+          }
+        }
+      }
+
+      // Log admin action
+      await logAdminAction("BULK_APPROVE", "campaigns", { 
+        count: pendingCampaigns.length,
+        campaign_ids: pendingCampaigns.map(c => c.id)
+      });
+
+      toast.success(`✅ Approved ${pendingCampaigns.length} campaigns`);
+      await fetchDashboardData();
+      setActiveTab("campaigns");
+      setSelectedItems([]);
+    } catch (error) {
+      console.error("Error approving campaigns:", error);
+      toast.error("Failed to approve all campaigns");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Approve selected items
+  const approveSelected = async (type: 'business' | 'creator' | 'campaign') => {
+    if (selectedItems.length === 0) {
+      toast.error("No items selected");
+      return;
+    }
+
+    if (!confirm(`Approve ${selectedItems.length} selected ${type}s?`)) return;
+    
+    setActionLoading(true);
+    try {
+      const table = type === 'business' ? 'businesses' : 
+                    type === 'creator' ? 'creator_profiles' : 'campaigns';
+      
+      const updates: any = { 
+        status: type === 'campaign' ? 'active' : 'active',
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      if (type === 'business') {
+        updates.application_status = 'approved';
+        updates.verification_status = 'verified';
+      }
+
+      const { error: updateError } = await supabase
+        .from(table)
+        .update(updates)
+        .in('id', selectedItems);
+
+      if (updateError) throw updateError;
+
+      // Get details for notifications
+      let items: any[] = [];
+      if (type === 'business') {
+        const { data } = await supabase.from("businesses").select("id, user_id, business_name").in('id', selectedItems);
+        items = data || [];
+      } else if (type === 'creator') {
+        const { data } = await supabase.from("creator_profiles").select("id, user_id, full_name").in('id', selectedItems);
+        items = data || [];
+      } else {
+        const { data } = await supabase.from("campaigns").select("id, business_id, name").in('id', selectedItems);
+        items = data || [];
+      }
+
+      // Send notifications
+      for (const item of items) {
+        if (type === 'campaign' && item.business_id) {
+          const { data: business } = await supabase
+            .from("businesses")
+            .select("user_id")
+            .eq("id", item.business_id)
+            .single();
+          
+          if (business?.user_id) {
+            await sendApprovalNotification(
+              business.user_id,
+              type,
+              item.name || item.business_name || item.full_name || 'Item'
+            );
+          }
+        } else if (item.user_id) {
+          await sendApprovalNotification(
+            item.user_id,
+            type,
+            item.business_name || item.full_name || item.name || 'Item'
+          );
+        }
+      }
+
+      await logAdminAction("BULK_APPROVE_SELECTED", `${type}s`, { 
+        count: selectedItems.length,
+        ids: selectedItems
+      });
+
+      toast.success(`✅ Approved ${selectedItems.length} ${type}s`);
+      setSelectedItems([]);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error(`Error approving selected ${type}s:`, error);
+      toast.error(`Failed to approve selected ${type}s`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Reject selected items
+  const rejectSelected = async (type: 'business' | 'creator' | 'campaign') => {
+    if (selectedItems.length === 0) {
+      toast.error("No items selected");
+      return;
+    }
+
+    if (!confirm(`Reject ${selectedItems.length} selected ${type}s?`)) return;
+    
+    setActionLoading(true);
+    try {
+      const table = type === 'business' ? 'businesses' : 
+                    type === 'creator' ? 'creator_profiles' : 'campaigns';
+      
+      const updates: any = { 
+        status: type === 'campaign' ? 'rejected' : 'rejected',
+        rejected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      if (type === 'business') {
+        updates.application_status = 'rejected';
+        updates.verification_status = 'rejected';
+      }
+
+      const { error: updateError } = await supabase
+        .from(table)
+        .update(updates)
+        .in('id', selectedItems);
+
+      if (updateError) throw updateError;
+
+      await logAdminAction("BULK_REJECT_SELECTED", `${type}s`, { 
+        count: selectedItems.length,
+        ids: selectedItems
+      });
+
+      toast.success(`Rejected ${selectedItems.length} ${type}s`);
+      setSelectedItems([]);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error(`Error rejecting selected ${type}s:`, error);
+      toast.error(`Failed to reject selected ${type}s`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const refresh = async () => {
     setRefreshing(true);
     await fetchDashboardData();
@@ -382,6 +808,22 @@ export function AdminDashboard() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/login/portal");
+  };
+
+  const toggleSelectAll = (items: any[]) => {
+    if (selectedItems.length === items.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(items.map(item => item.id));
+    }
+  };
+
+  const toggleSelectItem = (id: string) => {
+    setSelectedItems(prev => 
+      prev.includes(id) 
+        ? prev.filter(itemId => itemId !== id)
+        : [...prev, id]
+    );
   };
 
   const navItems = [
@@ -433,7 +875,7 @@ export function AdminDashboard() {
         <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar - Same for all screen sizes */}
+      {/* Sidebar */}
       <aside
         className={`
           fixed top-0 left-0 h-screen w-[280px] bg-white border-r border-[#1D1D1D]/10 z-50
@@ -505,7 +947,7 @@ export function AdminDashboard() {
         </div>
       </aside>
 
-      {/* Main Content - Always full width with padding */}
+      {/* Main Content */}
       <div className="flex-1 p-4 min-h-screen">
         {/* Tab Header */}
         <div className="mb-4">
@@ -526,10 +968,47 @@ export function AdminDashboard() {
 
         {/* Page content */}
         <div className="w-full">
-          {activeTab === "overview" && <AdminOverview stats={stats} onTabChange={setActiveTab} />}
-          {activeTab === "creators" && <AdminCreators />}
-          {activeTab === "businesses" && <AdminBusinesses onStatsChange={fetchDashboardData} />}
-          {activeTab === "campaigns" && <AdminCampaigns />}
+          {activeTab === "overview" && (
+            <AdminOverview 
+              stats={stats} 
+              onTabChange={setActiveTab}
+              onApproveAllBusinesses={approveAllBusinesses}
+              onApproveAllCreators={approveAllCreators}
+              onApproveAllCampaigns={approveAllCampaigns}
+              actionLoading={actionLoading}
+            />
+          )}
+          {activeTab === "creators" && (
+            <AdminCreators 
+              selectedItems={selectedItems}
+              onToggleSelect={toggleSelectItem}
+              onToggleSelectAll={toggleSelectAll}
+              onApproveSelected={() => approveSelected('creator')}
+              onRejectSelected={() => rejectSelected('creator')}
+              actionLoading={actionLoading}
+            />
+          )}
+          {activeTab === "businesses" && (
+            <AdminBusinesses 
+              onStatsChange={fetchDashboardData}
+              selectedItems={selectedItems}
+              onToggleSelect={toggleSelectItem}
+              onToggleSelectAll={toggleSelectAll}
+              onApproveSelected={() => approveSelected('business')}
+              onRejectSelected={() => rejectSelected('business')}
+              actionLoading={actionLoading}
+            />
+          )}
+          {activeTab === "campaigns" && (
+            <AdminCampaigns 
+              selectedItems={selectedItems}
+              onToggleSelect={toggleSelectItem}
+              onToggleSelectAll={toggleSelectAll}
+              onApproveSelected={() => approveSelected('campaign')}
+              onRejectSelected={() => rejectSelected('campaign')}
+              actionLoading={actionLoading}
+            />
+          )}
           {activeTab === "support" && <AdminSupport />}
           {activeTab === "reports" && <AdminReports />}
           {activeTab === "transactions" && <AdminTransactions />}
@@ -541,17 +1020,31 @@ export function AdminDashboard() {
 }
 
 // ─────────────────────────────────────────────
-// OVERVIEW TAB - Mobile First
+// OVERVIEW TAB - With Bulk Approve Buttons
 // ─────────────────────────────────────────────
 
-function AdminOverview({ stats, onTabChange }: { stats: DashboardStats; onTabChange: (tab: any) => void }) {
+function AdminOverview({ 
+  stats, 
+  onTabChange,
+  onApproveAllBusinesses,
+  onApproveAllCreators,
+  onApproveAllCampaigns,
+  actionLoading
+}: { 
+  stats: DashboardStats; 
+  onTabChange: (tab: any) => void;
+  onApproveAllBusinesses: () => Promise<void>;
+  onApproveAllCreators: () => Promise<void>;
+  onApproveAllCampaigns: () => Promise<void>;
+  actionLoading: boolean;
+}) {
   return (
     <div className="space-y-4">
-      {/* Hero banner */}
+      {/* Hero banner with bulk actions */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-[#1D1D1D] text-white p-5 flex flex-col gap-4"
+        className="bg-[#1D1D1D] text-white p-5 flex flex-col gap-4 rounded-xl"
       >
         <div>
           <h2 className="text-xl font-black uppercase tracking-tighter italic mb-1">
@@ -559,21 +1052,39 @@ function AdminOverview({ stats, onTabChange }: { stats: DashboardStats; onTabCha
           </h2>
           <p className="text-white/50 text-xs">Manage creators, businesses, and platform settings</p>
         </div>
+        
+        {/* Bulk Action Buttons */}
         <div className="flex flex-col gap-2">
           {stats.pendingCreators > 0 && (
             <button
-              onClick={() => onTabChange("creators")}
-              className="w-full px-4 py-3 bg-[#FEDB71] text-[#1D1D1D] text-xs font-black uppercase tracking-widest hover:bg-[#ffd14d] transition-colors rounded-lg"
+              onClick={onApproveAllCreators}
+              disabled={actionLoading}
+              className="w-full px-4 py-3 bg-[#389C9A] text-white text-xs font-black uppercase tracking-widest hover:bg-[#2d7f7d] transition-colors rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {stats.pendingCreators} Pending Creator{stats.pendingCreators !== 1 ? 's' : ''}
+              <CheckCircle className="w-4 h-4" />
+              {actionLoading ? 'Processing...' : `Approve All Creators (${stats.pendingCreators})`}
             </button>
           )}
+          
           {stats.pendingBusinesses > 0 && (
             <button
-              onClick={() => onTabChange("businesses")}
-              className="w-full px-4 py-3 bg-[#389C9A] text-white text-xs font-black uppercase tracking-widest hover:bg-[#2d7f7d] transition-colors rounded-lg"
+              onClick={onApproveAllBusinesses}
+              disabled={actionLoading}
+              className="w-full px-4 py-3 bg-[#FEDB71] text-[#1D1D1D] text-xs font-black uppercase tracking-widest hover:bg-[#ffd14d] transition-colors rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {stats.pendingBusinesses} Pending Business{stats.pendingBusinesses !== 1 ? 'es' : ''}
+              <CheckCircle className="w-4 h-4" />
+              {actionLoading ? 'Processing...' : `Approve All Businesses (${stats.pendingBusinesses})`}
+            </button>
+          )}
+          
+          {stats.pendingCampaigns > 0 && (
+            <button
+              onClick={onApproveAllCampaigns}
+              disabled={actionLoading}
+              className="w-full px-4 py-3 bg-violet-500 text-white text-xs font-black uppercase tracking-widest hover:bg-violet-600 transition-colors rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <CheckCircle className="w-4 h-4" />
+              {actionLoading ? 'Processing...' : `Approve All Campaigns (${stats.pendingCampaigns})`}
             </button>
           )}
         </div>
@@ -699,10 +1210,24 @@ function AdminOverview({ stats, onTabChange }: { stats: DashboardStats; onTabCha
 }
 
 // ─────────────────────────────────────────────
-// CREATORS TAB - Mobile First
+// CREATORS TAB - With Selection
 // ─────────────────────────────────────────────
 
-function AdminCreators() {
+function AdminCreators({ 
+  selectedItems,
+  onToggleSelect,
+  onToggleSelectAll,
+  onApproveSelected,
+  onRejectSelected,
+  actionLoading
+}: { 
+  selectedItems: string[];
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: (items: any[]) => void;
+  onApproveSelected: () => Promise<void>;
+  onRejectSelected: () => Promise<void>;
+  actionLoading: boolean;
+}) {
   const [creators, setCreators] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"pending_review" | "active" | "suspended" | "all">("pending_review");
@@ -768,11 +1293,49 @@ function AdminCreators() {
   const getCreatorLocation = (c: any) => c.location || c.city || c.country || "";
   const getCreatorJoinDate = (c: any) => c.created_at ? new Date(c.created_at).toLocaleDateString() : "Unknown";
 
+  const filteredCreators = creators.filter(c => {
+    if (filter === "all") return true;
+    return c.status === filter;
+  });
+
   return (
     <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
-      {/* Header with search */}
+      {/* Header with search and bulk actions */}
       <div className="flex flex-col gap-3 mb-4">
         <h3 className="font-black uppercase tracking-tight text-lg">Creator Applications</h3>
+        
+        {/* Bulk action bar when items are selected */}
+        {selectedItems.length > 0 && (
+          <div className="bg-[#1D1D1D] text-white p-3 rounded-xl flex items-center justify-between">
+            <span className="text-xs font-black">
+              {selectedItems.length} creator{selectedItems.length !== 1 ? 's' : ''} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={onApproveSelected}
+                disabled={actionLoading}
+                className="px-3 py-1.5 bg-green-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                <CheckCircle className="w-3 h-3" />
+                Approve
+              </button>
+              <button
+                onClick={onRejectSelected}
+                disabled={actionLoading}
+                className="px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                <XCircle className="w-3 h-3" />
+                Reject
+              </button>
+              <button
+                onClick={() => onToggleSelectAll([])}
+                className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-white/10 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
         
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -796,7 +1359,7 @@ function AdminCreators() {
           </button>
         </div>
 
-        {/* Filter tabs - collapsible on mobile */}
+        {/* Filter tabs */}
         {showFilters && (
           <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
             {(["pending_review", "active", "suspended", "all"] as const).map(tab => (
@@ -815,13 +1378,25 @@ function AdminCreators() {
           </div>
         )}
 
-        {/* Always visible filter indicators */}
+        {/* Filter indicator */}
         {!showFilters && (
           <div className="flex items-center gap-2">
             <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">
               Filter: {filter === "all" ? "All Creators" : filter.replace("_", " ")}
             </span>
-            <span className="text-xs text-gray-400">({creators.length})</span>
+            <span className="text-xs text-gray-400">({filteredCreators.length})</span>
+            {filter === "pending_review" && (
+              <button
+                onClick={() => {
+                  if (filteredCreators.length > 0) {
+                    onToggleSelectAll(filteredCreators);
+                  }
+                }}
+                className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] underline"
+              >
+                Select all
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -830,22 +1405,37 @@ function AdminCreators() {
         <div className="flex justify-center py-12">
           <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
         </div>
-      ) : creators.length === 0 ? (
+      ) : filteredCreators.length === 0 ? (
         <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
           <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No creators found</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {creators.map((creator) => (
+          {filteredCreators.map((creator) => (
             <motion.div
               key={creator.id || creator.user_id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
+              className={`border-2 p-4 transition-all rounded-xl ${
+                selectedItems.includes(creator.id) 
+                  ? 'border-[#389C9A] bg-[#389C9A]/5' 
+                  : 'border-[#1D1D1D]/10 hover:border-[#1D1D1D]'
+              }`}
             >
-              {/* Creator header with status */}
-              <div className="flex items-start justify-between gap-3 mb-3">
+              {/* Selection checkbox */}
+              <div className="flex items-start gap-3 mb-3">
+                <button
+                  onClick={() => onToggleSelect(creator.id)}
+                  className="mt-1"
+                >
+                  {selectedItems.includes(creator.id) ? (
+                    <CheckSquare className="w-5 h-5 text-[#389C9A]" />
+                  ) : (
+                    <Square className="w-5 h-5 text-gray-400" />
+                  )}
+                </button>
+
                 <div className="flex items-center gap-3 flex-1">
                   {creator.avatar_url ? (
                     <img
@@ -882,7 +1472,7 @@ function AdminCreators() {
               </div>
 
               {/* Creator details */}
-              <div className="grid grid-cols-2 gap-2 mb-3 text-[10px]">
+              <div className="grid grid-cols-2 gap-2 mb-3 text-[10px] ml-8">
                 <div className="flex items-center gap-1 text-gray-600">
                   <Video className="w-3 h-3 shrink-0" />
                   <span className="truncate">{getCreatorCategory(creator)}</span>
@@ -905,7 +1495,7 @@ function AdminCreators() {
 
               {/* Platforms */}
               {creator.platforms?.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-3">
+                <div className="flex flex-wrap gap-1.5 mb-3 ml-8">
                   {creator.platforms.slice(0, 2).map((p: any, idx: number) => (
                     <span key={idx} className="text-[8px] bg-gray-100 px-2 py-1 rounded-full flex items-center gap-1">
                       <Zap className="w-2 h-2" />
@@ -922,11 +1512,11 @@ function AdminCreators() {
 
               {/* Bio preview */}
               {creator.bio && (
-                <p className="text-xs text-gray-500 mb-3 line-clamp-2">{creator.bio}</p>
+                <p className="text-xs text-gray-500 mb-3 line-clamp-2 ml-8">{creator.bio}</p>
               )}
 
               {/* Action buttons */}
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
                 <button
                   onClick={() => { setSelectedCreator(creator); setShowDetailModal(true); }}
                   className="px-3 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
@@ -963,7 +1553,7 @@ function AdminCreators() {
                       onClick={() => deleteCreator(creator.id)}
                       className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg"
                     >
-                      <Trash2 className="w-3 h-3 mx-auto" />
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </>
                 )}
@@ -980,7 +1570,7 @@ function AdminCreators() {
                       onClick={() => deleteCreator(creator.id)}
                       className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg"
                     >
-                      <Trash2 className="w-3 h-3 mx-auto" />
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </>
                 )}
@@ -998,137 +1588,26 @@ function AdminCreators() {
 }
 
 // ─────────────────────────────────────────────
-// CREATOR DETAIL MODAL - Mobile Optimized
+// BUSINESSES TAB - With Selection
 // ─────────────────────────────────────────────
 
-function CreatorDetailModal({ creator, onClose }: { creator: any; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <motion.div
-        initial={{ opacity: 0, y: "100%" }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: "100%" }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"
-      >
-        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center">
-          <h3 className="font-black uppercase tracking-tight text-lg">Creator Details</h3>
-          <button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        
-        <div className="p-5 space-y-5">
-          {/* Profile header */}
-          <div className="flex items-center gap-4">
-            {creator.avatar_url ? (
-              <img src={creator.avatar_url} alt={creator.full_name} className="w-20 h-20 border-2 border-[#1D1D1D] object-cover rounded-xl" />
-            ) : (
-              <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center rounded-xl">
-                <User className="w-8 h-8 text-gray-400" />
-              </div>
-            )}
-            <div className="flex-1">
-              <h2 className="text-xl font-black uppercase tracking-tight">{creator.full_name || creator.username}</h2>
-              <p className="text-sm text-gray-500 mb-2">{creator.email}</p>
-              <div className="flex flex-wrap gap-2">
-                <span className={`text-[9px] font-black px-3 py-1 rounded-full ${
-                  creator.status === "active" ? "bg-green-100 text-green-700" :
-                  creator.status === "suspended" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                }`}>
-                  {creator.status}
-                </span>
-                {creator.verified && (
-                  <span className="text-[9px] bg-blue-100 text-blue-700 px-3 py-1 rounded-full">Verified</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Stats grid */}
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { label: "Followers", value: creator.followers?.toLocaleString() || "0" },
-              { label: "Avg Viewers", value: creator.avg_viewers?.toLocaleString() || "0" },
-              { label: "Rate", value: creator.rate ? `₦${creator.rate}` : "—" },
-            ].map((s, i) => (
-              <div key={i} className="border-2 border-[#1D1D1D] p-3 text-center rounded-xl">
-                <p className="text-lg font-black">{s.value}</p>
-                <p className="text-[8px] uppercase tracking-widest opacity-60">{s.label}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Platforms */}
-          {creator.platforms?.length > 0 && (
-            <div>
-              <h4 className="font-black text-xs mb-3 uppercase tracking-widest">Connected Platforms</h4>
-              <div className="space-y-2">
-                {creator.platforms.map((p: any, idx: number) => (
-                  <div key={idx} className="border-2 border-[#1D1D1D] px-4 py-3 flex justify-between items-center rounded-xl">
-                    <div>
-                      <p className="font-black text-sm">{p.platform_type || p.platform}</p>
-                      <p className="text-[9px] text-gray-500">@{p.username}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-black">{(p.followers_count || p.followers)?.toLocaleString()}</p>
-                      <p className="text-[8px] opacity-60">followers</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Bio */}
-          {creator.bio && (
-            <div>
-              <h4 className="font-black text-xs mb-2 uppercase tracking-widest">Bio</h4>
-              <p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{creator.bio}</p>
-            </div>
-          )}
-
-          {/* Details grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: "Location", value: creator.location || creator.city || "Not specified" },
-              { label: "Joined", value: new Date(creator.created_at).toLocaleDateString() },
-              { label: "Category", value: creator.niche || creator.category || "General" },
-              { label: "User ID", value: (creator.user_id || creator.id)?.slice(0, 12), mono: true },
-            ].map((item, i) => (
-              <div key={i} className="border-2 border-[#1D1D1D] p-3 rounded-xl">
-                <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p>
-                <p className={`text-xs ${item.mono ? "font-mono" : "font-medium"}`}>{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex gap-3 pt-2">
-            <button
-              onClick={onClose}
-              className="flex-1 border-2 border-[#1D1D1D] py-3 text-xs font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-xl"
-            >
-              Close
-            </button>
-            <button
-              onClick={() => toast.info("Messaging feature coming soon")}
-              className="flex-1 bg-[#1D1D1D] text-white py-3 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl"
-            >
-              Send Message
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// BUSINESSES TAB - Mobile First
-// ─────────────────────────────────────────────
-
-function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
+function AdminBusinesses({ 
+  onStatsChange,
+  selectedItems,
+  onToggleSelect,
+  onToggleSelectAll,
+  onApproveSelected,
+  onRejectSelected,
+  actionLoading
+}: { 
+  onStatsChange?: () => void;
+  selectedItems: string[];
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: (items: any[]) => void;
+  onApproveSelected: () => Promise<void>;
+  onRejectSelected: () => Promise<void>;
+  actionLoading: boolean;
+}) {
   const [businesses, setBusinesses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
@@ -1155,8 +1634,8 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
 
   const updateBusinessStatus = async (id: string, newStatus: "approved" | "rejected") => {
     const updates: any = newStatus === "approved"
-      ? { application_status: "approved", status: "active", verification_status: "verified" }
-      : { application_status: "rejected", status: "rejected", verification_status: "rejected" };
+      ? { application_status: "approved", status: "active", verification_status: "verified", approved_at: new Date().toISOString() }
+      : { application_status: "rejected", status: "rejected", verification_status: "rejected", rejected_at: new Date().toISOString() };
     const { error } = await supabase.from("businesses").update(updates).eq("id", id);
     if (error) { toast.error("Failed to update business status"); return; }
     toast.success(`Business ${newStatus}`);
@@ -1175,10 +1654,51 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
   const getContactEmail = (b: any) => b.email || "No email";
   const getStatusDisplay = (b: any) => b.application_status || b.status || "pending";
 
+  const filteredBusinesses = businesses.filter(b => {
+    const status = getStatusDisplay(b);
+    if (filter === "pending") return status === "pending" || status === "pending_review";
+    if (filter === "approved") return status === "approved" || status === "active";
+    if (filter === "rejected") return status === "rejected";
+    return true;
+  });
+
   return (
     <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
       <div className="flex flex-col gap-3 mb-4">
         <h3 className="font-black uppercase tracking-tight text-lg">Business Applications</h3>
+        
+        {/* Bulk action bar when items are selected */}
+        {selectedItems.length > 0 && (
+          <div className="bg-[#1D1D1D] text-white p-3 rounded-xl flex items-center justify-between">
+            <span className="text-xs font-black">
+              {selectedItems.length} business{selectedItems.length !== 1 ? 'es' : ''} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={onApproveSelected}
+                disabled={actionLoading}
+                className="px-3 py-1.5 bg-green-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                <CheckCircle className="w-3 h-3" />
+                Approve
+              </button>
+              <button
+                onClick={onRejectSelected}
+                disabled={actionLoading}
+                className="px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                <XCircle className="w-3 h-3" />
+                Reject
+              </button>
+              <button
+                onClick={() => onToggleSelectAll([])}
+                className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-white/10 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
         
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -1225,7 +1745,19 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
             <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">
               Filter: {filter === "all" ? "All Businesses" : filter}
             </span>
-            <span className="text-xs text-gray-400">({businesses.length})</span>
+            <span className="text-xs text-gray-400">({filteredBusinesses.length})</span>
+            {filter === "pending" && (
+              <button
+                onClick={() => {
+                  if (filteredBusinesses.length > 0) {
+                    onToggleSelectAll(filteredBusinesses);
+                  }
+                }}
+                className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] underline"
+              >
+                Select all
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1234,72 +1766,90 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
         <div className="flex justify-center py-12">
           <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
         </div>
-      ) : businesses.length === 0 ? (
+      ) : filteredBusinesses.length === 0 ? (
         <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
           <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No businesses found</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {businesses.map((business) => {
-            const status = getStatusDisplay(business);
-            const verificationStatus = business.verification_status || "pending";
+          {filteredBusinesses.map((biz) => {
+            const status = getStatusDisplay(biz);
+            const verificationStatus = biz.verification_status || "pending";
             return (
               <motion.div
-                key={business.id}
+                key={biz.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
+                className={`border-2 p-4 transition-all rounded-xl ${
+                  selectedItems.includes(biz.id) 
+                    ? 'border-[#389C9A] bg-[#389C9A]/5' 
+                    : 'border-[#1D1D1D]/10 hover:border-[#1D1D1D]'
+                }`}
               >
+                {/* Selection checkbox */}
                 <div className="flex items-start gap-3 mb-3">
-                  {business.logo_url ? (
-                    <img
-                      src={business.logo_url}
-                      alt={getBusinessName(business)}
-                      onClick={() => { setSelectedBusiness(business); setShowDetailModal(true); }}
-                      className="w-14 h-14 border-2 border-[#1D1D1D] object-cover cursor-pointer hover:opacity-80 shrink-0 rounded-xl"
-                    />
-                  ) : (
-                    <div
-                      onClick={() => { setSelectedBusiness(business); setShowDetailModal(true); }}
-                      className="w-14 h-14 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center cursor-pointer hover:bg-gray-200 shrink-0 rounded-xl"
-                    >
-                      <Building2 className="w-6 h-6 text-gray-400" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-black text-base uppercase tracking-tight truncate mb-1">{getBusinessName(business)}</h4>
-                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                      <User className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{getContactName(business)}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                      <Mail className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{getContactEmail(business)}</span>
+                  <button
+                    onClick={() => onToggleSelect(biz.id)}
+                    className="mt-1"
+                  >
+                    {selectedItems.includes(biz.id) ? (
+                      <CheckSquare className="w-5 h-5 text-[#389C9A]" />
+                    ) : (
+                      <Square className="w-5 h-5 text-gray-400" />
+                    )}
+                  </button>
+
+                  <div className="flex items-center gap-3 flex-1">
+                    {biz.logo_url ? (
+                      <img
+                        src={biz.logo_url}
+                        alt={getBusinessName(biz)}
+                        onClick={() => { setSelectedBusiness(biz); setShowDetailModal(true); }}
+                        className="w-14 h-14 border-2 border-[#1D1D1D] object-cover cursor-pointer hover:opacity-80 shrink-0 rounded-xl"
+                      />
+                    ) : (
+                      <div
+                        onClick={() => { setSelectedBusiness(biz); setShowDetailModal(true); }}
+                        className="w-14 h-14 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center cursor-pointer hover:bg-gray-200 shrink-0 rounded-xl"
+                      >
+                        <Building2 className="w-6 h-6 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-base uppercase tracking-tight truncate mb-1">{getBusinessName(biz)}</h4>
+                      <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                        <User className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{getContactName(biz)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                        <Mail className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{getContactEmail(biz)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {business.phone_number && (
+                <div className="grid grid-cols-2 gap-2 mb-3 ml-8">
+                  {biz.phone_number && (
                     <div className="flex items-center gap-1 text-[10px] text-gray-600">
                       <Phone className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{business.phone_number}</span>
+                      <span className="truncate">{biz.phone_number}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-1 text-[10px] text-gray-600">
                     <Briefcase className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{business.industry || business.sector || "—"}</span>
+                    <span className="truncate">{biz.industry || biz.sector || "—"}</span>
                   </div>
-                  {(business.city || business.location) && (
+                  {(biz.city || biz.location) && (
                     <div className="flex items-center gap-1 text-[10px] text-gray-600">
                       <MapPin className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{business.city || business.location}</span>
+                      <span className="truncate">{biz.city || biz.location}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="flex gap-2 mb-3">
+                <div className="flex gap-2 mb-3 ml-8">
                   <span className={`text-[9px] font-black px-2 py-1 rounded-full ${
                     status === "approved" || status === "active" ? "bg-green-100 text-green-700" :
                     status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
@@ -1314,13 +1864,13 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
                   </span>
                 </div>
 
-                {business.description && (
-                  <p className="text-xs text-gray-500 mb-3 line-clamp-2">{business.description}</p>
+                {biz.description && (
+                  <p className="text-xs text-gray-500 mb-3 line-clamp-2 ml-8">{biz.description}</p>
                 )}
 
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
                   <button
-                    onClick={() => { setSelectedBusiness(business); setShowDetailModal(true); }}
+                    onClick={() => { setSelectedBusiness(biz); setShowDetailModal(true); }}
                     className="px-3 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
                   >
                     <Eye className="w-3 h-3" /> View
@@ -1329,13 +1879,13 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
                   {filter === "pending" && (
                     <>
                       <button
-                        onClick={() => updateBusinessStatus(business.id, "approved")}
+                        onClick={() => updateBusinessStatus(biz.id, "approved")}
                         className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1"
                       >
                         <CheckCircle className="w-3 h-3" /> Approve
                       </button>
                       <button
-                        onClick={() => updateBusinessStatus(business.id, "rejected")}
+                        onClick={() => updateBusinessStatus(biz.id, "rejected")}
                         className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
                       >
                         <XCircle className="w-3 h-3" /> Reject
@@ -1345,7 +1895,7 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
                   
                   {filter !== "pending" && (
                     <button
-                      onClick={() => deleteBusiness(business.id)}
+                      onClick={() => deleteBusiness(biz.id)}
                       className="col-span-2 border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
                     >
                       <Trash2 className="w-3 h-3" /> Delete
@@ -1366,7 +1916,419 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
 }
 
 // ─────────────────────────────────────────────
-// BUSINESS DETAIL MODAL - Mobile Optimized
+// CAMPAIGNS TAB - With Selection
+// ─────────────────────────────────────────────
+
+function AdminCampaigns({ 
+  selectedItems,
+  onToggleSelect,
+  onToggleSelectAll,
+  onApproveSelected,
+  onRejectSelected,
+  actionLoading
+}: { 
+  selectedItems: string[];
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: (items: any[]) => void;
+  onApproveSelected: () => Promise<void>;
+  onRejectSelected: () => Promise<void>;
+  actionLoading: boolean;
+}) {
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"pending_review" | "active" | "completed" | "rejected" | "all">("pending_review");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const fetchCampaigns = async () => {
+    setLoading(true);
+    try {
+      let query = supabase.from("campaigns").select(`*, businesses (id, business_name, logo_url)`).order("created_at", { ascending: false });
+      if (filter !== "all") query = query.eq("status", filter);
+      if (searchTerm) query = query.or(`name.ilike.%${searchTerm}%,title.ilike.%${searchTerm}%`);
+      const { data, error } = await query;
+      if (error) { toast.error("Failed to load campaigns"); } else { setCampaigns(data || []); }
+    } catch { toast.error("Failed to load campaigns"); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchCampaigns(); }, [filter, searchTerm]);
+
+  const updateCampaignStatus = async (id: string, newStatus: "active" | "rejected" | "completed", notes?: string) => {
+    const updates: any = { 
+      status: newStatus, 
+      admin_notes: notes || null,
+      ...(newStatus === 'active' ? { approved_at: new Date().toISOString(), published_at: new Date().toISOString() } : {}),
+      ...(newStatus === 'rejected' ? { rejected_at: new Date().toISOString() } : {}),
+      ...(newStatus === 'completed' ? { completed_at: new Date().toISOString() } : {})
+    };
+    const { error } = await supabase.from("campaigns").update(updates).eq("id", id);
+    if (error) { toast.error("Failed to update campaign"); return; }
+    toast.success(`Campaign ${newStatus}`); fetchCampaigns();
+  };
+
+  const deleteCampaign = async (id: string) => {
+    if (!confirm("Delete this campaign?")) return;
+    const { error } = await supabase.from("campaigns").delete().eq("id", id);
+    if (error) { toast.error("Failed to delete campaign"); return; }
+    toast.success("Campaign deleted"); fetchCampaigns();
+  };
+
+  const getCampaignName = (c: any) => c.name || c.title || "Unnamed Campaign";
+  const getBusinessName = (b: any) => b?.business_name || b?.name || "Unknown Business";
+  const getPrice = (c: any) => c.pay_rate ?? c.bid_amount ?? c.budget ?? 0;
+
+  const filteredCampaigns = campaigns.filter(c => {
+    if (filter === "all") return true;
+    return c.status === filter;
+  });
+
+  return (
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Campaigns</h3>
+        
+        {/* Bulk action bar when items are selected */}
+        {selectedItems.length > 0 && (
+          <div className="bg-[#1D1D1D] text-white p-3 rounded-xl flex items-center justify-between">
+            <span className="text-xs font-black">
+              {selectedItems.length} campaign{selectedItems.length !== 1 ? 's' : ''} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={onApproveSelected}
+                disabled={actionLoading}
+                className="px-3 py-1.5 bg-green-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                <CheckCircle className="w-3 h-3" />
+                Approve
+              </button>
+              <button
+                onClick={onRejectSelected}
+                disabled={actionLoading}
+                className="px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                <XCircle className="w-3 h-3" />
+                Reject
+              </button>
+              <button
+                onClick={() => onToggleSelectAll([])}
+                className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-white/10 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+        
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search campaigns..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm rounded-xl"
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+          >
+            <Filter className="w-5 h-5" />
+          </button>
+        </div>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
+            {(["pending_review", "active", "completed", "rejected", "all"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
+                  filter === tab 
+                    ? "bg-[#1D1D1D] text-white" 
+                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                }`}
+              >
+                {tab === "all" ? "All" : tab.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!showFilters && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">
+              Filter: {filter === "all" ? "All Campaigns" : filter.replace("_", " ")}
+            </span>
+            <span className="text-xs text-gray-400">({filteredCampaigns.length})</span>
+            {filter === "pending_review" && (
+              <button
+                onClick={() => {
+                  if (filteredCampaigns.length > 0) {
+                    onToggleSelectAll(filteredCampaigns);
+                  }
+                }}
+                className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] underline"
+              >
+                Select all
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
+      ) : filteredCampaigns.length === 0 ? (
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">No campaigns found</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredCampaigns.map((camp) => {
+            const biz = camp.businesses;
+            const price = getPrice(camp);
+            return (
+              <motion.div
+                key={camp.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`border-2 p-4 transition-all rounded-xl ${
+                  selectedItems.includes(camp.id) 
+                    ? 'border-[#389C9A] bg-[#389C9A]/5' 
+                    : 'border-[#1D1D1D]/10 hover:border-[#1D1D1D]'
+                }`}
+              >
+                {/* Selection checkbox */}
+                <div className="flex items-start gap-3 mb-3">
+                  <button
+                    onClick={() => onToggleSelect(camp.id)}
+                    className="mt-1"
+                  >
+                    {selectedItems.includes(camp.id) ? (
+                      <CheckSquare className="w-5 h-5 text-[#389C9A]" />
+                    ) : (
+                      <Square className="w-5 h-5 text-gray-400" />
+                    )}
+                  </button>
+
+                  <div className="flex items-center gap-3 flex-1">
+                    {biz?.logo_url ? (
+                      <img src={biz.logo_url} alt={getBusinessName(biz)} className="w-12 h-12 border-2 border-[#1D1D1D] object-cover shrink-0 rounded-xl" />
+                    ) : (
+                      <div className="w-12 h-12 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center shrink-0 rounded-xl">
+                        <Building2 className="w-5 h-5 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-sm uppercase tracking-tight truncate">{getCampaignName(camp)}</h4>
+                      <p className="text-[10px] text-gray-500 mt-0.5">{getBusinessName(biz)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mb-3 ml-8">
+                  <span className="text-[9px] capitalize bg-gray-100 px-3 py-1 rounded-full">
+                    {camp.type?.replace("_", " ") || "Standard"}
+                  </span>
+                  <span className={`text-[8px] font-black px-2 py-1 rounded-full ${
+                    camp.status === "active" ? "bg-green-100 text-green-700" :
+                    camp.status === "completed" ? "bg-blue-100 text-blue-700" :
+                    camp.status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                  }`}>
+                    {camp.status?.replace("_", " ")}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center mb-3 ml-8">
+                  <p className="font-black text-lg text-[#389C9A]">₦{Number(price).toLocaleString()}</p>
+                  <p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p>
+                </div>
+
+                {camp.admin_notes && (
+                  <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-xl ml-8">
+                    <p className="text-[8px] font-black uppercase tracking-widest mb-1">Admin Notes:</p>
+                    <p className="text-xs text-gray-700">{camp.admin_notes}</p>
+                  </div>
+                )}
+
+                {filter === "pending_review" && (
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
+                    <button
+                      onClick={() => updateCampaignStatus(camp.id, "active")}
+                      className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1"
+                    >
+                      <CheckCircle className="w-3 h-3" /> Approve
+                    </button>
+                    <button
+                      onClick={() => updateCampaignStatus(camp.id, "rejected")}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
+                    >
+                      <XCircle className="w-3 h-3" /> Reject
+                    </button>
+                    <button
+                      onClick={() => deleteCampaign(camp.id)}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
+                {filter === "active" && (
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
+                    <button
+                      onClick={() => updateCampaignStatus(camp.id, "completed")}
+                      className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg col-span-1"
+                    >
+                      Complete
+                    </button>
+                    <button
+                      onClick={() => updateCampaignStatus(camp.id, "rejected")}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg col-span-1"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// CREATOR DETAIL MODAL
+// ─────────────────────────────────────────────
+
+function CreatorDetailModal({ creator, onClose }: { creator: any; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <motion.div
+        initial={{ opacity: 0, y: "100%" }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: "100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"
+      >
+        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center">
+          <h3 className="font-black uppercase tracking-tight text-lg">Creator Details</h3>
+          <button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="p-5 space-y-5">
+          <div className="flex items-center gap-4">
+            {creator.avatar_url ? (
+              <img src={creator.avatar_url} alt={creator.full_name} className="w-20 h-20 border-2 border-[#1D1D1D] object-cover rounded-xl" />
+            ) : (
+              <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center rounded-xl">
+                <User className="w-8 h-8 text-gray-400" />
+              </div>
+            )}
+            <div className="flex-1">
+              <h2 className="text-xl font-black uppercase tracking-tight">{creator.full_name || creator.username}</h2>
+              <p className="text-sm text-gray-500 mb-2">{creator.email}</p>
+              <div className="flex flex-wrap gap-2">
+                <span className={`text-[9px] font-black px-3 py-1 rounded-full ${
+                  creator.status === "active" ? "bg-green-100 text-green-700" :
+                  creator.status === "suspended" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {creator.status}
+                </span>
+                {creator.verified && (
+                  <span className="text-[9px] bg-blue-100 text-blue-700 px-3 py-1 rounded-full">Verified</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Followers", value: creator.followers?.toLocaleString() || "0" },
+              { label: "Avg Viewers", value: creator.avg_viewers?.toLocaleString() || "0" },
+              { label: "Rate", value: creator.rate ? `₦${creator.rate}` : "—" },
+            ].map((s, i) => (
+              <div key={i} className="border-2 border-[#1D1D1D] p-3 text-center rounded-xl">
+                <p className="text-lg font-black">{s.value}</p>
+                <p className="text-[8px] uppercase tracking-widest opacity-60">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {creator.platforms?.length > 0 && (
+            <div>
+              <h4 className="font-black text-xs mb-3 uppercase tracking-widest">Connected Platforms</h4>
+              <div className="space-y-2">
+                {creator.platforms.map((p: any, idx: number) => (
+                  <div key={idx} className="border-2 border-[#1D1D1D] px-4 py-3 flex justify-between items-center rounded-xl">
+                    <div>
+                      <p className="font-black text-sm">{p.platform_type || p.platform}</p>
+                      <p className="text-[9px] text-gray-500">@{p.username}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black">{(p.followers_count || p.followers)?.toLocaleString()}</p>
+                      <p className="text-[8px] opacity-60">followers</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {creator.bio && (
+            <div>
+              <h4 className="font-black text-xs mb-2 uppercase tracking-widest">Bio</h4>
+              <p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{creator.bio}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "Location", value: creator.location || creator.city || "Not specified" },
+              { label: "Joined", value: new Date(creator.created_at).toLocaleDateString() },
+              { label: "Category", value: creator.niche || creator.category || "General" },
+              { label: "User ID", value: (creator.user_id || creator.id)?.slice(0, 12), mono: true },
+            ].map((item, i) => (
+              <div key={i} className="border-2 border-[#1D1D1D] p-3 rounded-xl">
+                <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p>
+                <p className={`text-xs ${item.mono ? "font-mono" : "font-medium"}`}>{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 border-2 border-[#1D1D1D] py-3 text-xs font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-xl"
+            >
+              Close
+            </button>
+            <button
+              onClick={() => toast.info("Messaging feature coming soon")}
+              className="flex-1 bg-[#1D1D1D] text-white py-3 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl"
+            >
+              Send Message
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// BUSINESS DETAIL MODAL
 // ─────────────────────────────────────────────
 
 function BusinessDetailModal({ business, onClose }: { business: any; onClose: () => void }) {
@@ -1475,208 +2437,7 @@ function BusinessDetailModal({ business, onClose }: { business: any; onClose: ()
 }
 
 // ─────────────────────────────────────────────
-// CAMPAIGNS TAB - Mobile First
-// ─────────────────────────────────────────────
-
-function AdminCampaigns() {
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"pending_review" | "active" | "completed" | "rejected" | "all">("pending_review");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-
-  const fetchCampaigns = async () => {
-    setLoading(true);
-    try {
-      let query = supabase.from("campaigns").select(`*, businesses (id, business_name, logo_url)`).order("created_at", { ascending: false });
-      if (filter !== "all") query = query.eq("status", filter);
-      if (searchTerm) query = query.or(`name.ilike.%${searchTerm}%,title.ilike.%${searchTerm}%`);
-      const { data, error } = await query;
-      if (error) { toast.error("Failed to load campaigns"); } else { setCampaigns(data || []); }
-    } catch { toast.error("Failed to load campaigns"); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetchCampaigns(); }, [filter, searchTerm]);
-
-  const updateCampaignStatus = async (id: string, newStatus: "active" | "rejected" | "completed", notes?: string) => {
-    const { error } = await supabase.from("campaigns").update({ status: newStatus, admin_notes: notes || null }).eq("id", id);
-    if (error) { toast.error("Failed to update campaign"); return; }
-    toast.success(`Campaign ${newStatus}`); fetchCampaigns();
-  };
-
-  const deleteCampaign = async (id: string) => {
-    if (!confirm("Delete this campaign?")) return;
-    const { error } = await supabase.from("campaigns").delete().eq("id", id);
-    if (error) { toast.error("Failed to delete campaign"); return; }
-    toast.success("Campaign deleted"); fetchCampaigns();
-  };
-
-  const getCampaignName = (c: any) => c.name || c.title || "Unnamed Campaign";
-  const getBusinessName = (b: any) => b?.business_name || b?.name || "Unknown Business";
-  const getPrice = (c: any) => c.pay_rate ?? c.bid_amount ?? c.budget ?? 0;
-
-  return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
-      <div className="flex flex-col gap-3 mb-4">
-        <h3 className="font-black uppercase tracking-tight text-lg">Campaigns</h3>
-        
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search campaigns..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm rounded-xl"
-            />
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
-          >
-            <Filter className="w-5 h-5" />
-          </button>
-        </div>
-
-        {showFilters && (
-          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
-            {(["pending_review", "active", "completed", "rejected", "all"] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setFilter(tab)}
-                className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
-                  filter === tab 
-                    ? "bg-[#1D1D1D] text-white" 
-                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
-                }`}
-              >
-                {tab === "all" ? "All" : tab.replace("_", " ")}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {!showFilters && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">
-              Filter: {filter === "all" ? "All Campaigns" : filter.replace("_", " ")}
-            </span>
-            <span className="text-xs text-gray-400">({campaigns.length})</span>
-          </div>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
-        </div>
-      ) : campaigns.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
-          <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">No campaigns found</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {campaigns.map((camp) => {
-            const business = camp.businesses;
-            const price = getPrice(camp);
-            return (
-              <motion.div
-                key={camp.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
-              >
-                <div className="flex items-start gap-3 mb-3">
-                  {business?.logo_url ? (
-                    <img src={business.logo_url} alt={getBusinessName(business)} className="w-12 h-12 border-2 border-[#1D1D1D] object-cover shrink-0 rounded-xl" />
-                  ) : (
-                    <div className="w-12 h-12 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center shrink-0 rounded-xl">
-                      <Building2 className="w-5 h-5 text-gray-400" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-black text-sm uppercase tracking-tight truncate">{getCampaignName(camp)}</h4>
-                    <p className="text-[10px] text-gray-500 mt-0.5">{getBusinessName(business)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-black text-lg text-[#389C9A]">₦{Number(price).toLocaleString()}</p>
-                    <p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[9px] capitalize bg-gray-100 px-3 py-1 rounded-full">
-                    {camp.type?.replace("_", " ") || "Standard"}
-                  </span>
-                  <span className={`text-[8px] font-black px-2 py-1 rounded-full ${
-                    camp.status === "active" ? "bg-green-100 text-green-700" :
-                    camp.status === "completed" ? "bg-blue-100 text-blue-700" :
-                    camp.status === "rejected" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                  }`}>
-                    {camp.status?.replace("_", " ")}
-                  </span>
-                </div>
-
-                {camp.admin_notes && (
-                  <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-                    <p className="text-[8px] font-black uppercase tracking-widest mb-1">Admin Notes:</p>
-                    <p className="text-xs text-gray-700">{camp.admin_notes}</p>
-                  </div>
-                )}
-
-                {filter === "pending_review" && (
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
-                    <button
-                      onClick={() => updateCampaignStatus(camp.id, "active")}
-                      className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1"
-                    >
-                      <CheckCircle className="w-3 h-3" /> Approve
-                    </button>
-                    <button
-                      onClick={() => updateCampaignStatus(camp.id, "rejected")}
-                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
-                    >
-                      <XCircle className="w-3 h-3" /> Reject
-                    </button>
-                    <button
-                      onClick={() => deleteCampaign(camp.id)}
-                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
-
-                {filter === "active" && (
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5">
-                    <button
-                      onClick={() => updateCampaignStatus(camp.id, "completed")}
-                      className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg col-span-1"
-                    >
-                      Complete
-                    </button>
-                    <button
-                      onClick={() => updateCampaignStatus(camp.id, "rejected")}
-                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors rounded-lg col-span-1"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                )}
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// SUPPORT TAB - Mobile First
+// SUPPORT TAB
 // ─────────────────────────────────────────────
 
 function AdminSupport() {
