@@ -13,7 +13,7 @@ import { CampaignTypeSelection } from "./screens/campaign-type-selection";
 import { CampaignSetupBanner } from "./screens/campaign-setup-banner";
 import { CampaignSetupBannerPromo } from "./screens/campaign-setup-banner-promo";
 import { CampaignSetupPromoOnly } from "./screens/campaign-setup-promo-only";
-import { BecomeCreator, AdminApplicationQueue } from "./screens/become-creator";
+import { BecomeCreator } from "./screens/become-creator";
 import { BecomeBusiness } from "./screens/become-business";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { GigAccepted } from "./screens/gig-accepted";
@@ -37,8 +37,8 @@ import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
-import { AdminDashboard } from "../app/components/AdminDashboard"; // 👈 Direct import from components
-import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue";
+import { AdminDashboard } from "../app/components/AdminDashboard";
+import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue"; // ✅ Fixed import
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -46,7 +46,6 @@ const protectCreator = (Component: React.ComponentType) => (
     <Component />
   </ProtectedRoute>
 );
-
 
 const protectBusiness = (Component: React.ComponentType) => (
   <ProtectedRoute userType="business">
@@ -115,7 +114,7 @@ const routes: RouteObject[] = [
       { path: "campaign/declined", element: protectBoth(CampaignDeclined) },
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
       
-      // Admin Routes - Direct import from components
+      // ✅ ADMIN ROUTES - CORRECTED
       { 
         path: "admin", 
         element: protectAdmin(AdminDashboard) 
@@ -124,7 +123,14 @@ const routes: RouteObject[] = [
         path: "admin/dashboard", 
         element: protectAdmin(AdminDashboard) 
       },
-      { path: "admin/applications", element: protectBoth(AdminApplicationQueue) },
+      { 
+        path: "admin/creators", 
+        element: protectAdmin(AdminApplicationQueue) // ✅ Fixed: protectAdmin instead of protectBoth
+      },
+      { 
+        path: "admin/applications", 
+        element: protectAdmin(AdminApplicationQueue) // ✅ Fixed: protectAdmin instead of protectBoth
+      },
     ],
   },
 ];
