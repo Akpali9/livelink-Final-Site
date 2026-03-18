@@ -17,6 +17,7 @@ import {
   Star,
   Award,
   Users,
+  AlertCircle,
 } from "lucide-react";
 
 import { motion, AnimatePresence } from "motion/react";
@@ -108,6 +109,7 @@ export function Dashboard() {
   const [applicationsExpanded, setApplicationsExpanded] = useState(false);
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<IncomingRequest | null>(null);
+  const [showPendingBanner, setShowPendingBanner] = useState(false);
 
   const [stats, setStats] = useState<DashboardStats>({
     totalEarned: 0,
@@ -138,13 +140,19 @@ export function Dashboard() {
     // ✅ correct columns: full_name, avg_viewers, rating (no total_followers in schema)
     const { data } = await supabase
       .from("creator_profiles")
-      .select("id, full_name, avatar_url, bio, avg_viewers, rating, status")
+      .select("id, full_name, avatar_url, bio, avg_viewers, rating, status, email")
       .eq("user_id", user.id)
       .single();
 
     if (data) {
       setCreatorProfile(data);
       setCreatorId(data.id);
+      
+      // ✅ Check if profile is pending
+      if (data.status === "pending_review") {
+        setShowPendingBanner(true);
+      }
+      
       setStats(prev => ({
         ...prev,
         averageRating: data.rating   || 0,
@@ -533,6 +541,28 @@ export function Dashboard() {
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
+
+        {/* ===== PENDING APPROVAL BANNER - ADDED HERE ===== */}
+        {showPendingBanner && (
+          <div className="mx-6 mt-2 mb-2 p-5 bg-[#FEDB71]/20 border-2 border-[#FEDB71] rounded-xl">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 bg-[#FEDB71] rounded-xl flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5 text-[#1D1D1D]" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-black uppercase tracking-tight mb-1">Application Under Review</h3>
+                <p className="text-xs text-gray-600 mb-2">
+                  Your creator application is being reviewed by our team. You'll be notified at{' '}
+                  <span className="font-bold underline">{creatorProfile?.email || 'your email'}</span> once approved.
+                </p>
+                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                  <span className="w-2 h-2 bg-[#FEDB71] rounded-full animate-pulse" />
+                  <span>Estimated review time: 24-48 hours</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Quick Stats */}
         <div className="px-6 pb-4 grid grid-cols-3 gap-2">
