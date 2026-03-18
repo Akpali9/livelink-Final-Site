@@ -340,9 +340,13 @@ export function AdminDashboard() {
       try {
         const { data: ccRows, error: ccError } = await supabase
           .from("campaign_creators")
-          .select("streams_completed, streams_target, status")
-          .eq("status", "ACTIVE");
-        if (!ccError) pendingPayouts = 0;
+          .select("total_earnings, paid_out")
+          .eq("status", "active");
+        if (!ccError) {
+          const totalEarnings = (ccRows || []).reduce((s, r) => s + (r.total_earnings || 0), 0);
+          const totalPaid = (ccRows || []).reduce((s, r) => s + (r.paid_out || 0), 0);
+          pendingPayouts = totalEarnings - totalPaid;
+        }
       } catch (e) { console.error("Payout fetch error:", e); }
 
       // ── TOTAL USERS ──────────
@@ -360,8 +364,19 @@ export function AdminDashboard() {
           .from("reported_content")
           .select("*", { count: "exact", head: true })
           .eq("status", "pending");
-        if (!rcError) reportedContent = count || 0;
-      } catch (e) { /* table doesn't exist yet — safe to ignore */ }
+        
+        if (rcError) {
+          if (rcError.code === '42P01') {
+            console.log("reported_content table doesn't exist yet");
+          } else {
+            console.error("Error fetching reported content:", rcError);
+          }
+        } else {
+          reportedContent = count || 0;
+        }
+      } catch (e) { 
+        console.log("reported_content table not available:", e); 
+      }
 
       // ── SUPPORT TICKETS ─────────────────────────
       let openSupportTickets = 0;
@@ -370,8 +385,19 @@ export function AdminDashboard() {
           .from("support_tickets")
           .select("*", { count: "exact", head: true })
           .in("status", ["open", "in_progress"]);
-        if (!stError) openSupportTickets = count || 0;
-      } catch (e) { /* table doesn't exist yet — safe to ignore */ }
+        
+        if (stError) {
+          if (stError.code === '42P01') {
+            console.log("support_tickets table doesn't exist yet");
+          } else {
+            console.error("Error fetching support tickets:", stError);
+          }
+        } else {
+          openSupportTickets = count || 0;
+        }
+      } catch (e) { 
+        console.log("support_tickets table not available:", e); 
+      }
 
       setStats({
         totalCreators, pendingCreators, activeCreators, suspendedCreators,
@@ -405,6 +431,7 @@ export function AdminDashboard() {
     try {
       await supabase.from("admin_actions").insert({
         admin_id: adminUser?.id,
+        admin_email: adminUser?.email,
         action_type: actionType,
         resource_type: resourceType,
         details,
@@ -2450,10 +2477,25 @@ function AdminSupport() {
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      let query = supabase.from("support_tickets").select("*").order("created_at", { ascending: false });
-      if (filter !== "all") query = query.eq("status", filter);
-      const { data, error } = await query;
-      if (error) { toast.error("Failed to load tickets"); } else { setTickets(data || []); }
+      // Check if table exists before querying
+      try {
+        let query = supabase.from("support_tickets").select("*").order("created_at", { ascending: false });
+        if (filter !== "all") query = query.eq("status", filter);
+        const { data, error } = await query;
+        if (error) {
+          if (error.code === '42P01') {
+            console.log("support_tickets table doesn't exist yet");
+            setTickets([]);
+          } else {
+            toast.error("Failed to load tickets");
+          }
+        } else {
+          setTickets(data || []);
+        }
+      } catch (e) {
+        console.log("support_tickets table not available:", e);
+        setTickets([]);
+      }
     } catch { toast.error("Failed to load tickets"); }
     finally { setLoading(false); }
   };
@@ -2461,12 +2503,17 @@ function AdminSupport() {
   useEffect(() => { fetchTickets(); }, [filter]);
 
   const updateTicketStatus = async (id: string, status: "resolved" | "in_progress", reply?: string) => {
-    const updates: any = { status };
-    if (reply) updates.admin_reply = reply;
-    const { error } = await supabase.from("support_tickets").update(updates).eq("id", id);
-    if (error) { toast.error("Failed to update ticket"); return; }
-    toast.success(`Ticket ${status}`); fetchTickets();
-    setReplyText(prev => ({ ...prev, [id]: "" }));
+    try {
+      const updates: any = { status };
+      if (reply) updates.admin_reply = reply;
+      const { error } = await supabase.from("support_tickets").update(updates).eq("id", id);
+      if (error) { toast.error("Failed to update ticket"); return; }
+      toast.success(`Ticket ${status}`); fetchTickets();
+      setReplyText(prev => ({ ...prev, [id]: "" }));
+    } catch (e) {
+      console.error("Error updating ticket:", e);
+      toast.error("Failed to update ticket");
+    }
   };
 
   return (
@@ -2601,10 +2648,25 @@ function AdminReports() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      let query = supabase.from("reported_content").select("*").order("created_at", { ascending: false });
-      if (filter !== "all") query = query.eq("status", filter);
-      const { data, error } = await query;
-      if (error) { toast.error("Failed to load reports"); } else { setReports(data || []); }
+      // Check if table exists before querying
+      try {
+        let query = supabase.from("reported_content").select("*").order("created_at", { ascending: false });
+        if (filter !== "all") query = query.eq("status", filter);
+        const { data, error } = await query;
+        if (error) {
+          if (error.code === '42P01') {
+            console.log("reported_content table doesn't exist yet");
+            setReports([]);
+          } else {
+            toast.error("Failed to load reports");
+          }
+        } else {
+          setReports(data || []);
+        }
+      } catch (e) {
+        console.log("reported_content table not available:", e);
+        setReports([]);
+      }
     } catch { toast.error("Failed to load reports"); }
     finally { setLoading(false); }
   };
@@ -2612,9 +2674,14 @@ function AdminReports() {
   useEffect(() => { fetchReports(); }, [filter]);
 
   const updateReportStatus = async (id: string, status: "resolved" | "dismissed") => {
-    const { error } = await supabase.from("reported_content").update({ status }).eq("id", id);
-    if (error) { toast.error("Failed to update report"); return; }
-    toast.success(`Report ${status}`); fetchReports();
+    try {
+      const { error } = await supabase.from("reported_content").update({ status }).eq("id", id);
+      if (error) { toast.error("Failed to update report"); return; }
+      toast.success(`Report ${status}`); fetchReports();
+    } catch (e) {
+      console.error("Error updating report:", e);
+      toast.error("Failed to update report");
+    }
   };
 
   const deleteReportedContent = async (contentType: string, contentId: string, reportId: string) => {
