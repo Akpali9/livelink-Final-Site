@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router";
+import { supabase } from "../lib/supabase";
 import { 
   ChevronLeft, 
   ChevronRight, 
