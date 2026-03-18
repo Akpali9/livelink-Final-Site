@@ -8,8 +8,6 @@ import {
   Clock,
   Info,
   MoreVertical,
-  Phone,
-  Video,
   Image as ImageIcon,
   X,
   Loader2
@@ -29,7 +27,7 @@ interface Message {
   is_read: boolean;
   read_at?: string;
   created_at: string;
-  attachments?: {
+  attachments: {
     url: string;
     type: string;
     name: string;
@@ -66,7 +64,6 @@ export function MessageThread() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch conversation details and messages
   useEffect(() => {
     if (!id || !user) return;
 
@@ -89,9 +86,12 @@ export function MessageThread() {
             ? convData.participant2_id 
             : convData.participant1_id;
 
+          const otherParticipantType = convData.participant1_id === user.id 
+            ? convData.participant2_type 
+            : convData.participant1_type;
+
           // Fetch participant details
-          const otherType = userType === "business" ? "creator" : "business";
-          const table = otherType === "creator" ? "creator_profiles" : "businesses";
+          const table = otherParticipantType === "creator" ? "creator_profiles" : "businesses";
           
           const { data: participantData } = await supabase
             .from(table)
@@ -99,27 +99,52 @@ export function MessageThread() {
             .eq("user_id", otherParticipantId)
             .single();
 
+          // Fetch campaign name if exists
+          let campaignName = undefined;
+          if (convData.campaign_id) {
+            const { data: campaign } = await supabase
+              .from("campaigns")
+              .select("name")
+              .eq("id", convData.campaign_id)
+              .single();
+            campaignName = campaign?.name;
+          }
+
           setConversation({
             id: convData.id,
             participant_id: otherParticipantId,
             participant_name: participantData?.full_name || participantData?.business_name || 'Unknown',
-            participant_avatar: participantData?.avatar_url || participantData?.logo_url,
-            participant_type: otherType as any,
+            participant_avatar: participantData?.avatar_url || participantData?.logo_url || '',
+            participant_type: otherParticipantType,
             campaign_id: convData.campaign_id,
-            campaign_name: convData.campaign_name,
+            campaign_name: campaignName,
             created_at: convData.created_at
           });
         }
 
         // Fetch messages
-        await fetchMessages();
+        const { data: messagesData, error: messagesError } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("conversation_id", id)
+          .order("created_at", { ascending: true });
 
-        // Mark messages as read
+        if (messagesError) throw messagesError;
+
+        // Ensure attachments is always an array
+        const sanitized = (messagesData || []).map((msg) => ({
+          ...msg,
+          attachments: Array.isArray(msg.attachments) ? msg.attachments : []
+        }));
+        
+        setMessages(sanitized);
+
+        // Mark unread messages as read
         await supabase
           .from("messages")
           .update({ is_read: true, read_at: new Date().toISOString() })
           .eq("conversation_id", id)
-          .eq("sender_id", conversation?.participant_id)
+          .eq("sender_id", convData?.participant1_id === user.id ? convData.participant2_id : convData.participant1_id)
           .eq("is_read", false);
 
       } catch (error) {
@@ -143,12 +168,17 @@ export function MessageThread() {
           table: "messages",
           filter: `conversation_id=eq.${id}`
         },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
+        async (payload) => {
+          const newMessage = {
+            ...payload.new,
+            attachments: Array.isArray(payload.new.attachments) ? payload.new.attachments : []
+          } as Message;
+          
+          setMessages((prev) => [...prev, newMessage]);
           
           // Mark as read if it's from other participant
           if (payload.new.sender_id !== user.id) {
-            supabase
+            await supabase
               .from("messages")
               .update({ is_read: true, read_at: new Date().toISOString() })
               .eq("id", payload.new.id);
@@ -161,30 +191,6 @@ export function MessageThread() {
       supabase.removeChannel(channel);
     };
   }, [id, user]);
-
-  const fetchMessages = async () => {
-    if (!id) return;
-
-const { data, error } = await supabase
-  .rpc('get_messages_with_sender', {
-    p_receiver_id: userId,
-    p_limit: 5
-  })
-
-    if (error) {
-      console.error("Error fetching messages:", error);
-      toast.error("Failed to load messages");
-    } else {
-      // Sanitize: ensure attachments is always a valid array
-      const sanitized = (data || []).map((msg) => ({
-        ...msg,
-        attachments: Array.isArray(msg.attachments)
-          ? msg.attachments.filter((a) => a && typeof a === "object" && typeof a.url === "string")
-          : [],
-      }));
-      setMessages(sanitized);
-    }
-  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ 
@@ -206,11 +212,11 @@ const { data, error } = await supabase
           const fileExt = file.name.split('.').pop();
           const fileName = `${id}/${Date.now()}-${file.name}`;
           
-          const { data, error } = await supabase.storage
+          const { error: uploadError } = await supabase.storage
             .from("message-attachments")
             .upload(fileName, file);
 
-          if (error) throw error;
+          if (uploadError) throw uploadError;
 
           const { data: { publicUrl } } = supabase.storage
             .from("message-attachments")
@@ -225,7 +231,7 @@ const { data, error } = await supabase
       }
 
       // Insert message
-      const { error } = await supabase
+      const { error: insertError } = await supabase
         .from("messages")
         .insert({
           conversation_id: id,
@@ -236,7 +242,7 @@ const { data, error } = await supabase
           created_at: new Date().toISOString()
         });
 
-      if (error) throw error;
+      if (insertError) throw insertError;
 
       // Update conversation's last_message_at
       await supabase
@@ -399,10 +405,16 @@ const { data, error } = await supabase
               )}
 
               <div className="flex gap-2">
-                <button className="flex-1 py-3 border-2 border-[#1D1D1D] text-[8px] font-black uppercase tracking-widest rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors">
+                <button 
+                  onClick={() => navigate(`/profile/${conversation.participant_id}`)}
+                  className="flex-1 py-3 border-2 border-[#1D1D1D] text-[8px] font-black uppercase tracking-widest rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                >
                   View Profile
                 </button>
-                <button className="flex-1 py-3 bg-[#1D1D1D] text-white text-[8px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors">
+                <button 
+                  onClick={() => navigate(`/offers?role=${userType}&business=${conversation.participant_id}`)}
+                  className="flex-1 py-3 bg-[#1D1D1D] text-white text-[8px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
+                >
                   Send Offer
                 </button>
               </div>
@@ -458,33 +470,22 @@ const { data, error } = await supabase
                           {msg.content}
                           
                           {/* Attachments */}
-                          {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                          {msg.attachments && msg.attachments.length > 0 && (
                             <div className="mt-3 space-y-2">
-                              {msg.attachments.map((att, i) => {
-                                // Guard against malformed JSONB rows
-                                if (!att || typeof att !== 'object') return null;
-                                const url = att.url || att.profile_url || '';
-                                const fileType = att.type || att.platform_type || '';
-                                const label = att.name || att.username || url.split('/').pop() || 'File';
-                                return (
-                                  <a
-                                    key={i}
-                                    href={url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={`flex items-center gap-2 p-2 rounded-lg text-[10px] ${
-                                      isOwn ? 'bg-white/10' : 'bg-white'
-                                    }`}
-                                  >
-                                    {fileType.startsWith('image/') ? (
-                                      <ImageIcon className="w-4 h-4" />
-                                    ) : (
-                                      <Paperclip className="w-4 h-4" />
-                                    )}
-                                    <span className="truncate flex-1">{label}</span>
-                                  </a>
-                                );
-                              })}
+                              {msg.attachments.map((att, i) => (
+                                <a
+                                  key={i}
+                                  href={att.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`flex items-center gap-2 p-2 rounded-lg text-[10px] ${
+                                    isOwn ? 'bg-white/10' : 'bg-white'
+                                  }`}
+                                >
+                                  <ImageIcon className="w-4 h-4" />
+                                  <span className="truncate flex-1">{att.name}</span>
+                                </a>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -600,13 +601,6 @@ const { data, error } = await supabase
             )}
           </button>
         </div>
-
-        {/* Typing Indicator (placeholder) */}
-        {false && (
-          <div className="mt-2 text-[8px] text-[#1D1D1D]/30 italic">
-            {conversation.participant_name} is typing...
-          </div>
-        )}
       </div>
 
       <BottomNav />
