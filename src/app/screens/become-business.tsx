@@ -188,6 +188,21 @@ export function BecomeBusiness() {
       setUploadError('Please upload a government ID for verification');
       return;
     }
+    setRegisteredEmail(data.email);
+  const result = await submitRegistration(data, idFile);
+  
+  if (result.success) {
+    setIsSubmitted(true);
+    window.scrollTo(0, 0);
+    toast.success("Registration submitted successfully!");
+    setTimeout(() => {
+      navigate("/confirm-email", { 
+        state: { 
+          email: data.email,
+          role: "business"
+        } 
+      });
+    }, 3000);
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
