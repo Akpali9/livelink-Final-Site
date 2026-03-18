@@ -152,21 +152,21 @@ export function LoginPortal() {
           return;
         }
 
-        const { data: biz, error: bizError } = await supabase
+        const { data: business, error: businessError } = await supabase
           .from("businesses")
           .select("id, application_status, status")
           .eq("user_id", data.user.id)
           .maybeSingle();
 
-        if (bizError) throw bizError;
+        if (businessError) throw businessError;
 
         // No business profile at all → complete registration first
-        if (!biz) {
+        if (!business) {
           navigate("/become-business", { replace: true });
           return;
         }
 
-        if (biz.status === "deleted") {
+        if (business.status === "deleted") {
           await supabase.auth.signOut();
           setError("This business account has been deactivated. Please contact support.");
           return;
