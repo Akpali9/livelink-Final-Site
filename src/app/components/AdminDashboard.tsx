@@ -436,7 +436,7 @@ export function AdminDashboard() {
       {/* Sidebar - Same for all screen sizes */}
       <aside
         className={`
-          fixed top-0 h-screen w-[280px] bg-white border-r border-[#1D1D1D]/10 z-50
+          fixed top-0 left-0 h-screen w-[280px] bg-white border-r border-[#1D1D1D]/10 z-50
           flex flex-col
           transform transition-transform duration-200 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
