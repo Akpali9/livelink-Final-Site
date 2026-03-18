@@ -39,6 +39,8 @@ import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
 import { AdminDashboard } from "../app/components/AdminDashboard";
 import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue"; // ✅ Fixed import
+import { ForgotPassword } from "./screens/forgot-password";
+import { ResetPassword } from "./screens/reset-password";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -113,6 +115,8 @@ const routes: RouteObject[] = [
       { path: "campaign/confirmed", element: protectBoth(CampaignAcceptedBusiness) },
       { path: "campaign/declined", element: protectBoth(CampaignDeclined) },
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
+      { path: "forgot-password", Component: ForgotPassword },
+      { path: "reset-password", Component: ResetPassword },
       
       // ✅ ADMIN ROUTES - CORRECTED
       { 
