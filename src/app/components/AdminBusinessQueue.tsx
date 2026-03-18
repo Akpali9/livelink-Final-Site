@@ -1,7 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { CheckCircle2, XCircle, Eye, Download, Clock, Users, Briefcase, MapPin } from 'lucide-react';
+import { 
+  CheckCircle2, 
+  XCircle, 
+  Eye, 
+  Download, 
+  Clock, 
+  Users, 
+  Briefcase, 
+  MapPin,
+  Mail,
+  Phone,
+  Globe,
+  Calendar,
+  Filter,
+  RefreshCw,
+  AlertCircle
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { motion } from 'framer-motion';
 
 interface BusinessApplication {
   id: string;
@@ -23,6 +40,7 @@ interface BusinessApplication {
   status: string;
   created_at: string;
   updated_at: string;
+  job_title?: string;
 }
 
 export function AdminBusinessQueue() {
@@ -31,6 +49,8 @@ export function AdminBusinessQueue() {
   const [selectedApp, setSelectedApp] = useState<BusinessApplication | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [filter, setFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchApplications();
@@ -41,7 +61,7 @@ export function AdminBusinessQueue() {
       setLoading(true);
       
       let query = supabase
-        .from('businesses') // ✅ Fixed: correct table name
+        .from('businesses')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -55,6 +75,10 @@ export function AdminBusinessQueue() {
         }
       }
 
+      if (searchTerm) {
+        query = query.or(`business_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`);
+      }
+
       const { data, error } = await query;
 
       if (error) throw error;
@@ -64,10 +88,18 @@ export function AdminBusinessQueue() {
       toast.error('Failed to load applications');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchApplications();
+  };
+
   const handleApprove = async (application: BusinessApplication) => {
+    if (!confirm(`Approve ${application.business_name}?`)) return;
+    
     setActionLoading(true);
     try {
       // Update business profile
@@ -85,22 +117,37 @@ export function AdminBusinessQueue() {
       if (error) throw error;
 
       // Update user metadata
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: {
-          business_approved: true,
-          approved_at: new Date().toISOString()
+      const { error: metadataError } = await supabase.auth.admin.updateUserById(
+        application.user_id,
+        {
+          user_metadata: {
+            business_approved: true,
+            application_status: 'approved',
+            approved_at: new Date().toISOString()
+          }
         }
-      });
+      );
 
       if (metadataError) console.error('Error updating metadata:', metadataError);
 
-      // Send notification
+      // Send notification to business owner
       await supabase.from('notifications').insert({
         user_id: application.user_id,
         type: 'business_approved',
         title: '🎉 Business Application Approved!',
         message: `Congratulations! Your business "${application.business_name}" has been approved. You can now start creating campaigns.`,
         data: { business_id: application.id },
+        created_at: new Date().toISOString()
+      });
+
+      // Log admin action
+      await supabase.from('admin_actions').insert({
+        admin_id: (await supabase.auth.getUser()).data.user?.id,
+        admin_email: (await supabase.auth.getUser()).data.user?.email,
+        action_type: 'APPROVE_BUSINESS',
+        resource_type: 'business',
+        resource_id: application.id,
+        details: { business_name: application.business_name },
         created_at: new Date().toISOString()
       });
 
@@ -116,6 +163,8 @@ export function AdminBusinessQueue() {
   };
 
   const handleReject = async (application: BusinessApplication) => {
+    if (!confirm(`Reject ${application.business_name}?`)) return;
+    
     setActionLoading(true);
     try {
       const { error } = await supabase
@@ -130,6 +179,17 @@ export function AdminBusinessQueue() {
         .eq('id', application.id);
 
       if (error) throw error;
+
+      // Update user metadata
+      await supabase.auth.admin.updateUserById(
+        application.user_id,
+        {
+          user_metadata: {
+            application_status: 'rejected',
+            rejected_at: new Date().toISOString()
+          }
+        }
+      );
 
       // Send notification
       await supabase.from('notifications').insert({
@@ -158,14 +218,30 @@ export function AdminBusinessQueue() {
     switch(status) {
       case 'pending':
       case 'pending_review':
-        return <span className="px-3 py-1 bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black uppercase rounded-full">Pending Review</span>;
+        return (
+          <span className="px-3 py-1 bg-[#FEDB71]/20 text-[#1D1D1D] text-[9px] font-black uppercase rounded-full border border-[#FEDB71] flex items-center gap-1">
+            <Clock className="w-3 h-3" /> Pending Review
+          </span>
+        );
       case 'approved':
       case 'active':
-        return <span className="px-3 py-1 bg-green-100 text-green-700 text-[9px] font-black uppercase rounded-full">Approved</span>;
+        return (
+          <span className="px-3 py-1 bg-green-100 text-green-700 text-[9px] font-black uppercase rounded-full border border-green-200 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" /> Approved
+          </span>
+        );
       case 'rejected':
-        return <span className="px-3 py-1 bg-red-100 text-red-700 text-[9px] font-black uppercase rounded-full">Rejected</span>;
+        return (
+          <span className="px-3 py-1 bg-red-100 text-red-700 text-[9px] font-black uppercase rounded-full border border-red-200 flex items-center gap-1">
+            <XCircle className="w-3 h-3" /> Rejected
+          </span>
+        );
       default:
-        return <span className="px-3 py-1 bg-gray-100 text-gray-500 text-[9px] font-black uppercase rounded-full">{status}</span>;
+        return (
+          <span className="px-3 py-1 bg-gray-100 text-gray-500 text-[9px] font-black uppercase rounded-full">
+            {status}
+          </span>
+        );
     }
   };
 
@@ -177,10 +253,26 @@ export function AdminBusinessQueue() {
     });
   };
 
+  const filteredApplications = applications.filter(app => {
+    if (filter === 'pending') {
+      return app.status === 'pending_review' || app.application_status === 'pending';
+    }
+    if (filter === 'approved') {
+      return app.status === 'active' || app.application_status === 'approved';
+    }
+    if (filter === 'rejected') {
+      return app.status === 'rejected' || app.application_status === 'rejected';
+    }
+    return true;
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+          <p className="text-sm text-gray-500">Loading applications...</p>
+        </div>
       </div>
     );
   }
@@ -195,32 +287,67 @@ export function AdminBusinessQueue() {
               Business Applications
             </h1>
             <p className="text-[#1D1D1D]/60 text-sm">
-              {applications.length} {filter === 'all' ? 'total' : filter} applications
+              {filteredApplications.length} {filter === 'all' ? 'total' : filter} applications
             </p>
           </div>
           
-          {/* Filter Tabs */}
-          <div className="flex gap-2">
-            {(['pending', 'approved', 'rejected', 'all'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setFilter(tab)}
-                className={`px-4 py-2 text-[9px] font-black uppercase tracking-widest border-2 transition-colors ${
-                  filter === tab
-                    ? 'bg-[#1D1D1D] text-white border-[#1D1D1D]'
-                    : 'bg-white text-[#1D1D1D]/40 border-[#1D1D1D]/10 hover:border-[#1D1D1D]'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+          <div className="flex gap-3">
+            {/* Search */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search businesses..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-sm rounded-lg w-64"
+              />
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+
+            {/* Refresh button */}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
           </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-2 mb-8 border-b border-[#1D1D1D]/10">
+          {(['pending', 'approved', 'rejected', 'all'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              className={`px-6 py-3 text-[9px] font-black uppercase tracking-widest transition-colors ${
+                filter === tab
+                  ? 'border-b-2 border-[#1D1D1D] text-[#1D1D1D]'
+                  : 'text-gray-400 hover:text-[#1D1D1D]'
+              }`}
+            >
+              {tab} ({applications.filter(a => {
+                if (tab === 'pending') return a.status === 'pending_review' || a.application_status === 'pending';
+                if (tab === 'approved') return a.status === 'active' || a.application_status === 'approved';
+                if (tab === 'rejected') return a.status === 'rejected' || a.application_status === 'rejected';
+                return true;
+              }).length})
+            </button>
+          ))}
         </div>
 
         {/* Applications Grid */}
         <div className="grid grid-cols-1 gap-6">
-          {applications.map(app => (
-            <div key={app.id} className="border-2 border-[#1D1D1D] p-6 rounded-xl hover:shadow-lg transition-shadow">
+          {filteredApplications.map(app => (
+            <motion.div
+              key={app.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="border-2 border-[#1D1D1D] p-6 rounded-xl hover:shadow-lg transition-shadow"
+            >
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
@@ -241,7 +368,7 @@ export function AdminBusinessQueue() {
                     </span>
                     <span>·</span>
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
+                      <Calendar className="w-3 h-3" />
                       Applied {formatDate(app.created_at)}
                     </span>
                   </div>
@@ -250,22 +377,30 @@ export function AdminBusinessQueue() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 text-[10px]">
                 <div className="bg-[#F8F8F8] p-3 rounded-lg">
-                  <span className="opacity-40 uppercase tracking-widest block mb-1">Contact</span>
+                  <span className="opacity-40 uppercase tracking-widest block mb-1">Contact Person</span>
                   <span className="font-black uppercase">{app.full_name}</span>
-                  <span className="text-[8px] text-gray-500 block">{app.email}</span>
+                  {app.job_title && (
+                    <span className="text-[8px] text-gray-500 block">{app.job_title}</span>
+                  )}
+                </div>
+                <div className="bg-[#F8F8F8] p-3 rounded-lg">
+                  <span className="opacity-40 uppercase tracking-widest block mb-1">Email</span>
+                  <span className="font-black text-[#389C9A]">{app.email}</span>
                 </div>
                 <div className="bg-[#F8F8F8] p-3 rounded-lg">
                   <span className="opacity-40 uppercase tracking-widest block mb-1">Phone</span>
                   <span className="font-black uppercase">{app.phone_number || 'Not provided'}</span>
                 </div>
                 <div className="bg-[#F8F8F8] p-3 rounded-lg">
-                  <span className="opacity-40 uppercase tracking-widest block mb-1">Operating Since</span>
-                  <span className="font-black uppercase">{app.operating_since || 'Not specified'}</span>
-                </div>
-                <div className="bg-[#F8F8F8] p-3 rounded-lg">
                   <span className="opacity-40 uppercase tracking-widest block mb-1">Verification</span>
-                  <span className={`font-black uppercase ${app.verification_document_url ? 'text-green-600' : 'text-red-600'}`}>
-                    {app.verification_document_url ? 'ID Uploaded' : 'No ID'}
+                  <span className={`font-black uppercase flex items-center gap-1 ${
+                    app.verification_document_url ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {app.verification_document_url ? (
+                      <>✅ ID Uploaded</>
+                    ) : (
+                      <>❌ No ID</>
+                    )}
                   </span>
                 </div>
               </div>
@@ -314,15 +449,20 @@ export function AdminBusinessQueue() {
                   </>
                 )}
               </div>
-            </div>
+            </motion.div>
           ))}
 
-          {applications.length === 0 && (
+          {filteredApplications.length === 0 && (
             <div className="text-center py-16 border-2 border-dashed border-[#1D1D1D]/20 rounded-xl">
               <Briefcase className="w-12 h-12 text-[#1D1D1D]/20 mx-auto mb-4" />
               <p className="text-[#1D1D1D]/40 text-sm font-black uppercase tracking-widest">
                 No {filter !== 'all' ? filter : ''} applications found
               </p>
+              {searchTerm && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Try adjusting your search terms
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -365,8 +505,14 @@ export function AdminBusinessQueue() {
                       {[selectedApp.city, selectedApp.country].filter(Boolean).join(', ')}
                     </p>
                   </div>
-                  {selectedApp.website && (
+                  {selectedApp.operating_since && (
                     <div>
+                      <p className="text-[9px] uppercase opacity-40">Operating Since</p>
+                      <p className="font-black uppercase">{selectedApp.operating_since}</p>
+                    </div>
+                  )}
+                  {selectedApp.website && (
+                    <div className="col-span-2">
                       <p className="text-[9px] uppercase opacity-40">Website</p>
                       <a 
                         href={selectedApp.website} 
@@ -391,9 +537,15 @@ export function AdminBusinessQueue() {
                     <p className="text-[9px] uppercase opacity-40">Name</p>
                     <p className="font-black uppercase">{selectedApp.full_name}</p>
                   </div>
+                  {selectedApp.job_title && (
+                    <div>
+                      <p className="text-[9px] uppercase opacity-40">Job Title</p>
+                      <p className="font-black uppercase">{selectedApp.job_title}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-[9px] uppercase opacity-40">Email</p>
-                    <p className="font-black uppercase">{selectedApp.email}</p>
+                    <p className="font-black text-[#389C9A]">{selectedApp.email}</p>
                   </div>
                   <div>
                     <p className="text-[9px] uppercase opacity-40">Phone</p>
@@ -422,36 +574,4 @@ export function AdminBusinessQueue() {
                     href={selectedApp.verification_document_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#1D1D1D] hover:text-white transition-colors"
-                  >
-                    <Download className="w-4 h-4" /> View ID Document
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            {(selectedApp.status === 'pending_review' || selectedApp.application_status === 'pending') && (
-              <div className="flex gap-4 mt-8 pt-6 border-t-2">
-                <button
-                  onClick={() => handleApprove(selectedApp)}
-                  disabled={actionLoading}
-                  className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-[#389C9A] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" /> Approve Application
-                </button>
-                <button
-                  onClick={() => handleReject(selectedApp)}
-                  disabled={actionLoading}
-                  className="flex-1 border-2 border-red-500 text-red-500 py-4 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <XCircle className="w-4 h-4" /> Reject Application
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                    className="inline-flex items
