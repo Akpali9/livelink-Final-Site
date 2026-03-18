@@ -12,40 +12,39 @@ import { ImageWithFallback } from "../components/ImageWithFallback";
 
 type PartnershipType = "Pay + Code" | "Paying" | "Code Only" | "Open to Offers";
 
-interface BusinessCampaign {
+interface CampaignWithBusiness {
   id: string;
   name: string;
-  industry: string;
-  logo: string;
-  partnership_type: PartnershipType;
-  pay_rate: string;
-  min_viewers: number;
-  location: string;
+  type: string;
   description: string;
-  niche_tags: string[];
-  response_rate: string;
-  closing_date?: string;
-  is_verified: boolean;
-  is_featured: boolean;
-  budget_range: string;
-  about: string;
-  business_id: string;
-  streams_required: number;
+  budget: number;
+  pay_rate: number;
+  bid_amount: number;
+  status: string;
+  start_date: string;
+  end_date: string;
+  target_niches: string[];
+  target_locations: string[];
+  min_followers: number;
   created_at: string;
-}
-
-interface Business {
-  id: string;
-  business_name: string;
-  logo_url: string;
-  industry: string;
-  location: string;
-  description: string;
-  is_verified: boolean;
-}
-
-interface CampaignWithBusiness extends BusinessCampaign {
-  business?: Business;
+  
+  business: {
+    id: string;
+    business_name: string;
+    logo_url: string;
+    industry: string;
+    city: string;
+    country: string;
+    description: string;
+    email: string;
+    phone_number: string;
+    website: string;
+    verification_status: string;
+  } | null;
+  
+  // Computed fields
+  partnership_type: PartnershipType;
+  streams_required: number;
 }
 
 export function BrowseBusinesses() {
@@ -68,7 +67,27 @@ export function BrowseBusinesses() {
     minViewers: 0 
   });
   const [creatorProfile, setCreatorProfile] = useState<any>(null);
-  const [applications, setApplications] = useState<any[]>([]);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
+
+  // Fetch creator profile
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchCreatorProfile = async () => {
+      const { data } = await supabase
+        .from("creator_profiles")
+        .select("id, avg_viewers, niche, status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (data) {
+        setCreatorProfile(data);
+        setCreatorId(data.id);
+      }
+    };
+
+    fetchCreatorProfile();
+  }, [user]);
 
   // Fetch campaigns with business details
   useEffect(() => {
@@ -79,42 +98,58 @@ export function BrowseBusinesses() {
         const { data: campaignsData, error: campaignsError } = await supabase
           .from("campaigns")
           .select(`
-            *,
+            id,
+            name,
+            type,
+            description,
+            budget,
+            pay_rate,
+            bid_amount,
+            status,
+            start_date,
+            end_date,
+            target_niches,
+            target_locations,
+            min_followers,
+            created_at,
             business:businesses (
               id,
               business_name,
               logo_url,
               industry,
               city,
+              country,
               description,
-              id_verified
+              email,
+              phone_number,
+              website,
+              verification_status
             )
           `)
-          .eq("status", "ACTIVE")
+          .eq("status", "active")
           .order("created_at", { ascending: false });
 
         if (campaignsError) throw campaignsError;
 
         if (campaignsData) {
-          const formattedCampaigns = campaignsData.map(c => ({
-            ...c,
-            name: c.name,
-            industry: c.business?.industry || c.industry,
-            logo: c.business?.logo_url || 'https://via.placeholder.com/100',
-            partnership_type: c.type as PartnershipType,
-            pay_rate: c.budget ? `₦${c.budget}` : 'Negotiable',
-            min_viewers: c.min_viewers || 0,
-            location: c.business?.city || 'Remote',
-            description: c.description || c.business?.description || '',
-            niche_tags: c.niche_tags || [],
-            response_rate: '95%',
-            is_verified: c.business?.id_verified || false,
-            is_featured: c.is_featured || false,
-            budget_range: c.budget_range || '₦50k-₦200k',
-            about: c.about || c.description || '',
-            streams_required: c.streams_required || 4,
-            business: c.business
-          }));
+          const formattedCampaigns = campaignsData.map(c => {
+            // Determine partnership type based on campaign fields
+            let partnershipType: PartnershipType = "Open to Offers";
+            if (c.pay_rate && c.type?.toLowerCase().includes('code')) {
+              partnershipType = "Pay + Code";
+            } else if (c.pay_rate) {
+              partnershipType = "Paying";
+            } else if (c.type?.toLowerCase().includes('code')) {
+              partnershipType = "Code Only";
+            }
+
+            return {
+              ...c,
+              partnership_type: partnershipType,
+              streams_required: 4, // Default, could be stored elsewhere
+              business: c.business
+            };
+          });
           
           setCampaigns(formattedCampaigns);
         }
@@ -129,59 +164,47 @@ export function BrowseBusinesses() {
     fetchCampaigns();
   }, []);
 
-  // Fetch user data (saved, applications, creator profile)
+  // Fetch user's campaign_creators entries (applications)
   useEffect(() => {
-    if (!user) return;
+    if (!creatorId) return;
 
-    async function fetchUserData() {
+    async function fetchUserApplications() {
       try {
-        // Fetch saved campaigns
-        const { data: savedData } = await supabase
-          .from("saved_campaigns")
-          .select("campaign_id")
-          .eq("user_id", user.id);
-        
-        if (savedData) {
-          setSavedIds(new Set(savedData.map(s => s.campaign_id)));
-        }
-
-        // Fetch applications
-        const { data: appliedData } = await supabase
-          .from("campaign_applications")
+        const { data } = await supabase
+          .from("campaign_creators")
           .select("campaign_id, status")
-          .eq("creator_id", user.id);
-        
-        if (appliedData) {
-          setAppliedIds(new Set(appliedData.map(a => a.campaign_id)));
-          setApplications(appliedData);
+          .eq("creator_id", creatorId);
+
+        if (data) {
+          setAppliedIds(new Set(data.map(a => a.campaign_id)));
         }
 
-        // Fetch creator profile for stats
-        const { data: profileData } = await supabase
-          .from("creator_profiles")
-          .select("*")
-          .eq("user_id", user.id)
-          .single();
-
-        if (profileData) {
-          setCreatorProfile(profileData);
+        // Note: saved_campaigns table doesn't exist, so we'll store in localStorage for now
+        const saved = localStorage.getItem(`saved_campaigns_${user?.id}`);
+        if (saved) {
+          setSavedIds(new Set(JSON.parse(saved)));
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('Error fetching applications:', error);
       }
     }
 
-    fetchUserData();
-  }, [user]);
+    fetchUserApplications();
+  }, [creatorId, user]);
 
   // Check if user meets minimum viewer requirements
-  const meetsViewerRequirement = (minViewers: number) => {
+  const meetsViewerRequirement = (minFollowers: number) => {
     if (!creatorProfile) return false;
-    return (creatorProfile.avg_concurrent || 0) >= minViewers;
+    return (creatorProfile.avg_viewers || 0) >= minFollowers;
   };
 
   // Get unique industries for filter
-  const industries = ["All", ...Array.from(new Set(campaigns.map(c => c.industry)))];
+  const industries = ["All", ...Array.from(new Set(
+    campaigns
+      .map(c => c.business?.industry)
+      .filter((i): i is string => !!i)
+  ))];
+  
   const types = ["All", "Pay + Code", "Paying", "Code Only", "Open to Offers"];
 
   // Filter campaigns based on search and filters
@@ -189,18 +212,18 @@ export function BrowseBusinesses() {
     return campaigns.filter(campaign => {
       const matchesSearch = 
         campaign.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        campaign.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        campaign.business?.business_name?.toLowerCase().includes(searchQuery.toLowerCase());
+        campaign.business?.business_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        campaign.description?.toLowerCase().includes(searchQuery.toLowerCase());
       
-      const matchesIndustry = activeFilters.industry === "All" || campaign.industry === activeFilters.industry;
+      const matchesIndustry = activeFilters.industry === "All" || campaign.business?.industry === activeFilters.industry;
       const matchesType = activeFilters.type === "All" || campaign.partnership_type === activeFilters.type;
-      const matchesViewers = campaign.min_viewers >= activeFilters.minViewers;
+      const matchesViewers = (campaign.min_followers || 0) >= activeFilters.minViewers;
       
       return matchesSearch && matchesIndustry && matchesType && matchesViewers;
     });
   }, [searchQuery, activeFilters, campaigns]);
 
-  // Toggle save campaign
+  // Toggle save campaign (using localStorage)
   const toggleSave = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -211,43 +234,24 @@ export function BrowseBusinesses() {
     }
 
     try {
+      const newSavedIds = new Set(savedIds);
       if (savedIds.has(id)) {
-        const { error } = await supabase
-          .from("saved_campaigns")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("campaign_id", id);
-
-        if (error) throw error;
-        
-        setSavedIds(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(id);
-          return newSet;
-        });
-        
+        newSavedIds.delete(id);
         toast.success('Campaign removed from saved');
       } else {
-        const { error } = await supabase
-          .from("saved_campaigns")
-          .insert({ 
-            user_id: user.id, 
-            campaign_id: id,
-            created_at: new Date().toISOString()
-          });
-
-        if (error) throw error;
-        
-        setSavedIds(prev => new Set(prev).add(id));
+        newSavedIds.add(id);
         toast.success('Campaign saved!');
       }
+      
+      setSavedIds(newSavedIds);
+      localStorage.setItem(`saved_campaigns_${user.id}`, JSON.stringify([...newSavedIds]));
     } catch (error) {
       console.error('Error toggling save:', error);
       toast.error('Failed to save campaign');
     }
   };
 
-  // Apply to campaign
+  // Apply to campaign using campaign_creators
   const applyToCampaign = async (campaign: CampaignWithBusiness) => {
     if (!user) {
       toast.error('Please login to apply');
@@ -255,41 +259,72 @@ export function BrowseBusinesses() {
       return;
     }
 
-    if (!creatorProfile) {
+    if (!creatorProfile || !creatorId) {
       toast.error('Please complete your creator profile first');
       navigate('/become-creator');
       return;
     }
 
+    if (creatorProfile.status !== 'active') {
+      toast.error('Your creator account must be approved first');
+      return;
+    }
+
     // Check viewer requirement
-    if (campaign.min_viewers > 0 && !meetsViewerRequirement(campaign.min_viewers)) {
-      toast.error(`This campaign requires at least ${campaign.min_viewers} average viewers`);
+    if (campaign.min_followers > 0 && !meetsViewerRequirement(campaign.min_followers)) {
+      toast.error(`This campaign requires at least ${campaign.min_followers} average viewers`);
       return;
     }
 
     try {
+      // Check if already applied
+      const { data: existing } = await supabase
+        .from("campaign_creators")
+        .select("id")
+        .eq("campaign_id", campaign.id)
+        .eq("creator_id", creatorId)
+        .maybeSingle();
+
+      if (existing) {
+        toast.error('You have already applied to this campaign');
+        return;
+      }
+
+      // Insert into campaign_creators
       const { error } = await supabase
-        .from("campaign_applications")
+        .from("campaign_creators")
         .insert({ 
-          creator_id: user.id,
           campaign_id: campaign.id,
-          business_id: campaign.business_id,
+          creator_id: creatorId,
           status: 'pending',
-          proposed_amount: campaign.budget || null,
-          applied_at: new Date().toISOString()
+          streams_target: campaign.streams_required,
+          streams_completed: 0,
+          total_earnings: campaign.pay_rate || campaign.bid_amount || campaign.budget || 0,
+          paid_out: 0,
+          created_at: new Date().toISOString()
         });
 
-      if (error) {
-        if (error.code === '23505') { // Unique violation
-          toast.error('You have already applied to this campaign');
-        } else {
-          throw error;
-        }
-      } else {
-        setAppliedIds(prev => new Set(prev).add(campaign.id));
-        toast.success('Application submitted successfully!');
-        setTimeout(() => setSelectedCampaign(null), 1500);
+      if (error) throw error;
+
+      setAppliedIds(prev => new Set(prev).add(campaign.id));
+      toast.success('Application submitted successfully!');
+      
+      // Create notification for business
+      if (campaign.business?.id) {
+        await supabase.from("notifications").insert({
+          user_id: campaign.business.id,
+          type: "new_application",
+          title: "New Campaign Application! 🎉",
+          message: `${creatorProfile.full_name || 'A creator'} applied to your campaign "${campaign.name}"`,
+          data: { 
+            campaign_id: campaign.id,
+            creator_id: creatorId
+          },
+          created_at: new Date().toISOString()
+        });
       }
+
+      setTimeout(() => setSelectedCampaign(null), 1500);
     } catch (error) {
       console.error('Error applying to campaign:', error);
       toast.error('Failed to submit application');
@@ -318,6 +353,11 @@ export function BrowseBusinesses() {
     if (diffDays === 0) return 'Closing today';
     if (diffDays === 1) return '1 day left';
     return `${diffDays} days left`;
+  };
+
+  const getPayRate = (campaign: CampaignWithBusiness) => {
+    const amount = campaign.pay_rate || campaign.bid_amount || campaign.budget;
+    return amount ? `₦${amount.toLocaleString()}` : 'Negotiable';
   };
 
   if (loading) {
@@ -428,8 +468,8 @@ export function BrowseBusinesses() {
           filteredData.map((campaign) => {
             const isSaved = savedIds.has(campaign.id);
             const hasApplied = appliedIds.has(campaign.id);
-            const meetsViewers = meetsViewerRequirement(campaign.min_viewers);
-            const daysLeft = formatDate(campaign.closing_date);
+            const meetsViewers = meetsViewerRequirement(campaign.min_followers || 0);
+            const daysLeft = formatDate(campaign.end_date);
             
             return (
               <motion.div 
@@ -457,7 +497,7 @@ export function BrowseBusinesses() {
                 </button>
 
                 {/* Verification Badge */}
-                {campaign.is_verified && (
+                {campaign.business?.verification_status === 'verified' && (
                   <div className="absolute top-4 right-20 z-10 flex items-center gap-1 bg-[#389C9A]/10 px-2 py-1 rounded-full">
                     <CheckCircle2 className="w-3 h-3 text-[#389C9A]" />
                     <span className="text-[7px] font-black uppercase tracking-widest">Verified</span>
@@ -468,7 +508,7 @@ export function BrowseBusinesses() {
                 <div className="p-6 flex gap-5 pt-12">
                   <div className="relative w-24 h-32 shrink-0 bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-lg overflow-hidden">
                     <ImageWithFallback 
-                      src={campaign.logo} 
+                      src={campaign.business?.logo_url || 'https://via.placeholder.com/100'} 
                       className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" 
                       alt={campaign.name}
                     />
@@ -481,12 +521,12 @@ export function BrowseBusinesses() {
                     
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/40 italic">
-                        {campaign.industry?.toUpperCase()}
+                        {campaign.business?.industry?.toUpperCase() || 'GENERAL'}
                       </span>
                       <span className="text-[#1D1D1D]/20">·</span>
                       <MapPin className="w-3 h-3 text-[#389C9A]" />
                       <span className="text-[9px] font-bold text-[#1D1D1D]/40 italic">
-                        {campaign.location?.toUpperCase()}
+                        {campaign.business?.city?.toUpperCase() || 'REMOTE'}
                       </span>
                     </div>
                     
@@ -499,15 +539,15 @@ export function BrowseBusinesses() {
                       <span className={`text-[9px] font-bold italic ${
                         meetsViewers ? 'text-green-600' : 'text-[#1D1D1D]/50'
                       }`}>
-                        Min. {campaign.min_viewers} avg viewers required
-                        {!meetsViewers && creatorProfile && ` (You have ${creatorProfile.avg_concurrent || 0})`}
+                        Min. {campaign.min_followers || 0} avg viewers required
+                        {!meetsViewers && creatorProfile && ` (You have ${creatorProfile.avg_viewers || 0})`}
                       </span>
                     </div>
 
                     {/* Niche Tags */}
-                    {campaign.niche_tags && campaign.niche_tags.length > 0 && (
+                    {campaign.target_niches && campaign.target_niches.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {campaign.niche_tags.slice(0, 3).map(tag => (
+                        {campaign.target_niches.slice(0, 3).map(tag => (
                           <span key={tag} className="px-2 py-0.5 bg-[#F8F8F8] text-[8px] font-black uppercase tracking-widest">
                             {tag}
                           </span>
@@ -523,7 +563,7 @@ export function BrowseBusinesses() {
                 <div className="bg-[#F8F8F8] p-6 flex items-center justify-between gap-4">
                   <div className="flex flex-col gap-1">
                     <p className="text-3xl font-black leading-none text-[#D2691E] tracking-tight">
-                      {campaign.pay_rate}
+                      {getPayRate(campaign)}
                     </p>
                     <p className="text-[11px] font-medium leading-none text-[#D2691E]/70">
                       for {campaign.streams_required} Live Streams
@@ -535,11 +575,11 @@ export function BrowseBusinesses() {
                   </div>
                   
                   {hasApplied ? (
-                    <div className="bg-green-500 text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest">
+                    <div className="bg-green-500 text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest rounded-lg">
                       <CheckCircle2 className="w-4 h-4" /> APPLIED
                     </div>
                   ) : (
-                    <button className="bg-[#1D1D1D] text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all active:scale-[0.98] whitespace-nowrap">
+                    <button className="bg-[#1D1D1D] text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all active:scale-[0.98] whitespace-nowrap rounded-lg">
                       VIEW DETAILS <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
                     </button>
                   )}
@@ -581,7 +621,7 @@ export function BrowseBusinesses() {
                 <div className="flex items-start gap-4 mb-6">
                   <div className="w-20 h-20 border-2 border-[#1D1D1D] rounded-lg overflow-hidden">
                     <ImageWithFallback 
-                      src={selectedCampaign.logo} 
+                      src={selectedCampaign.business?.logo_url || 'https://via.placeholder.com/100'} 
                       className="w-full h-full object-cover" 
                       alt={selectedCampaign.name}
                     />
@@ -594,7 +634,7 @@ export function BrowseBusinesses() {
                       <span className={`px-3 py-1 text-[8px] font-black uppercase tracking-widest ${getBadgeColor(selectedCampaign.partnership_type)}`}>
                         {selectedCampaign.partnership_type}
                       </span>
-                      {selectedCampaign.is_verified && (
+                      {selectedCampaign.business?.verification_status === 'verified' && (
                         <span className="flex items-center gap-1 text-[8px] font-black text-[#389C9A]">
                           <CheckCircle2 className="w-3 h-3" /> Verified
                         </span>
@@ -605,14 +645,14 @@ export function BrowseBusinesses() {
 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div className="border border-[#1D1D1D]/10 p-4">
+                  <div className="border border-[#1D1D1D]/10 p-4 rounded-lg">
                     <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Pay Rate</p>
-                    <p className="text-xl font-black text-[#D2691E]">{selectedCampaign.pay_rate}</p>
+                    <p className="text-xl font-black text-[#D2691E]">{getPayRate(selectedCampaign)}</p>
                     <p className="text-[8px] font-medium opacity-40">per {selectedCampaign.streams_required} streams</p>
                   </div>
-                  <div className="border border-[#1D1D1D]/10 p-4">
+                  <div className="border border-[#1D1D1D]/10 p-4 rounded-lg">
                     <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Min. Viewers</p>
-                    <p className="text-xl font-black">{selectedCampaign.min_viewers}</p>
+                    <p className="text-xl font-black">{selectedCampaign.min_followers || 0}</p>
                     <p className="text-[8px] font-medium opacity-40">average concurrent</p>
                   </div>
                 </div>
@@ -620,7 +660,7 @@ export function BrowseBusinesses() {
                 {/* About */}
                 <div className="mb-6">
                   <h3 className="text-[10px] font-black uppercase tracking-widest mb-2">About the Campaign</h3>
-                  <p className="text-sm leading-relaxed opacity-60">{selectedCampaign.about}</p>
+                  <p className="text-sm leading-relaxed opacity-60">{selectedCampaign.description}</p>
                 </div>
 
                 {/* Requirements */}
@@ -629,13 +669,13 @@ export function BrowseBusinesses() {
                   <ul className="space-y-2">
                     <li className="flex items-center gap-2 text-sm">
                       <CheckCircle2 className="w-4 h-4 text-[#389C9A]" />
-                      <span>Minimum {selectedCampaign.min_viewers} concurrent viewers</span>
+                      <span>Minimum {selectedCampaign.min_followers || 0} concurrent viewers</span>
                     </li>
                     <li className="flex items-center gap-2 text-sm">
                       <CheckCircle2 className="w-4 h-4 text-[#389C9A]" />
                       <span>Complete {selectedCampaign.streams_required} live streams</span>
                     </li>
-                    {selectedCampaign.niche_tags?.map(tag => (
+                    {selectedCampaign.target_niches?.map(tag => (
                       <li key={tag} className="flex items-center gap-2 text-sm">
                         <CheckCircle2 className="w-4 h-4 text-[#389C9A]" />
                         <span>Content in: {tag}</span>
@@ -648,7 +688,7 @@ export function BrowseBusinesses() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => toggleSave(selectedCampaign.id, {} as any)}
-                    className={`flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                    className={`flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all rounded-lg ${
                       savedIds.has(selectedCampaign.id) ? 'bg-[#389C9A] text-white border-[#389C9A]' : 'hover:bg-[#1D1D1D] hover:text-white'
                     }`}
                   >
@@ -658,18 +698,18 @@ export function BrowseBusinesses() {
                   
                   <button
                     onClick={() => applyToCampaign(selectedCampaign)}
-                    disabled={appliedIds.has(selectedCampaign.id) || !meetsViewerRequirement(selectedCampaign.min_viewers)}
-                    className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                    disabled={appliedIds.has(selectedCampaign.id) || !meetsViewerRequirement(selectedCampaign.min_followers || 0)}
+                    className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all rounded-lg ${
                       appliedIds.has(selectedCampaign.id)
                         ? 'bg-green-500 text-white cursor-not-allowed'
-                        : !meetsViewerRequirement(selectedCampaign.min_viewers)
+                        : !meetsViewerRequirement(selectedCampaign.min_followers || 0)
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-[#1D1D1D] text-white hover:bg-[#389C9A]'
                     }`}
                   >
                     {appliedIds.has(selectedCampaign.id) ? (
                       <>Applied <CheckCircle2 className="w-4 h-4" /></>
-                    ) : !meetsViewerRequirement(selectedCampaign.min_viewers) ? (
+                    ) : !meetsViewerRequirement(selectedCampaign.min_followers || 0) ? (
                       <>Requirements Not Met</>
                     ) : (
                       <>Apply Now <ArrowRight className="w-4 h-4" /></>
@@ -678,9 +718,9 @@ export function BrowseBusinesses() {
                 </div>
 
                 {/* Deadline */}
-                {selectedCampaign.closing_date && (
+                {selectedCampaign.end_date && (
                   <p className="text-center text-[9px] font-medium opacity-40 mt-4">
-                    Applications close {new Date(selectedCampaign.closing_date).toLocaleDateString()}
+                    Applications close {new Date(selectedCampaign.end_date).toLocaleDateString()}
                   </p>
                 )}
               </div>
