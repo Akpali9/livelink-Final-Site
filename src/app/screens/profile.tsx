@@ -21,9 +21,25 @@ import {
   Eye,
   AlertCircle,
   X,
+  DollarSign,
+  Clock,
+  Award,
+  Settings,
+  Edit,
+  Mail,
+  Phone,
+  Globe,
+  Link as LinkIcon,
+  Twitter,
+  Github,
+  Linkedin,
+  Package,
+  Info,
+  Shield,
+  Camera
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { ImageWithFallback } from "../components/ImageWithFallback";
 import { BottomNav } from "../components/bottom-nav";
 import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
@@ -31,35 +47,45 @@ import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────
-// INTERFACES (aligned with schema)
+// INTERFACES
 // ─────────────────────────────────────────────
 
 interface CreatorPlatform {
   id: string;
   platform_type: string;
-  followers_count: number;
+  username: string;
   profile_url: string;
-  username?: string;
+  followers_count: number;
 }
 
-// Raw row from creator_profiles join
-interface CreatorRow {
+interface CreatorPackage {
+  id: string;
+  name: string;
+  streams: number;
+  price: number;
+  description: string;
+  enabled: boolean;
+  is_default?: boolean;
+}
+
+interface CreatorProfile {
   id: string;
   user_id: string;
-  full_name: string | null;
-  username: string | null;
-  email: string | null;
-  avatar_url: string | null;
-  bio: string | null;
-  location: string | null;
-  niche: string[] | null;
+  full_name: string;
+  username: string;
+  email: string;
+  avatar_url: string;
+  bio: string;
+  location: string;
+  phone_number: string;
+  niche: string[];
   avg_viewers: number;
   total_streams: number;
   rating: number;
   status: string;
   created_at: string;
-  // joined
-  creator_platforms: CreatorPlatform[];
+  updated_at: string;
+  verified: boolean;
 }
 
 interface FormattedCreator {
@@ -84,6 +110,7 @@ interface FormattedCreator {
     url: string;
     username?: string;
   }[];
+  packages: CreatorPackage[];
 }
 
 // ─────────────────────────────────────────────
@@ -96,7 +123,9 @@ function getPlatformIconComponent(platformName: string) {
     case "youtube":   return <Youtube className="w-4 h-4" />;
     case "instagram": return <Instagram className="w-4 h-4" />;
     case "facebook":  return <Facebook className="w-4 h-4" />;
-    default:          return <VideoIcon className="w-4 h-4" />;
+    case "twitter":   return <Twitter className="w-4 h-4" />;
+    case "tiktok":    return <VideoIcon className="w-4 h-4" />;
+    default:          return <Globe className="w-4 h-4" />;
   }
 }
 
@@ -120,6 +149,7 @@ export function Profile() {
   const [isBioExpanded, setIsBioExpanded] = useState(false);
   const [offerSent, setOfferSent] = useState(false);
   const [showOfferModal, setShowOfferModal] = useState(false);
+  const [selectedPackage, setSelectedPackage] = useState<CreatorPackage | null>(null);
   const [customOffer, setCustomOffer] = useState({
     streams: "4",
     rate: "",
@@ -128,6 +158,7 @@ export function Profile() {
   });
   const [isBusiness, setIsBusiness] = useState(false);
   const [businessProfile, setBusinessProfile] = useState<any>(null);
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
 
   // ─── FETCH CREATOR ──────────────────────────────────────────────────────
 
@@ -138,7 +169,7 @@ export function Profile() {
       setLoading(true);
 
       try {
-        // ✅ Fixed: Removed non-existent tables (stream_updates, creator_packages)
+        // Fetch creator profile
         const { data: creatorData, error: creatorError } = await supabase
           .from("creator_profiles")
           .select(`
@@ -150,22 +181,16 @@ export function Profile() {
             avatar_url,
             bio,
             location,
+            phone_number,
             niche,
             avg_viewers,
             total_streams,
             rating,
             status,
             created_at,
-            creator_platforms (
-              id,
-              platform_type,
-              followers_count,
-              profile_url,
-              username
-            )
+            updated_at
           `)
           .eq("id", id)
-          .eq("status", "active") // Only show active creators
           .maybeSingle();
 
         if (creatorError) throw creatorError;
@@ -174,42 +199,52 @@ export function Profile() {
           return;
         }
 
-        const raw = creatorData as CreatorRow;
+        // Fetch platforms
+        const { data: platformsData } = await supabase
+          .from("creator_platforms")
+          .select("*")
+          .eq("creator_id", id);
 
-        // ✅ Map raw DB columns → formatted shape
-        const formatted: FormattedCreator = {
-          id: raw.id,
-          user_id: raw.user_id,
-          name: raw.full_name || "Unknown Creator",
-          username: raw.username
-            ? `@${raw.username}`
-            : `@${(raw.full_name || "creator").toLowerCase().replace(/\s+/g, "")}`,
-          avatar: raw.avatar_url || "https://via.placeholder.com/200",
-          bio: raw.bio || "Live streamer and content creator passionate about engaging with audiences.",
-          location: raw.location || "Remote",
-          verified: false, // No verified column in schema
-          availability: raw.status === "active" ? "Available for campaigns" : "Not available",
-          niches: raw.niche || ["Gaming", "Entertainment"],
-          stats: {
-            avgViewers: raw.avg_viewers || 0,
-            totalStreams: raw.total_streams || 0,
-            rating: raw.rating || 0,
+        // Fetch packages from settings (you can store these in a separate table or use defaults)
+        // For now, we'll use default packages
+        const defaultPackages: CreatorPackage[] = [
+          {
+            id: "1",
+            name: "Bronze Package",
+            streams: 4,
+            price: 15000,
+            description: "Perfect for testing the partnership",
+            enabled: true,
+            is_default: true
           },
-          platforms: (raw.creator_platforms || []).map((p) => ({
-            name: p.platform_type,
-            followers: p.followers_count || 0,
-            url: p.profile_url || "#",
-            username: p.username,
-          })),
-        };
+          {
+            id: "2",
+            name: "Silver Package",
+            streams: 8,
+            price: 28000,
+            description: "Best value for ongoing campaigns",
+            enabled: true
+          },
+          {
+            id: "3",
+            name: "Gold Package",
+            streams: 12,
+            price: 40000,
+            description: "Maximum exposure for premium brands",
+            enabled: false
+          }
+        ];
 
-        setCreator(formatted);
+        // Check if this is the logged-in user's profile
+        if (user && creatorData.user_id === user.id) {
+          setIsOwnProfile(true);
+        }
 
         // Check if current user is a business
         if (user) {
           const { data: business } = await supabase
             .from("businesses")
-            .select("id, business_name, email, logo_url") // ✅ Fixed: contact_email → email
+            .select("id, business_name, email, logo_url")
             .eq("user_id", user.id)
             .maybeSingle();
 
@@ -218,6 +253,37 @@ export function Profile() {
             setBusinessProfile(business);
           }
         }
+
+        // Format creator data
+        const formatted: FormattedCreator = {
+          id: creatorData.id,
+          user_id: creatorData.user_id,
+          name: creatorData.full_name || "Unknown Creator",
+          username: creatorData.username
+            ? `@${creatorData.username}`
+            : `@${(creatorData.full_name || "creator").toLowerCase().replace(/\s+/g, "")}`,
+          avatar: creatorData.avatar_url || "https://via.placeholder.com/200",
+          bio: creatorData.bio || "Live streamer and content creator passionate about engaging with audiences.",
+          location: creatorData.location || "Remote",
+          verified: false,
+          availability: creatorData.status === "active" ? "Available for campaigns" : "Not available",
+          niches: creatorData.niche || ["Gaming", "Entertainment"],
+          stats: {
+            avgViewers: creatorData.avg_viewers || 0,
+            totalStreams: creatorData.total_streams || 0,
+            rating: creatorData.rating || 0,
+          },
+          platforms: (platformsData || []).map((p: CreatorPlatform) => ({
+            name: p.platform_type,
+            followers: p.followers_count || 0,
+            url: p.profile_url || "#",
+            username: p.username,
+          })),
+          packages: defaultPackages.filter(p => p.enabled),
+        };
+
+        setCreator(formatted);
+
       } catch (error) {
         console.error("Error fetching creator:", error);
         toast.error("Failed to load creator profile");
@@ -231,7 +297,19 @@ export function Profile() {
 
   // ─── OFFER ACTIONS ────────────────────────────────────────────────────────
 
+  const handleSelectPackage = (pkg: CreatorPackage) => {
+    setSelectedPackage(pkg);
+    setCustomOffer({
+      streams: pkg.streams.toString(),
+      rate: pkg.price.toString(),
+      type: "Banner Only",
+      message: "",
+    });
+    setShowOfferModal(true);
+  };
+
   const handleCustomOffer = () => {
+    setSelectedPackage(null);
     setShowOfferModal(true);
   };
 
@@ -246,10 +324,11 @@ export function Profile() {
     };
   };
 
-  const estimates =
-    customOffer.streams && customOffer.rate
-      ? getEstimates(parseInt(customOffer.streams), parseFloat(customOffer.rate))
-      : null;
+  const estimates = selectedPackage
+    ? getEstimates(selectedPackage.streams, selectedPackage.price)
+    : customOffer.streams && customOffer.rate
+    ? getEstimates(parseInt(customOffer.streams), parseFloat(customOffer.rate))
+    : null;
 
   const handleSendOffer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -285,7 +364,7 @@ export function Profile() {
         return;
       }
 
-      // Check for existing row to avoid duplicates
+      // Check for existing row
       const { data: existing } = await supabase
         .from("campaign_creators")
         .select("id")
@@ -299,16 +378,22 @@ export function Profile() {
         return;
       }
 
-      // ✅ Fixed: Removed user_id from insert (doesn't exist in schema)
+      const streams = selectedPackage 
+        ? selectedPackage.streams 
+        : parseInt(customOffer.streams);
+      const rate = selectedPackage 
+        ? selectedPackage.price / selectedPackage.streams 
+        : parseFloat(customOffer.rate);
+
       const { error } = await supabase
         .from("campaign_creators")
         .insert({
           campaign_id: campaignRow.id,
           creator_id: creator.id,
           status: "pending",
-          streams_target: parseInt(customOffer.streams),
+          streams_target: streams,
           streams_completed: 0,
-          total_earnings: parseFloat(customOffer.rate) * parseInt(customOffer.streams),
+          total_earnings: streams * rate,
           paid_out: 0,
           created_at: new Date().toISOString(),
         });
@@ -320,7 +405,7 @@ export function Profile() {
         user_id: creator.user_id,
         type: "new_offer",
         title: "New Campaign Offer! 🎉",
-        message: `${businessProfile.business_name} sent you an offer for ${customOffer.streams} streams.`,
+        message: `${businessProfile.business_name} sent you an offer for ${streams} streams.`,
         data: { 
           business_id: businessProfile.id,
           campaign_id: campaignRow.id,
@@ -334,6 +419,9 @@ export function Profile() {
       toast.success("Offer sent successfully!");
 
       setCustomOffer({ streams: "4", rate: "", type: "Banner Only", message: "" });
+      setSelectedPackage(null);
+
+      setTimeout(() => setOfferSent(false), 3000);
     } catch (error) {
       console.error("Error sending offer:", error);
       toast.error("Failed to send offer");
@@ -346,7 +434,51 @@ export function Profile() {
       navigate("/login/business");
       return;
     }
-    navigate(`/messages/${creator?.user_id}`);
+
+    // Check if conversation exists or create new one
+    const createConversation = async () => {
+      if (!creator) return;
+
+      try {
+        // Check for existing conversation
+        const { data: existing } = await supabase
+          .from("conversations")
+          .select("id")
+          .or(`and(participant1_id.eq.${user.id},participant2_id.eq.${creator.user_id}),and(participant1_id.eq.${creator.user_id},participant2_id.eq.${user.id})`)
+          .maybeSingle();
+
+        if (existing) {
+          navigate(`/messages/${existing.id}?role=business`);
+        } else {
+          // Create new conversation
+          const { data: newConv, error } = await supabase
+            .from("conversations")
+            .insert({
+              participant1_id: user.id,
+              participant2_id: creator.user_id,
+              participant1_type: "business",
+              participant2_type: "creator",
+              last_message_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+          if (newConv) {
+            navigate(`/messages/${newConv.id}?role=business`);
+          }
+        }
+      } catch (error) {
+        console.error("Error creating conversation:", error);
+        toast.error("Failed to start conversation");
+      }
+    };
+
+    createConversation();
+  };
+
+  const handleEditProfile = () => {
+    navigate("/settings");
   };
 
   // ─── LOADING / NOT FOUND ─────────────────────────────────────────────────
@@ -396,7 +528,17 @@ export function Profile() {
 
         {/* Profile Header */}
         <div className="bg-white border-b border-[#1D1D1D]">
-          <div className="px-6 py-12 flex flex-col items-center text-center">
+          <div className="px-6 py-12 flex flex-col items-center text-center relative">
+
+            {/* Edit Profile Button - Only show for own profile */}
+            {isOwnProfile && (
+              <button
+                onClick={handleEditProfile}
+                className="absolute top-6 right-6 p-3 border-2 border-[#1D1D1D] rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors group"
+              >
+                <Settings className="w-5 h-5 group-hover:rotate-90 transition-transform" />
+              </button>
+            )}
 
             {/* Avatar */}
             <div className="relative mb-6">
@@ -451,6 +593,22 @@ export function Profile() {
               </div>
             </div>
 
+            {/* Contact Info - Only show for businesses */}
+            {isBusiness && (
+              <div className="flex flex-col gap-2 w-full max-w-sm mb-6 p-4 bg-[#F8F8F8] rounded-xl">
+                <div className="flex items-center gap-2 text-[10px]">
+                  <Mail className="w-3.5 h-3.5 text-[#389C9A]" />
+                  <span className="font-medium">{creator.email}</span>
+                </div>
+                {creator.location && (
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <Phone className="w-3.5 h-3.5 text-[#389C9A]" />
+                    <span className="font-medium">{creator.phone_number || "Not provided"}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Niches */}
             {creator.niches.length > 0 && (
               <div className="flex flex-wrap justify-center gap-2 mb-6">
@@ -484,23 +642,32 @@ export function Profile() {
               )}
             </div>
 
-            {/* Action Buttons - Only show for businesses */}
-            {isBusiness && (
-              <div className="flex gap-3 w-full">
+            {/* Action Buttons */}
+            <div className="flex gap-3 w-full">
+              {isOwnProfile ? (
                 <button
-                  onClick={handleCustomOffer}
+                  onClick={handleEditProfile}
                   className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
                 >
-                  <Zap className="w-4 h-4 text-[#FEDB71]" /> Send Offer
+                  <Settings className="w-4 h-4 text-[#FEDB71]" /> Edit Profile
                 </button>
-                <button
-                  onClick={handleContact}
-                  className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
-                >
-                  <MessageSquare className="w-4 h-4" /> Message
-                </button>
-              </div>
-            )}
+              ) : isBusiness ? (
+                <>
+                  <button
+                    onClick={handleCustomOffer}
+                    className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
+                  >
+                    <Zap className="w-4 h-4 text-[#FEDB71]" /> Send Offer
+                  </button>
+                  <button
+                    onClick={handleContact}
+                    className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
+                  >
+                    <MessageSquare className="w-4 h-4" /> Message
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -521,30 +688,96 @@ export function Profile() {
           </div>
         </div>
 
+        {/* Packages Section */}
+        {creator.packages.length > 0 && (
+          <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.3em]">Campaign Packages</h3>
+              <Package className="w-4 h-4 text-[#389C9A]" />
+            </div>
+            <div className="space-y-4">
+              {creator.packages.map((pkg) => (
+                <motion.div
+                  key={pkg.id}
+                  whileHover={{ y: -2 }}
+                  className={`relative bg-white border-2 rounded-xl p-6 cursor-pointer transition-all ${
+                    pkg.is_default
+                      ? "border-[#389C9A] shadow-lg"
+                      : "border-[#1D1D1D] hover:border-[#389C9A]"
+                  }`}
+                  onClick={() => isBusiness && handleSelectPackage(pkg)}
+                >
+                  {pkg.is_default && (
+                    <div className="absolute -top-3 right-4 bg-[#389C9A] text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest">
+                      Popular
+                    </div>
+                  )}
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="font-black text-lg uppercase tracking-tight">{pkg.name}</h4>
+                      <p className="text-[8px] font-medium opacity-40 uppercase tracking-widest">{pkg.streams} streams</p>
+                    </div>
+                    <p className="text-xl font-black text-[#389C9A]">₦{pkg.price.toLocaleString()}</p>
+                  </div>
+                  <p className="text-[9px] text-[#1D1D1D]/60 mb-4">{pkg.description}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[7px] font-black uppercase tracking-widest opacity-40">
+                      <Clock className="w-3 h-3" />
+                      <span>Est. {(pkg.streams * 1.5).toFixed(1)} hours</span>
+                    </div>
+                    {isBusiness && (
+                      <span className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] flex items-center gap-1">
+                        Select Package <ArrowRight className="w-3 h-3" />
+                      </span>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Pricing Note */}
+            <div className="mt-6 border border-[#389C9A]/30 bg-[#389C9A]/5 p-4 rounded-xl flex gap-3">
+              <Info className="w-4 h-4 text-[#389C9A] flex-shrink-0 mt-0.5" />
+              <p className="text-[8px] text-[#1D1D1D]/70 leading-relaxed">
+                Prices shown are per package. Minimum 4 streams per package. All prices are reviewed by our team.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Platforms Detail */}
         {creator.platforms.length > 0 && (
           <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">Connected Platforms</h3>
             <div className="space-y-3">
               {creator.platforms.map((platform, i) => (
-                <div key={i} className="bg-[#F8F8F8] p-4 rounded-xl flex items-center justify-between">
+                <a
+                  key={i}
+                  href={platform.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-[#F8F8F8] p-4 rounded-xl flex items-center justify-between hover:bg-[#1D1D1D] hover:text-white transition-colors group"
+                >
                   <div className="flex items-center gap-3">
                     {getPlatformIconComponent(platform.name)}
                     <div>
                       <p className="font-black text-xs uppercase">{platform.name}</p>
                       {platform.username && (
-                        <p className="text-[7px] font-medium opacity-40">@{platform.username}</p>
+                        <p className="text-[7px] font-medium opacity-40 group-hover:opacity-60">{platform.username}</p>
                       )}
                     </div>
                   </div>
-                  <p className="text-sm font-black">{formatNumber(platform.followers)}</p>
-                </div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-black">{formatNumber(platform.followers)}</p>
+                    <ExternalLink className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                  </div>
+                </a>
               ))}
             </div>
           </div>
         )}
 
-        {/* CTA */}
+        {/* CTA for Businesses */}
         {isBusiness && (
           <div className="px-6 py-8">
             <div className="bg-gradient-to-r from-[#1D1D1D] to-gray-800 p-8 rounded-xl text-white relative overflow-hidden">
@@ -588,7 +821,9 @@ export function Profile() {
               <div className="px-6 py-4">
                 <div className="flex justify-between items-start mb-6">
                   <div>
-                    <h2 className="text-2xl font-black uppercase tracking-tighter italic">Send Offer</h2>
+                    <h2 className="text-2xl font-black uppercase tracking-tighter italic">
+                      {selectedPackage ? selectedPackage.name : "Custom Offer"}
+                    </h2>
                     <p className="text-[8px] font-medium opacity-40 uppercase tracking-widest">to {creator.name}</p>
                   </div>
                   <button
@@ -616,37 +851,40 @@ export function Profile() {
                     </select>
                   </div>
 
-                  {/* Streams */}
-                  <div>
-                    <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
-                      Number of Streams
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="50"
-                      value={customOffer.streams}
-                      onChange={(e) => setCustomOffer({ ...customOffer, streams: e.target.value })}
-                      className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
-                      required
-                    />
-                  </div>
+                  {/* Streams - Only show for custom offers */}
+                  {!selectedPackage && (
+                    <>
+                      <div>
+                        <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+                          Number of Streams
+                        </label>
+                        <input
+                          type="number"
+                          min="4"
+                          max="50"
+                          value={customOffer.streams}
+                          onChange={(e) => setCustomOffer({ ...customOffer, streams: e.target.value })}
+                          className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
+                          required
+                        />
+                      </div>
 
-                  {/* Rate per Stream */}
-                  <div>
-                    <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
-                      Rate per Stream (£)
-                    </label>
-                    <input
-                      type="number"
-                      min="5"
-                      step="5"
-                      value={customOffer.rate}
-                      onChange={(e) => setCustomOffer({ ...customOffer, rate: e.target.value })}
-                      className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
-                      required
-                    />
-                  </div>
+                      <div>
+                        <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+                          Rate per Stream (₦)
+                        </label>
+                        <input
+                          type="number"
+                          min="1000"
+                          step="500"
+                          value={customOffer.rate}
+                          onChange={(e) => setCustomOffer({ ...customOffer, rate: e.target.value })}
+                          className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
 
                   {/* Message */}
                   <div>
@@ -684,7 +922,7 @@ export function Profile() {
                         </div>
                         <div>
                           <p className="opacity-40">Total Cost</p>
-                          <p className="font-black text-[#389C9A]">£{estimates.totalCost}</p>
+                          <p className="font-black text-[#389C9A]">₦{estimates.totalCost.toLocaleString()}</p>
                         </div>
                       </div>
                     </div>
@@ -713,5 +951,27 @@ export function Profile() {
         </div>
       )}
     </div>
+  );
+}
+
+// ExternalLink component
+function ExternalLink(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
   );
 }
