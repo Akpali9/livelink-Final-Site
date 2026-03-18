@@ -80,6 +80,7 @@ export function BecomeBusiness() {
   
   
   const { submitRegistration, loading, error } = useBusinessRegistration();
+  
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -109,7 +110,8 @@ export function BecomeBusiness() {
     };
  
     checkAuth();
-  }, []);
+  }, [navigate]);
+  
   const { register, handleSubmit, watch, control, formState: { errors, isValid } } = useForm<BusinessFormData>({
     defaultValues: {
       socials: [{ platform: "Instagram", handle: "" }],
@@ -212,12 +214,32 @@ export function BecomeBusiness() {
     if (result.success) {
       setIsSubmitted(true);
       window.scrollTo(0, 0);
-      toast.success("Registration submitted successfully! Redirecting to login...");
+      toast.success("Registration submitted successfully!");
       
-      // Redirect to login portal after 3 seconds
-      setTimeout(() => {
-         navigate("/login/portal", { replace: true });
-      }, 3000);
+      // Try to auto-login the user
+      try {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password
+        });
+        
+        if (!signInError) {
+          // Redirect to business dashboard (they'll see the pending banner)
+          setTimeout(() => {
+            navigate("/business/dashboard", { replace: true });
+          }, 2000);
+        } else {
+          // If auto-login fails, redirect to login portal
+          setTimeout(() => {
+            navigate("/login/portal", { replace: true });
+          }, 3000);
+        }
+      } catch (error) {
+        // If auto-login fails, redirect to login portal
+        setTimeout(() => {
+          navigate("/login/portal", { replace: true });
+        }, 3000);
+      }
     }
   };
 
@@ -283,19 +305,16 @@ export function BecomeBusiness() {
               </li>
               <li className="flex items-start gap-3 text-sm">
                 <span className="text-[#389C9A] font-black">3.</span>
-                <span className="text-xs">Login to access your dashboard and launch campaigns</span>
+                <span className="text-xs">You're being automatically redirected to your dashboard where you can track your application status</span>
               </li>
             </ul>
           </div>
 
           <div className="flex flex-col gap-3">
-            <button
-              onClick={goToLogin}
-              className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-none italic flex items-center justify-center gap-2"
-            >
-              <LogIn className="w-4 h-4" />
-              Go to Login Portal
-            </button>
+            <div className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest rounded-none italic flex items-center justify-center gap-2">
+              <LogIn className="w-4 h-4 animate-pulse" />
+              Redirecting to dashboard...
+            </div>
             
             <Link to="/" className="w-full border-2 border-[#1D1D1D] text-[#1D1D1D] px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-none italic text-center">
               Return to Homepage
