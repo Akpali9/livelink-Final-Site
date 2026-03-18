@@ -53,12 +53,11 @@ interface PendingCreator {
   } | null;
 }
 
-// ✅ Correct column names from actual DB schema
 interface BusinessProfile {
   id: string;
   business_name: string | null;
   full_name: string | null;
-  email: string | null;          // ✅ was contact_email
+  email: string | null;
   logo_url: string | null;
   application_status: string | null;
   status: string | null;
@@ -75,6 +74,7 @@ export function BusinessDashboard() {
   const [campaignFilter, setCampaignFilter] = useState<"LIVE" | "PENDING" | "COMPLETED">("LIVE");
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [showPendingBanner, setShowPendingBanner] = useState(false);
 
   // ─── 1. AUTH + BUSINESS PROFILE ───────────────────────────────────────────
 
@@ -90,7 +90,6 @@ export function BusinessDashboard() {
           return;
         }
 
-        // ✅ Use maybeSingle() instead of single() to avoid 406 errors
         const { data: business, error: businessError } = await supabase
           .from("businesses")
           .select("id, business_name, full_name, email, logo_url, application_status, status")
@@ -102,7 +101,6 @@ export function BusinessDashboard() {
         }
 
         if (!business) {
-          // No profile yet — complete registration
           console.log("No business profile found, redirecting to registration");
           navigate("/become-business", { replace: true });
           return;
@@ -114,17 +112,19 @@ export function BusinessDashboard() {
           return;
         }
 
+        // Check if business is pending
+        if (business.status === "pending_review" || business.application_status === "pending") {
+          setShowPendingBanner(true);
+        }
+
         setBusinessId(business.id);
         setBusinessProfile(business as BusinessProfile);
         setAuthChecked(true);
-
-        // Even if pending, we show the dashboard with a banner
-        // Don't redirect away
         
       } catch (error) {
         console.error("Error fetching business:", error);
         toast.error("Failed to load business profile");
-        setAuthChecked(true); // Still set to true to avoid infinite loading
+        setAuthChecked(true);
       }
     };
 
@@ -255,6 +255,18 @@ export function BusinessDashboard() {
       toast.success(`${row.creator_profiles?.full_name || "Creator"} accepted 🎉`);
       setPendingCreators(prev => prev.filter(r => r.id !== row.id));
       fetchCampaigns();
+
+      // Send notification to creator
+      if (row.creator_profiles?.id) {
+        await supabase.from("notifications").insert({
+          user_id: row.creator_profiles.id,
+          type: "offer_accepted",
+          title: "Offer Accepted! 🎉",
+          message: `Your offer for ${row.campaigns?.name} has been accepted!`,
+          data: { campaign_id: row.campaigns?.id },
+          created_at: new Date().toISOString()
+        });
+      }
     } catch (error) { 
       console.error(error); 
       toast.error("Failed to accept creator"); 
@@ -339,13 +351,21 @@ export function BusinessDashboard() {
         </div>
       </div>
 
-      {/* Pending approval banner */}
-      {businessProfile?.application_status === "pending" && (
-        <div className="mx-8 mt-4 p-4 bg-[#FEDB71]/20 border-2 border-[#FEDB71] flex items-center gap-3 rounded-lg">
-          <Clock className="w-5 h-5 text-[#1D1D1D] shrink-0" />
-          <p className="text-sm font-bold uppercase tracking-widest">
-            Your application is under review. You'll be notified at <span className="underline">{businessProfile.email}</span> once approved.
-          </p>
+      {/* PENDING APPROVAL BANNER - THIS WAS MISSING */}
+      {showPendingBanner && (
+        <div className="mx-8 mt-4 p-4 bg-[#FEDB71]/20 border-2 border-[#FEDB71] rounded-xl">
+          <div className="flex items-center gap-3">
+            <Clock className="w-5 h-5 text-[#1D1D1D] shrink-0 animate-pulse" />
+            <div>
+              <p className="text-sm font-black uppercase tracking-widest">
+                Your business application is under review
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                You'll be notified at <span className="font-bold underline">{businessProfile?.email}</span> once approved. 
+                In the meantime, you can browse and prepare campaigns.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -445,7 +465,7 @@ export function BusinessDashboard() {
                         </span>
                         <span className="flex items-center gap-1">
                           <DollarSign className="w-4 h-4" />
-                          {campaign.budget ?? campaign.bid_amount ?? campaign.pay_rate ?? "Negotiable"}
+                          ₦{campaign.budget ?? campaign.bid_amount ?? campaign.pay_rate ?? "Negotiable"}
                         </span>
                         {campaign.start_date && (
                           <span className="flex items-center gap-1">
