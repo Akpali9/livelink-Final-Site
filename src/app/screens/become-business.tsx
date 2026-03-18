@@ -215,7 +215,7 @@ export function BecomeBusiness() {
       
       // Redirect to login portal after 3 seconds
       setTimeout(() => {
-        navigate("/login/portal");
+         navigate("/login/portal", { replace: true });
       }, 3000);
     }
   };
@@ -250,7 +250,7 @@ export function BecomeBusiness() {
   };
 
   const goToLogin = () => {
-    navigate("/login/portal");
+     navigate("/login/portal", { replace: true });
   };
 
   if (isSubmitted) {
