@@ -111,27 +111,25 @@ interface CreatorPlatform {
 
 interface BusinessProfile {
   id: string;
-  business_name?: string;
-  company_name?: string;
-  contact_name?: string;
-  owner_name?: string;
-  representative?: string;
-  contact_email?: string;
-  email?: string;
-  contact_phone?: string;
-  phone?: string;
-  industry?: string;
-  sector?: string;
-  city?: string;
-  location?: string;
-  country?: string;
-  logo_url?: string;
-  status: 'active' | 'paused' | 'deleted';
-  application_status?: 'pending' | 'approved' | 'rejected';
-  verification_status?: 'pending' | 'verified' | 'rejected';
+  business_name?: string;   // ✅ real column
+  name?: string;            // ✅ real column (alternate)
+  full_name?: string;       // ✅ real column (contact person)
+  job_title?: string;       // ✅ real column
+  email?: string;           // ✅ real column (was contact_email)
+  phone_number?: string;    // ✅ real column (was contact_phone)
+  industry?: string;        // ✅ real column
+  city?: string;            // ✅ real column
+  country?: string;         // ✅ real column
+  postcode?: string;        // ✅ real column
+  logo_url?: string;        // ✅ real column
+  logo?: string;            // ✅ real column (alternate)
+  website?: string;         // ✅ real column
+  description?: string;     // ✅ real column
+  bio?: string;             // ✅ real column
+  budget?: string;          // ✅ real column
+  status: string;
+  application_status?: string;
   created_at: string;
-  website?: string;
-  description?: string;
 }
 
 interface Campaign {
@@ -149,7 +147,7 @@ interface Campaign {
   businesses?: {
     id: string;
     business_name?: string;
-    company_name?: string;
+    name?: string;
     logo_url?: string;
   };
 }
@@ -1001,7 +999,7 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
       if (filter === "pending") query = query.or(`application_status.eq.pending,status.eq.pending_review`);
       else if (filter === "approved") query = query.or(`application_status.eq.approved,status.eq.active`);
       else if (filter === "rejected") query = query.or(`application_status.eq.rejected,status.eq.rejected`);
-      if (searchTerm) query = query.or(`business_name.ilike.%${searchTerm}%,company_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+      if (searchTerm) query = query.or(`business_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
       const { data, error } = await query;
       if (error) { toast.error("Failed to load businesses"); } else { setBusinesses(data || []); }
     } catch { toast.error("Failed to load businesses"); }
@@ -1027,9 +1025,9 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
     toast.success("Business deleted"); fetchBusinesses(); onStatsChange?.();
   };
 
-  const getBusinessName = (b: any) => b.business_name || b.company_name || "Unnamed Business";
-  const getContactName = (b: any) => b.contact_name || b.owner_name || b.representative || "Unknown";
-  const getContactEmail = (b: any) => b.contact_email || b.email || "No email";
+  const getBusinessName = (b: any) => b.business_name || b.name || "Unnamed Business";
+  const getContactName = (b: any) => b.full_name || "Unknown";
+  const getContactEmail = (b: any) => b.email || "No email";
   const getStatusDisplay = (b: any) => b.application_status || b.status || "pending";
 
   return (
@@ -1088,7 +1086,7 @@ function AdminBusinesses({ onStatsChange }: { onStatsChange?: () => void }) {
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-gray-500">
                         <span className="flex items-center gap-1"><User className="w-3 h-3" />{getContactName(biz)}</span>
                         <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{getContactEmail(biz)}</span>
-                        {biz.contact_phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{biz.contact_phone}</span>}
+                        {biz.phone_number && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{biz.phone_number}</span>}
                         <span className="flex items-center gap-1"><Briefcase className="w-3 h-3" />{biz.industry || biz.sector || "—"}</span>
                         {(biz.city || biz.location) && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{biz.city || biz.location}</span>}
                       </div>
@@ -1164,8 +1162,8 @@ function BusinessDetailModal({ business, onClose, onUpdate }: { business: any; o
               </div>
             )}
             <div>
-              <h2 className="text-xl font-black uppercase tracking-tight">{business.business_name || business.company_name}</h2>
-              <p className="text-sm text-gray-500">{business.contact_email || business.email}</p>
+              <h2 className="text-xl font-black uppercase tracking-tight">{business.business_name || business.name}</h2>
+              <p className="text-sm text-gray-500">{business.email}</p>
               <div className="flex gap-2 mt-2">
                 <span className={`text-[8px] font-black px-2 py-1 rounded-full ${
                   (business.application_status === "approved" || business.status === "active") ? "bg-green-100 text-green-700" :
@@ -1181,8 +1179,8 @@ function BusinessDetailModal({ business, onClose, onUpdate }: { business: any; o
 
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "Contact Person", value: business.contact_name || business.owner_name || "—" },
-              { label: "Phone", value: business.contact_phone || business.phone || "—" },
+              { label: "Contact Person", value: business.full_name || "—" },
+              { label: "Phone", value: business.phone_number || "—" },
               { label: "Industry", value: business.industry || business.sector || "—" },
               { label: "Location", value: `${business.city || business.location || "—"}${business.country ? `, ${business.country}` : ""}` },
               { label: "Joined", value: new Date(business.created_at).toLocaleDateString() },
@@ -1247,7 +1245,7 @@ function AdminCampaigns() {
   const fetchCampaigns = async () => {
     setLoading(true);
     try {
-      let query = supabase.from("campaigns").select(`*, businesses (id, business_name, company_name, logo_url)`).order("created_at", { ascending: false });
+      let query = supabase.from("campaigns").select(`*, businesses (id, business_name, logo_url)`).order("created_at", { ascending: false });
       if (filter !== "all") query = query.eq("status", filter);
       if (searchTerm) query = query.or(`name.ilike.%${searchTerm}%,title.ilike.%${searchTerm}%`);
       const { data, error } = await query;
@@ -1272,7 +1270,7 @@ function AdminCampaigns() {
   };
 
   const getCampaignName = (c: any) => c.name || c.title || "Unnamed Campaign";
-  const getBusinessName = (b: any) => b?.business_name || b?.company_name || "Unknown Business";
+  const getBusinessName = (b: any) => b?.business_name || b?.name || "Unknown Business";
   const getPrice = (c: any) => c.pay_rate ?? c.bid_amount ?? c.budget ?? 0;
 
   return (
