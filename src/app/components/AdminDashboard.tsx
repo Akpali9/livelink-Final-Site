@@ -515,7 +515,7 @@ export function AdminDashboard() {
       {/* lg:ml-64 matches sidebar width; flex-1 fills remaining horizontal space */}
       <div className="flex-1 min-h-screen flex flex-col min-w-0">
         {/* Desktop top bar */}
-        <header className="hidden lg:flex items-center justify-between bg-white border-b border-[#1D1D1D]/10 px-8 py-4 sticky top-0 z-20">
+        <header className="lg:hidden bg-white border-b border-[#1D1D1D]/10 px-4 py-3 flex justify-between items-center sticky top-0 z-30">
           <div>
             <h2 className="font-black uppercase tracking-tight text-lg">
               {navItems.find(n => n.tab === activeTab)?.label || "Overview"}
