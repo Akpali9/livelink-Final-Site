@@ -154,33 +154,6 @@ export function useBusinessRegistration() {
         throw new Error('Please select a monthly budget range');
       }
 
-      // Handle re-registration - check for existing rejected user
-      if (isReRegister) {
-        console.log('🔄 Re-registration detected for:', cleanEmail);
-        
-        // Try to find the user by email
-        const { data: existingUsers } = await supabase.auth.admin.listUsers();
-        const existingUser = existingUsers?.users.find(u => u.email === cleanEmail);
-        
-        if (existingUser) {
-          console.log('Found existing user:', existingUser.id);
-          
-          // Delete the old business profile
-          const { error: deleteError } = await supabase
-            .from('businesses')
-            .delete()
-            .eq('user_id', existingUser.id);
-            
-          if (deleteError) {
-            console.error('Error deleting old profile:', deleteError);
-          } else {
-            console.log('✅ Old rejected profile deleted');
-          }
-          
-          // Note: We don't delete the auth user as it's needed for the new registration
-        }
-      }
-
       // Create auth user
       console.log('📝 Creating auth user for:', cleanEmail);
 
@@ -195,8 +168,7 @@ export function useBusinessRegistration() {
             job_title: formData.jobTitle.trim(),
             phone: `${formData.phoneCountryCode}${formData.phoneNumber}`,
             business_name: formData.businessName.trim(),
-            created_at: new Date().toISOString(),
-            is_reapplication: isReRegister
+            created_at: new Date().toISOString()
           },
           emailRedirectTo: `${window.location.origin}/auth/callback?role=business`
         }
@@ -209,7 +181,17 @@ export function useBusinessRegistration() {
             signUpError.code === 'email_exists' ||
             signUpError.message.includes('already exists')) {
           throw new Error('An account with this email already exists. Please login instead.');
-        } else {
+        } 
+        else if (signUpError.message.includes('email_provider_disabled')) {
+          throw new Error('Email signups are currently disabled. Please contact support.');
+        }
+        else if (signUpError.message.includes('Unable to validate email')) {
+          throw new Error('Please enter a valid email address');
+        }
+        else if (signUpError.message.includes('Password should be at least 6 characters')) {
+          throw new Error('Password must be at least 6 characters long');
+        }
+        else {
           throw new Error(`Signup failed: ${signUpError.message}`);
         }
       }
@@ -237,7 +219,7 @@ export function useBusinessRegistration() {
         }
       }
 
-      // Create business profile
+      // Create business profile - REMOVED is_reapplication field
       console.log('📝 Creating business profile...');
 
       const { error: profileError } = await supabase
@@ -255,13 +237,13 @@ export function useBusinessRegistration() {
           country: formData.country,
           city: formData.city?.trim() || null,
           postcode: formData.postcode?.trim() || null,
+          operating_since: formData.operatingTime || null,
           verification_document_url: idDocumentUrl || null,
           verification_status: 'pending',
           application_status: 'pending',
           status: 'pending_verification',
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          is_reapplication: isReRegister
+          updated_at: new Date().toISOString()
         });
 
       if (profileError) {
@@ -272,11 +254,48 @@ export function useBusinessRegistration() {
           hint: profileError.hint
         });
         
-        return { 
-          success: false, 
-          error: `Failed to create business profile: ${profileError.message}`,
-          user: authData.user
-        };
+        // If the error is about a missing column, try a minimal insert
+        if (profileError.message.includes('operating_since')) {
+          console.log('🔄 Retrying without operating_since field...');
+          
+          // Retry without operating_since
+          const { error: retryError } = await supabase
+            .from('businesses')
+            .insert({
+              user_id: authData.user.id,
+              business_name: formData.businessName.trim(),
+              full_name: formData.fullName.trim(),
+              job_title: formData.jobTitle.trim(),
+              email: cleanEmail,
+              phone_number: `${formData.phoneCountryCode}${formData.phoneNumber}`,
+              industry: formData.industry,
+              description: formData.description?.trim() || null,
+              website: formData.website?.trim() || null,
+              country: formData.country,
+              city: formData.city?.trim() || null,
+              postcode: formData.postcode?.trim() || null,
+              verification_document_url: idDocumentUrl || null,
+              verification_status: 'pending',
+              application_status: 'pending',
+              status: 'pending_verification',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+            
+          if (retryError) {
+            return { 
+              success: false, 
+              error: `Failed to create business profile: ${retryError.message}`,
+              user: authData.user
+            };
+          }
+        } else {
+          return { 
+            success: false, 
+            error: `Failed to create business profile: ${profileError.message}`,
+            user: authData.user
+          };
+        }
       }
 
       console.log('✅ Business profile created successfully');
@@ -292,8 +311,7 @@ export function useBusinessRegistration() {
           target_location: formData.targetLocation?.trim() || null,
           referral_code: formData.referral?.trim() || null,
           application_submitted: true,
-          application_status: 'pending',
-          is_reapplication: isReRegister
+          application_status: 'pending'
         }
       });
 
@@ -307,7 +325,7 @@ export function useBusinessRegistration() {
         title: isReRegister ? 'Re-application Submitted' : 'Registration Submitted',
         message: notificationMessage,
         type: 'system',
-        data: { application_status: 'pending', is_reapplication: isReRegister },
+        data: { application_status: 'pending' },
         created_at: new Date().toISOString()
       });
 
@@ -319,8 +337,7 @@ export function useBusinessRegistration() {
         type: 'admin_notification',
         data: { 
           business_name: formData.businessName, 
-          user_id: authData.user.id,
-          is_reapplication: isReRegister 
+          user_id: authData.user.id
         },
         created_at: new Date().toISOString()
       });
