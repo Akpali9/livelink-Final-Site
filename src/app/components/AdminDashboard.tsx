@@ -194,16 +194,6 @@ interface Transaction {
   campaign_id?: string;
 }
 
-interface AdminAction {
-  id: string;
-  admin_id: string;
-  action_type: string;
-  resource_type: string;
-  resource_id?: string;
-  details: any;
-  created_at: string;
-}
-
 // ─────────────────────────────────────────────
 // ADMIN DASHBOARD MAIN COMPONENT
 // ─────────────────────────────────────────────
@@ -216,10 +206,11 @@ export function AdminDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "creators" | "businesses" | "campaigns" | "support" | "reports" | "transactions" | "settings"
+    "overview" | "creators" | "businesses" | "campaigns" | "support" | "reports" | "transactions" | "settings" | "messages"
   >("overview");
   const [adminUser, setAdminUser] = useState<any>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   const [stats, setStats] = useState<DashboardStats>({
     totalCreators: 0,
@@ -270,6 +261,7 @@ export function AdminDashboard() {
         }
 
         await fetchDashboardData();
+        fetchUnreadMessagesCount();
       } catch (error) {
         console.error("Error checking admin access:", error);
         toast.error("Authentication error");
@@ -279,6 +271,22 @@ export function AdminDashboard() {
 
     checkAdminAccess();
   }, []);
+
+  // ─── FETCH UNREAD MESSAGES COUNT ─────────────────────────────────────
+
+  const fetchUnreadMessagesCount = async () => {
+    if (!adminUser) return;
+    try {
+      const { count } = await supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("is_read", false)
+        .neq("sender_id", adminUser.id);
+      setUnreadMessagesCount(count || 0);
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+    }
+  };
 
   // ─── FETCH DASHBOARD STATS ───────────────────────────────────────────
 
@@ -364,19 +372,8 @@ export function AdminDashboard() {
           .from("reported_content")
           .select("*", { count: "exact", head: true })
           .eq("status", "pending");
-        
-        if (rcError) {
-          if (rcError.code === '42P01') {
-            console.log("reported_content table doesn't exist yet");
-          } else {
-            console.error("Error fetching reported content:", rcError);
-          }
-        } else {
-          reportedContent = count || 0;
-        }
-      } catch (e) { 
-        console.log("reported_content table not available:", e); 
-      }
+        if (!rcError) reportedContent = count || 0;
+      } catch (e) { /* table may not exist */ }
 
       // ── SUPPORT TICKETS ─────────────────────────
       let openSupportTickets = 0;
@@ -385,19 +382,8 @@ export function AdminDashboard() {
           .from("support_tickets")
           .select("*", { count: "exact", head: true })
           .in("status", ["open", "in_progress"]);
-        
-        if (stError) {
-          if (stError.code === '42P01') {
-            console.log("support_tickets table doesn't exist yet");
-          } else {
-            console.error("Error fetching support tickets:", stError);
-          }
-        } else {
-          openSupportTickets = count || 0;
-        }
-      } catch (e) { 
-        console.log("support_tickets table not available:", e); 
-      }
+        if (!stError) openSupportTickets = count || 0;
+      } catch (e) { /* table may not exist */ }
 
       setStats({
         totalCreators, pendingCreators, activeCreators, suspendedCreators,
@@ -839,8 +825,8 @@ export function AdminDashboard() {
     { icon: Users, label: "Creators", tab: "creators", badge: stats.pendingCreators },
     { icon: Building2, label: "Businesses", tab: "businesses", badge: stats.pendingBusinesses },
     { icon: Megaphone, label: "Campaigns", tab: "campaigns", badge: stats.pendingCampaigns },
-    { icon: MessageCircle, label: "Support", tab: "support", badge: stats.openSupportTickets },
-    { icon: MessageSquare, label: "Messages", tab: "messages", badge: unreadMessagesCount },
+    { icon: MessageCircle, label: "Messages", tab: "messages", badge: unreadMessagesCount },
+    { icon: Activity, label: "Support", tab: "support", badge: stats.openSupportTickets },
     { icon: Flag, label: "Reports", tab: "reports", badge: stats.reportedContent },
     { icon: CreditCard, label: "Transactions", tab: "transactions", badge: 0 },
     { icon: Settings, label: "Settings", tab: "settings", badge: 0 },
@@ -858,7 +844,7 @@ export function AdminDashboard() {
     <div className="min-h-screen bg-[#F0F0F0]">
       <Toaster position="top-center" richColors />
 
-      {/* Mobile Header - Always visible */}
+      {/* Mobile Header */}
       <div className="bg-white border-b border-[#1D1D1D]/10 px-4 py-3 flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
@@ -968,6 +954,7 @@ export function AdminDashboard() {
             {activeTab === "creators" && "Manage creator applications and profiles"}
             {activeTab === "businesses" && "Review and manage business accounts"}
             {activeTab === "campaigns" && "Oversee all platform campaigns"}
+            {activeTab === "messages" && "Communicate with creators and businesses"}
             {activeTab === "support" && "Handle support tickets and inquiries"}
             {activeTab === "reports" && "Review reported content"}
             {activeTab === "transactions" && "Monitor financial transactions"}
@@ -1017,6 +1004,14 @@ export function AdminDashboard() {
               onRejectSelected={() => rejectSelected('campaign')}
               actionLoading={actionLoading}
             />
+          )}
+          {activeTab === "messages" && (
+            // Replace with your actual AdminMessages component if available
+            <div className="bg-white border-2 border-[#1D1D1D] p-6 rounded-xl">
+              <h3 className="font-black uppercase tracking-tight text-lg mb-4">Messages</h3>
+              <p className="text-gray-500">Messaging system coming soon. Integrate your AdminMessages component here.</p>
+              {/* <AdminMessages /> */}
+            </div>
           )}
           {activeTab === "support" && <AdminSupport />}
           {activeTab === "reports" && <AdminReports />}
@@ -1239,7 +1234,6 @@ function AdminCreators({
 }) {
   const [creators, setCreators] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [filter, setFilter] = useState<"pending_review" | "active" | "suspended" | "all">("pending_review");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCreator, setSelectedCreator] = useState<any>(null);
@@ -1275,21 +1269,7 @@ function AdminCreators({
       setLoading(false);
     }
   };
-useEffect(() => {
-  const fetchUnreadCount = async () => {
-    if (!adminUser) return;
-    
-    const { count } = await supabase
-      .from("messages")
-      .select("*", { count: "exact", head: true })
-      .eq("is_read", false)
-      .neq("sender_id", adminUser.id);
-      
-    setUnreadMessagesCount(count || 0);
-  };
-  
-  fetchUnreadCount();
-}, [adminUser]);
+
   useEffect(() => { fetchCreators(); }, [filter, searchTerm]);
 
   const updateCreatorStatus = async (id: string, newStatus: "active" | "suspended") => {
@@ -3010,7 +2990,7 @@ function BusinessDetailModal({ business, onClose }: { business: any; onClose: ()
               <div key={i} className="border-2 border-[#1D1D1D] p-3 text-center rounded-xl">
                 <p className="text-lg font-black">{s.value}</p>
                 <p className="text-[8px] uppercase tracking-widest opacity-60">{s.label}</p>
-              </div>
+             </div>
             ))}
           </div>
 
