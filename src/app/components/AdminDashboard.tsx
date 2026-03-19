@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { AdminBusinessQueue } from './AdminBusinessQueue';
+import { AdminBusinessQueue } from './screen/AdminBusinessQueue';
 {activeTab === "businesses" && (
   <AdminBusinessQueue />
 )}
@@ -1019,17 +1019,17 @@ export function AdminDashboard() {
               actionLoading={actionLoading}
             />
           )}
-          {activeTab === "businesses" && (
-            <AdminBusinesses 
-              onStatsChange={fetchDashboardData}
-              selectedItems={selectedItems}
-              onToggleSelect={toggleSelectItem}
-              onToggleSelectAll={toggleSelectAll}
-              onApproveSelected={() => approveSelected('business')}
-              onRejectSelected={() => rejectSelected('business')}
-              actionLoading={actionLoading}
-            />
-          )}
+         {activeTab === "businesses" && (
+  <AdminBusinessQueue 
+    onStatsChange={fetchDashboardData}
+    selectedItems={selectedItems}
+    onToggleSelect={toggleSelectItem}
+    onToggleSelectAll={toggleSelectAll}
+    onApproveSelected={() => approveSelected('business')}
+    onRejectSelected={() => rejectSelected('business')}
+    actionLoading={actionLoading}
+  />
+)}
           {activeTab === "campaigns" && (
             <AdminCampaigns 
               selectedItems={selectedItems}
