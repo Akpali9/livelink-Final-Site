@@ -676,7 +676,9 @@ export function AdminBusinessQueue() {
               </div>
             </div>
             </div>
-          ))}
+          );
+              )
+              }
 
           {filteredApplications.length === 0 && (
             <div className="text-center py-16 border-2 border-dashed border-[#1D1D1D]/20 rounded-xl">
