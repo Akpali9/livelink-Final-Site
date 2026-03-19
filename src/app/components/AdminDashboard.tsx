@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   Users,
@@ -1226,7 +1226,7 @@ function AdminCreators({
 }
 
 // ─────────────────────────────────────────────
-// BUSINESSES TAB (simplified version)
+// BUSINESSES TAB (with missing showFilters added)
 // ─────────────────────────────────────────────
 
 function AdminBusinesses({ onStatsChange, selectedItems, onToggleSelect, onToggleSelectAll, actionLoading }: any) {
@@ -1236,6 +1236,7 @@ function AdminBusinesses({ onStatsChange, selectedItems, onToggleSelect, onToggl
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);   // <-- FIX ADDED
 
   const fetchBusinesses = async () => {
     setLoading(true);
@@ -1424,7 +1425,7 @@ function AdminBusinesses({ onStatsChange, selectedItems, onToggleSelect, onToggl
 }
 
 // ─────────────────────────────────────────────
-// CAMPAIGNS TAB (simplified)
+// CAMPAIGNS TAB (with missing showFilters added)
 // ─────────────────────────────────────────────
 
 function AdminCampaigns({ selectedItems, onToggleSelect, onToggleSelectAll, actionLoading }: any) {
@@ -1432,6 +1433,7 @@ function AdminCampaigns({ selectedItems, onToggleSelect, onToggleSelectAll, acti
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"pending_review" | "active" | "completed" | "rejected" | "all">("pending_review");
   const [searchTerm, setSearchTerm] = useState("");
+  const [showFilters, setShowFilters] = useState(false);   // <-- FIX ADDED
 
   const fetchCampaigns = async () => {
     setLoading(true);
