@@ -110,6 +110,7 @@ const routes: RouteObject[] = [
       { path: "creator/campaign/:id", element: protectCreator(CreatorCampaignDetail) },
       { path: "creator/upcoming-gig/:id", element: protectCreator(UpcomingGigDetail) },
       { path: "settings", element: protectCreator(Settings) },
+      { path: "business/analytics", element: <Navigate to="/business/dashboard" replace /> },
       
       // Protected Business Routes
       { path: "business/dashboard", element: protectBusiness(BusinessDashboard) },
