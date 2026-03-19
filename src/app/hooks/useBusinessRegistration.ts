@@ -218,47 +218,19 @@ export function useBusinessRegistration() {
         }
       }
 
-      // MINIMAL INSERT TEST - First try with just the essentials
-      console.log('📝 Attempting minimal business profile insert...');
-      
-      const minimalData = {
-        user_id: authData.user.id,
-        business_name: formData.businessName.trim(),
-        email: cleanEmail,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+      // Create business profile with correct status values
+      console.log('📝 Creating business profile...');
 
-      console.log('📝 Minimal data:', minimalData);
-
-      const { data: minimalResult, error: minimalError } = await supabase
+      // Based on the constraint: ARRAY['pending_verification', 'pending', 'approved', 'rejected']
+      // We use 'pending_verification' for new registrations
+      const { error: profileError } = await supabase
         .from('businesses')
-        .insert(minimalData)
-        .select();
-
-      if (minimalError) {
-        console.error('❌ Minimal insert failed:', {
-          message: minimalError.message,
-          code: minimalError.code,
-          details: minimalError.details,
-          hint: minimalError.hint
-        });
-        
-        return { 
-          success: false, 
-          error: `Failed to create business profile: ${minimalError.message}`,
-          user: authData.user
-        };
-      }
-
-      console.log('✅ Minimal insert succeeded:', minimalResult);
-
-      // Now update with additional fields if needed
-      const { error: updateError } = await supabase
-        .from('businesses')
-        .update({
+        .insert({
+          user_id: authData.user.id,
+          business_name: formData.businessName.trim(),
           full_name: formData.fullName.trim(),
           job_title: formData.jobTitle.trim(),
+          email: cleanEmail,
           phone_number: `${formData.phoneCountryCode}${formData.phoneNumber}`,
           industry: formData.industry,
           description: formData.description?.trim() || null,
@@ -270,16 +242,28 @@ export function useBusinessRegistration() {
           verification_document_url: idDocumentUrl || null,
           verification_status: 'pending',
           application_status: 'pending',
-          status: 'pending'
-        })
-        .eq('user_id', authData.user.id);
+          // ✅ FIXED: Using the correct value from the constraint
+          status: 'pending_verification',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
 
-      if (updateError) {
-        console.warn('⚠️ Partial update failed:', updateError);
-        toast.warning('Basic profile created but some details could not be saved.');
-      } else {
-        console.log('✅ Business profile fully updated');
+      if (profileError) {
+        console.error('❌ Profile creation error:', {
+          message: profileError.message,
+          code: profileError.code,
+          details: profileError.details,
+          hint: profileError.hint
+        });
+        
+        return { 
+          success: false, 
+          error: `Failed to create business profile: ${profileError.message}`,
+          user: authData.user
+        };
       }
+
+      console.log('✅ Business profile created successfully');
 
       // Update user metadata with preferences
       await supabase.auth.updateUser({
@@ -303,6 +287,16 @@ export function useBusinessRegistration() {
         message: 'Your business registration has been submitted and is under review.',
         type: 'system',
         data: { application_status: 'pending' },
+        created_at: new Date().toISOString()
+      });
+
+      // Send admin notification
+      await supabase.from('notifications').insert({
+        user_id: 'admin',
+        title: 'New Business Application',
+        message: `${formData.businessName} has submitted an application for review.`,
+        type: 'admin_notification',
+        data: { business_name: formData.businessName, user_id: authData.user.id },
         created_at: new Date().toISOString()
       });
 
