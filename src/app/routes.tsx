@@ -36,7 +36,7 @@ import { RootLayout } from "../app/components/layout";
 import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
-import { BusinessSettings } from "./screens/business-settings";
+import { BusinessSettings } from "./screens/BusinessSettings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
 import { AdminDashboard } from "../app/components/AdminDashboard";
 import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue";
