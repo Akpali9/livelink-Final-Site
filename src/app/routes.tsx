@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouteObject, Navigate } from "react-router";
+import { createBrowserRouter, RouteObject } from "react-router";
 import { Home } from "./screens/home";
 import { LoginPortal } from "./screens/login-portal";
 import { CreatorLogin } from "./screens/creator-login";
@@ -56,7 +56,6 @@ const protectCreator = (Component: React.ComponentType) => (
   </ProtectedRoute>
 );
 
-
 const protectBusiness = (Component: React.ComponentType) => (
   <ProtectedRoute userType="business">
     <Component />
@@ -77,27 +76,25 @@ const protectAdmin = (Component: React.ComponentType) => (
 
 const routes: RouteObject[] = [
   {
-    
     path: "/",
     element: <ErrorBoundary><RootLayout /></ErrorBoundary>,
     errorElement: <ErrorBoundary><div>Error</div></ErrorBoundary>,
-    Component: RootLayout,
     children: [
       // Public routes
-      { index: true, Component: Home },
-      { path: "login/portal", Component: LoginPortal },
-      { path: "login/creator", Component: CreatorLogin },
-      { path: "login/business", Component: BusinessLogin },
-      { path: "browse", Component: Browse },
-      { path: "profile/:id", Component: Profile },
-      { path: "browse-businesses", Component: BrowseBusinesses },
-      { path: "become-creator", Component: BecomeCreator },
-      { path: "become-business", Component: BecomeBusiness },
-      { path: "forgot-password", Component: ForgotPassword },
-      { path: "reset-password", Component: ResetPassword },
-      { path: "confirm-email", Component: ConfirmEmail },
-      { path: "terms", Component: Terms },
-      { path: "privacy", Component: Privacy },
+      { index: true, element: <Home /> },
+      { path: "login/portal", element: <LoginPortal /> },
+      { path: "login/creator", element: <CreatorLogin /> },
+      { path: "login/business", element: <BusinessLogin /> },
+      { path: "browse", element: <Browse /> },
+      { path: "profile/:id", element: <Profile /> },
+      { path: "browse-businesses", element: <BrowseBusinesses /> },
+      { path: "become-creator", element: <BecomeCreator /> },
+      { path: "become-business", element: <BecomeBusiness /> },
+      { path: "forgot-password", element: <ForgotPassword /> },
+      { path: "reset-password", element: <ResetPassword /> },
+      { path: "confirm-email", element: <ConfirmEmail /> },
+      { path: "terms", element: <Terms /> },
+      { path: "privacy", element: <Privacy /> },
       
       // Protected Creator Routes
       { path: "dashboard", element: protectCreator(Dashboard) },
@@ -134,7 +131,7 @@ const routes: RouteObject[] = [
       
       // Admin Routes with AdminLayout
       {
-          path: "admin",
+        path: "admin",
         element: protectAdmin(AdminLayout),
         children: [
           { index: true, element: <AdminDashboard /> },
@@ -143,7 +140,6 @@ const routes: RouteObject[] = [
           { path: "businesses", element: <AdminBusinessQueue /> },
           { path: "campaigns", element: <AdminCampaigns /> },
         ],
-      
       },
     ],
   },
