@@ -8,9 +8,9 @@ export function BottomNav() {
   const navItems = [
     { icon: Home, label: "Home", path: "/dashboard" },
     { icon: Search, label: "Browse", path: "/browse" },
-    // { icon: Briefcase, label: "Campaigns", path: "/campaigns" },
+    { icon: Briefcase, label: "Campaigns", path: "/campaigns" },
     { icon: Bell, label: "Notifications", path: "/notifications" },
-    { icon: User, label: "Profile", path: "/profile/me" },
+    // { icon: User, label: "Profile", path: "/profile/me" },
   ];
 
   return (
