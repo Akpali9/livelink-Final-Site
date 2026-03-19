@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { Lock, Eye, EyeOff, ArrowRight, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Lock, Eye, EyeOff, ArrowRight, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { motion } from "motion/react";
 import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
@@ -17,7 +17,6 @@ export function ResetPassword() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Get access token from URL hash
     const hash = window.location.hash;
     const params = new URLSearchParams(hash.substring(1));
     const token = params.get("access_token");
@@ -164,7 +163,6 @@ export function ResetPassword() {
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-md">
-        {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-black uppercase tracking-tighter italic mb-2">
             Reset Password
@@ -174,7 +172,6 @@ export function ResetPassword() {
           </p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1D1D1D]/30" />
