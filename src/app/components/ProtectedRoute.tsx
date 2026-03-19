@@ -1,4 +1,4 @@
-import { Navigate } from "react-router"; // ✅ Add this import
+import { Navigate } from "react-router";
 import { supabase } from "../lib/supabase";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ export function ProtectedRoute({
   const [hasAccess, setHasAccess] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rejected, setRejected] = useState(false);
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -76,22 +77,22 @@ export function ProtectedRoute({
 
           if (!creator) {
             console.log("No creator profile found");
-            setError("Creator profile not found");
-            setHasAccess(false);
-            setLoading(false);
+            // Allow them to register
+            navigateToRegistration("creator", user.email);
             return;
           }
 
-          // Check if creator is rejected
+          // Handle rejected status
           if (creator.status === "rejected") {
             console.log("Creator application was rejected");
+            setRejected(true);
             setError("Your creator application has been rejected");
             setHasAccess(false);
             setLoading(false);
             return;
           }
 
-          // Allow access even if pending (they'll see the banner)
+          // Allow access if pending_verification, pending, or approved
           console.log("Creator access granted, status:", creator.status);
           setHasAccess(true);
           setLoading(false);
@@ -115,31 +116,42 @@ export function ProtectedRoute({
 
           if (!business) {
             console.log("No business profile found");
-            setError("Business profile not found");
-            setHasAccess(false);
-            setLoading(false);
+            // Allow them to register
+            navigateToRegistration("business", user.email);
             return;
           }
 
-          // Check if business is rejected
-          if (business.status === "rejected" || business.application_status === "rejected") {
+          console.log("Business profile found:", {
+            status: business.status,
+            application_status: business.application_status
+          });
+
+          // Handle rejected status
+          if (business.status === "rejected") {
             console.log("Business application was rejected");
+            setRejected(true);
             setError("Your business application has been rejected");
             setHasAccess(false);
             setLoading(false);
             return;
           }
 
-          // Allow access even if pending (they'll see the banner)
-          console.log("Business access granted, status:", business.status);
-          setHasAccess(true);
-          setLoading(false);
-          return;
-        }
+          // Allow access for allowed statuses
+          const allowedStatuses = ["pending_verification", "pending", "approved"];
+          
+          if (allowedStatuses.includes(business.status)) {
+            console.log("Business access granted, status:", business.status);
+            setHasAccess(true);
+            setLoading(false);
+            return;
+          }
 
-        // If no specific userType required, just having a user is enough
-        setHasAccess(true);
-        setLoading(false);
+          // If status is something else unexpected
+          console.log("Unexpected business status:", business.status);
+          setError("Your account has an invalid status");
+          setHasAccess(false);
+          setLoading(false);
+        }
 
       } catch (error) {
         console.error("ProtectedRoute error:", error);
@@ -158,6 +170,22 @@ export function ProtectedRoute({
     return () => subscription?.unsubscribe();
   }, [userType]);
 
+  const navigateToRegistration = (type: string, email: string) => {
+    if (type === "business") {
+      window.location.href = `/become-business?email=${encodeURIComponent(email)}`;
+    } else {
+      window.location.href = `/become-creator?email=${encodeURIComponent(email)}`;
+    }
+  };
+
+  const handleReRegister = () => {
+    if (userType === "business") {
+      navigate(`/become-business?email=${encodeURIComponent(user?.email || '')}&rejected=true`);
+    } else {
+      navigate(`/become-creator?email=${encodeURIComponent(user?.email || '')}&rejected=true`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F8F8F8] flex items-center justify-center">
@@ -172,7 +200,41 @@ export function ProtectedRoute({
   }
 
   if (!hasAccess) {
-    // Store error message in state to show on login page
+    if (rejected) {
+      return (
+        <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
+          <div className="max-w-md w-full text-center">
+            <div className="w-20 h-20 bg-red-100 border-2 border-red-500 flex items-center justify-center mx-auto mb-6 rounded-full">
+              <XCircle className="w-10 h-10 text-red-500" />
+            </div>
+            <h1 className="text-3xl font-black uppercase tracking-tighter italic mb-4">
+              Application Rejected
+            </h1>
+            <p className="text-[#1D1D1D]/60 mb-6">
+              {error || "Your application has been rejected."}
+            </p>
+            <p className="text-sm text-gray-600 mb-8">
+              You can submit a new application with updated information.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleReRegister}
+                className="w-full bg-[#1D1D1D] text-white py-4 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
+              >
+                Submit New Application
+              </button>
+              <button
+                onClick={() => navigate("/login/portal")}
+                className="w-full border-2 border-[#1D1D1D] py-4 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors"
+              >
+                Back to Login
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
     if (error) {
       return <Navigate to={`/login/portal?error=${encodeURIComponent(error)}`} replace />;
     }
