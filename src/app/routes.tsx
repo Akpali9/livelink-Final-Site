@@ -77,6 +77,7 @@ const protectAdmin = (Component: React.ComponentType) => (
 
 const routes: RouteObject[] = [
   {
+    
     path: "/",
     element: <ErrorBoundary><RootLayout /></ErrorBoundary>,
     errorElement: <ErrorBoundary><div>Error</div></ErrorBoundary>,
