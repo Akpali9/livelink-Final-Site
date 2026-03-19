@@ -80,7 +80,6 @@ export function ProtectedRoute({
 
           if (!creator) {
             console.log("No creator profile found");
-            // Redirect to registration
             navigate(`/become-creator?email=${encodeURIComponent(user.email || '')}`);
             return;
           }
@@ -119,7 +118,6 @@ export function ProtectedRoute({
 
           if (!business) {
             console.log("No business profile found");
-            // Redirect to registration
             navigate(`/become-business?email=${encodeURIComponent(user.email || '')}`);
             return;
           }
@@ -149,7 +147,6 @@ export function ProtectedRoute({
             return;
           }
 
-          // If status is something else unexpected
           console.log("Unexpected business status:", business.status);
           setError("Your account has an invalid status");
           setHasAccess(false);
