@@ -530,8 +530,8 @@ export function AdminBusinessQueue() {
           ))}
         </div>
 
-        {/* Select All Bar */}
-        {filteredApplications.length > 0 && filter === 'pending' && (
+        {/* Select All Bar - Only show for pending filter */}
+        {filter === 'pending' && filteredApplications.length > 0 && (
           <div className="mb-4 flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
             <button onClick={toggleSelectAll} className="flex items-center gap-2">
               {selectedItems.length === filteredApplications.length ? (
@@ -540,7 +540,7 @@ export function AdminBusinessQueue() {
                 <Square className="w-5 h-5 text-gray-400" />
               )}
               <span className="text-xs font-black uppercase tracking-widest">
-                {selectedItems.length === filteredApplications.length ? "Deselect All" : "Select All"}
+                {selectedItems.length === filteredApplications.length ? "Deselect All" : "Select All Pending"}
               </span>
             </button>
             {selectedItems.length > 0 && (
@@ -576,106 +576,105 @@ export function AdminBusinessQueue() {
                       <Square className="w-5 h-5 text-gray-400" />
                     )}
                   </button>
-
                   <div className="flex-1">
-                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h2 className="text-xl font-black uppercase tracking-tight italic">
-                        {app.business_name}
-                      </h2>
-                      {getStatusBadge(app)}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">
-                      <span className="flex items-center gap-1">
-                        <Briefcase className="w-3 h-3" />
-                        {app.industry}
-                      </span>
-                      <span>·</span>
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {app.city || app.country}
-                      </span>
-                      <span>·</span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        Applied {formatDate(app.created_at)}
-                      </span>
-                    </div>
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h2 className="text-xl font-black uppercase tracking-tight italic">
+                      {app.business_name}
+                    </h2>
+                    {getStatusBadge(app)}
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 text-[10px]">
-                  <div className="bg-[#F8F8F8] p-3 rounded-lg">
-                    <span className="opacity-40 uppercase tracking-widest block mb-1">Contact Person</span>
-                    <span className="font-black uppercase">{app.full_name}</span>
-                    {app.job_title && (
-                      <span className="text-[8px] text-gray-500 block">{app.job_title}</span>
-                    )}
-                  </div>
-                  <div className="bg-[#F8F8F8] p-3 rounded-lg">
-                    <span className="opacity-40 uppercase tracking-widest block mb-1">Email</span>
-                    <span className="font-black text-[#389C9A]">{app.email}</span>
-                  </div>
-                  <div className="bg-[#F8F8F8] p-3 rounded-lg">
-                    <span className="opacity-40 uppercase tracking-widest block mb-1">Phone</span>
-                    <span className="font-black uppercase">{app.phone_number || 'Not provided'}</span>
-                  </div>
-                  <div className="bg-[#F8F8F8] p-3 rounded-lg">
-                    <span className="opacity-40 uppercase tracking-widest block mb-1">Verification</span>
-                    <span className={`font-black uppercase flex items-center gap-1 ${
-                      app.verification_document_url ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {app.verification_document_url ? '✅ ID Uploaded' : '❌ No ID'}
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">
+                    <span className="flex items-center gap-1">
+                      <Briefcase className="w-3 h-3" />
+                      {app.industry}
+                    </span>
+                    <span>·</span>
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {app.city || app.country}
+                    </span>
+                    <span>·</span>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      Applied {formatDate(app.created_at)}
                     </span>
                   </div>
                 </div>
+              </div>
 
-                {app.description && (
-                  <p className="text-xs text-gray-600 mb-6 line-clamp-2">
-                    {app.description}
-                  </p>
-                )}
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => setSelectedApp(app)}
-                    className="px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#1D1D1D] hover:text-white transition-colors flex items-center gap-2"
-                  >
-                    <Eye className="w-4 h-4" /> View Details
-                  </button>
-                  
-                  {app.verification_document_url && (
-                    <a
-                      href={app.verification_document_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#1D1D1D] hover:text-white transition-colors flex items-center gap-2"
-                    >
-                      <Download className="w-4 h-4" /> View ID
-                    </a>
-                  )}
-
-                  {(app.status === 'pending_review' || app.application_status === 'pending') && (
-                    <>
-                      <button
-                        onClick={() => handleApprove(app)}
-                        disabled={actionLoading}
-                        className="px-6 py-2 bg-[#1D1D1D] text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#389C9A] transition-colors flex items-center gap-2 disabled:opacity-50"
-                      >
-                        <CheckCircle2 className="w-4 h-4" /> Approve
-                      </button>
-                      <button
-                        onClick={() => handleReject(app)}
-                        disabled={actionLoading}
-                        className="px-6 py-2 border-2 border-red-500 text-red-500 text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-red-500 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
-                      >
-                        <XCircle className="w-4 h-4" /> Reject
-                      </button>
-                    </>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 text-[10px]">
+                <div className="bg-[#F8F8F8] p-3 rounded-lg">
+                  <span className="opacity-40 uppercase tracking-widest block mb-1">Contact Person</span>
+                  <span className="font-black uppercase">{app.full_name}</span>
+                  {app.job_title && (
+                    <span className="text-[8px] text-gray-500 block">{app.job_title}</span>
                   )}
                 </div>
+                <div className="bg-[#F8F8F8] p-3 rounded-lg">
+                  <span className="opacity-40 uppercase tracking-widest block mb-1">Email</span>
+                  <span className="font-black text-[#389C9A]">{app.email}</span>
+                </div>
+                <div className="bg-[#F8F8F8] p-3 rounded-lg">
+                  <span className="opacity-40 uppercase tracking-widest block mb-1">Phone</span>
+                  <span className="font-black uppercase">{app.phone_number || 'Not provided'}</span>
+                </div>
+                <div className="bg-[#F8F8F8] p-3 rounded-lg">
+                  <span className="opacity-40 uppercase tracking-widest block mb-1">Verification</span>
+                  <span className={`font-black uppercase flex items-center gap-1 ${
+                    app.verification_document_url ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {app.verification_document_url ? '✅ ID Uploaded' : '❌ No ID'}
+                  </span>
+                </div>
               </div>
+
+              {app.description && (
+                <p className="text-xs text-gray-600 mb-6 line-clamp-2">
+                  {app.description}
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setSelectedApp(app)}
+                  className="px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#1D1D1D] hover:text-white transition-colors flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" /> View Details
+                </button>
+                
+                {app.verification_document_url && (
+                  <a
+                    href={app.verification_document_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#1D1D1D] hover:text-white transition-colors flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" /> View ID
+                  </a>
+                )}
+
+                {(app.status === 'pending_review' || app.application_status === 'pending') && (
+                  <>
+                    <button
+                      onClick={() => handleApprove(app)}
+                      disabled={actionLoading}
+                      className="px-6 py-2 bg-[#1D1D1D] text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#389C9A] transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-4 h-4" /> Approve
+                    </button>
+                    <button
+                      onClick={() => handleReject(app)}
+                      disabled={actionLoading}
+                      className="px-6 py-2 border-2 border-red-500 text-red-500 text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-red-500 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <XCircle className="w-4 h-4" /> Reject
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
             </div>
           ))}
 
