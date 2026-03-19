@@ -101,7 +101,7 @@ export function ConfirmEmail() {
         <div className="flex flex-col gap-2">
           <button
             onClick={() => navigate("/login/portal")}
-            className="w-full bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-2 rounded-xl"
           >
             Go to Login <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
           </button>
@@ -109,7 +109,7 @@ export function ConfirmEmail() {
           <button
             onClick={handleResend}
             disabled={loading || resent}
-            className="w-full border-2 border-[#1D1D1D]/20 py-4 text-[10px] font-black uppercase tracking-widest hover:border-[#1D1D1D] transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
+            className="w-full border-2 border-[#1D1D1D]/20 py-4 text-[10px] font-black uppercase tracking-widest hover:border-[#1D1D1D] transition-colors flex items-center justify-center gap-2 rounded-xl disabled:opacity-40"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
