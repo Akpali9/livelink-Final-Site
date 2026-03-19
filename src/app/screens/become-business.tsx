@@ -208,9 +208,29 @@ export function BecomeBusiness() {
     setIsLoading(true);
     
     const result = await submitRegistration(data, idFile);
-    setIsLoading(false);
     
+    // Add verification after profile creation
     if (result.success) {
+      console.log("✅ Registration successful, verifying profile...");
+      
+      // Get the current user to verify profile was created
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Verify business profile exists
+        const { data: verify, error: verifyError } = await supabase
+          .from("businesses")
+          .select("id, status")
+          .eq("user_id", user.id)
+          .maybeSingle();
+          
+        if (verify) {
+          console.log("✅ Business profile verified in database:", verify);
+        } else {
+          console.error("❌ Could not verify business profile:", verifyError);
+        }
+      }
+      
       setIsSubmitted(true);
       window.scrollTo(0, 0);
       toast.success("Registration submitted successfully!");
@@ -224,6 +244,8 @@ export function BecomeBusiness() {
         });
       }, 3000);
     }
+    
+    setIsLoading(false);
   };
 
   const validateStep = () => {
@@ -292,12 +314,20 @@ export function BecomeBusiness() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <div className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest rounded-none italic flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Redirecting to email confirmation...
-            </div>
+            {/* ✅ UPDATED BUTTON - Goes to email confirmation */}
+            <button
+              onClick={() => navigate("/confirm-email", { 
+                state: { 
+                  email: registeredEmail,
+                  role: "business"
+                } 
+              })}
+              className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
+            >
+              Verify Email Now
+            </button>
             
-            <Link to="/" className="w-full border-2 border-[#1D1D1D] text-[#1D1D1D] px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-none italic text-center">
+            <Link to="/" className="w-full border-2 border-[#1D1D1D] text-[#1D1D1D] px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl italic text-center">
               Return to Homepage
             </Link>
           </div>
@@ -831,23 +861,6 @@ export function BecomeBusiness() {
         {step === 5 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
             <section>
-              <div className="mt-8 flex flex-col gap-4 mb-12">
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input 
-                    type="checkbox" 
-                    {...register("agreeToTerms")}
-                    className="peer hidden" 
-                  />
-                  <div className={`mt-1 w-5 h-5 border-2 flex items-center justify-center transition-all rounded-none ${
-                    agreeToTerms ? 'bg-[#389C9A] border-[#389C9A]' : 'border-[#1D1D1D] bg-white'
-                  }`}>
-                    {agreeToTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
-                  </div>
-                  <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
-                    I agree to LiveLink's Terms of Service and Privacy Policy. <span className="text-red-500">*</span>
-                  </span>
-                </label>
-              </div>
               <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Review Registration</h2>
               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please confirm your details are correct.</p>
               
@@ -874,7 +887,23 @@ export function BecomeBusiness() {
                 </div>
               </div>
 
-              
+              <div className="mt-8 flex flex-col gap-4">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input 
+                    type="checkbox" 
+                    {...register("agreeToTerms")}
+                    className="peer hidden" 
+                  />
+                  <div className={`mt-1 w-5 h-5 border-2 flex items-center justify-center transition-all rounded-none ${
+                    agreeToTerms ? 'bg-[#389C9A] border-[#389C9A]' : 'border-[#1D1D1D] bg-white'
+                  }`}>
+                    {agreeToTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
+                  </div>
+                  <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
+                    I agree to LiveLink's Terms of Service and Privacy Policy. <span className="text-red-500">*</span>
+                  </span>
+                </label>
+              </div>
             </section>
           </motion.div>
         )}
