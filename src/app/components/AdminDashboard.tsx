@@ -840,6 +840,7 @@ export function AdminDashboard() {
     { icon: Building2, label: "Businesses", tab: "businesses", badge: stats.pendingBusinesses },
     { icon: Megaphone, label: "Campaigns", tab: "campaigns", badge: stats.pendingCampaigns },
     { icon: MessageCircle, label: "Support", tab: "support", badge: stats.openSupportTickets },
+    { icon: MessageSquare, label: "Messages", tab: "messages", badge: unreadMessagesCount },
     { icon: Flag, label: "Reports", tab: "reports", badge: stats.reportedContent },
     { icon: CreditCard, label: "Transactions", tab: "transactions", badge: 0 },
     { icon: Settings, label: "Settings", tab: "settings", badge: 0 },
@@ -1238,6 +1239,7 @@ function AdminCreators({
 }) {
   const [creators, setCreators] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [filter, setFilter] = useState<"pending_review" | "active" | "suspended" | "all">("pending_review");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCreator, setSelectedCreator] = useState<any>(null);
@@ -1273,7 +1275,21 @@ function AdminCreators({
       setLoading(false);
     }
   };
-
+useEffect(() => {
+  const fetchUnreadCount = async () => {
+    if (!adminUser) return;
+    
+    const { count } = await supabase
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("is_read", false)
+      .neq("sender_id", adminUser.id);
+      
+    setUnreadMessagesCount(count || 0);
+  };
+  
+  fetchUnreadCount();
+}, [adminUser]);
   useEffect(() => { fetchCreators(); }, [filter, searchTerm]);
 
   const updateCreatorStatus = async (id: string, newStatus: "active" | "suspended") => {
