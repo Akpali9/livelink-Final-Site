@@ -270,7 +270,7 @@ export function useBusinessRegistration() {
           verification_document_url: idDocumentUrl || null,
           verification_status: 'pending',
           application_status: 'pending',
-          status: 'pending_review'
+          status: 'pending'
         })
         .eq('user_id', authData.user.id);
 
