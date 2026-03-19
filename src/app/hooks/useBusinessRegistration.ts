@@ -218,6 +218,9 @@ export function useBusinessRegistration() {
       // Create business profile
       console.log('Creating business profile...');
 
+      // First, verify the businesses table exists and has the right columns
+      console.log('Checking businesses table structure...');
+      
       const { error: profileError } = await supabase
         .from('businesses')
         .insert({
@@ -243,19 +246,22 @@ export function useBusinessRegistration() {
         });
 
       if (profileError) {
-        console.error('Profile creation error:', profileError);
-        toast.warning('Account created but profile setup incomplete. Support will contact you.');
-        
-        // Try to send a notification to admin
-        await supabase.from('notifications').insert({
-          user_id: authData.user.id,
-          title: 'Business Registration Issue',
-          message: `Profile creation failed for ${formData.businessName}. Error: ${profileError.message}`,
-          type: 'system',
-          data: { user_id: authData.user.id, email: cleanEmail },
-          created_at: new Date().toISOString()
+        console.error('🔴 PROFILE CREATION ERROR:', {
+          message: profileError.message,
+          code: profileError.code,
+          details: profileError.details,
+          hint: profileError.hint
         });
+        
+        // ❌ THIS IS THE KEY FIX - Return failure with error
+        return { 
+          success: false, 
+          error: `Failed to create business profile: ${profileError.message}`,
+          user: authData.user
+        };
       }
+
+      console.log('✅ Business profile created successfully');
 
       // Update user metadata with preferences
       await supabase.auth.updateUser({
@@ -284,7 +290,7 @@ export function useBusinessRegistration() {
 
       // Send admin notification
       await supabase.from('notifications').insert({
-        user_id: 'admin', // This will be handled by a separate admin notification system
+        user_id: 'admin',
         title: 'New Business Application',
         message: `${formData.businessName} has submitted an application for review.`,
         type: 'admin_notification',
