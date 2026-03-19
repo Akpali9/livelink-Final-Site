@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouteObject, Navigate } from "react-router";
+import { createBrowserRouter, RouteObject } from "react-router";
 import { Home } from "./screens/home";
 import { LoginPortal } from "./screens/login-portal";
 import { CreatorLogin } from "./screens/creator-login";
@@ -35,7 +35,7 @@ import { BusinessCampaignOverview } from "./screens/business-campaign-overview";
 import { RootLayout } from "../app/components/layout";
 import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
-import { BusinessSettings } from "./screens/BusinessSettings";
+import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
 import { AdminDashboard } from "../app/components/AdminDashboard";
 import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue";
@@ -44,12 +44,11 @@ import { AdminLayout } from "../app/components/AdminLayout";
 import { ForgotPassword } from "./screens/forgot-password";
 import { ResetPassword } from "./screens/reset-password";
 import { Terms } from "./screens/terms";
-import { Privacy } from "./screens/privacy"
+import { Privacy } from "./screens/privacy";
 import { ConfirmEmail } from "./screens/confirm-email";
 import { AdminCampaigns } from "../app/components/AdminCampaigns";
+import { AdminMessages } from "../app/components/AdminMessages"; // Add this if you created the component
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { AuthCallback } from "./screens/auth-callback";
-import { AdminMessages } from "../app/components/AdminMessages";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -111,7 +110,6 @@ const routes: RouteObject[] = [
       { path: "creator/campaign/:id", element: protectCreator(CreatorCampaignDetail) },
       { path: "creator/upcoming-gig/:id", element: protectCreator(UpcomingGigDetail) },
       { path: "settings", element: protectCreator(Settings) },
-      { path: "business/analytics", element: <Navigate to="/business/dashboard" replace /> },
       
       // Protected Business Routes
       { path: "business/dashboard", element: protectBusiness(BusinessDashboard) },
@@ -131,19 +129,18 @@ const routes: RouteObject[] = [
       { path: "campaign/confirmed", element: protectBoth(CampaignAcceptedBusiness) },
       { path: "campaign/declined", element: protectBoth(CampaignDeclined) },
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
-      { path: "auth/callback", Component: AuthCallback },
       
       // Admin Routes with AdminLayout
       {
         path: "admin",
-        element: protectAdmin(AdminLayout),
+        element: protectAdmin(<AdminLayout />),
         children: [
           { index: true, element: <AdminDashboard /> },
           { path: "dashboard", element: <AdminDashboard /> },
           { path: "creators", element: <AdminApplicationQueue /> },
           { path: "businesses", element: <AdminBusinessQueue /> },
           { path: "campaigns", element: <AdminCampaigns /> },
-          { path: "messages", element: <AdminMessages /> },
+          { path: "messages", element: <AdminMessages /> }, // Add if you have this component
         ],
       },
     ],
