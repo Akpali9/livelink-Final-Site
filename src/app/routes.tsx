@@ -119,7 +119,7 @@ const routes: RouteObject[] = [
       { path: "business/campaign/overview/:id", element: protectBusiness(BusinessCampaignOverview) },
       { path: "business/campaign/:id", element: protectBusiness(BusinessCampaignCreators) },
       { path: "business/campaign/:campaignId/creator/:creatorId", element: protectBusiness(BusinessCampaignDetail) },
-      { path: "business/settings", element: protectBusiness(BusinessSettings) }
+      { path: "business/settings", element: protectBusiness(BusinessSettings) },
       { path: "business/submission-success", element: protectBusiness(BusinessSubmissionSuccess) },
       
       // Protected routes for both user types
