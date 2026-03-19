@@ -218,11 +218,9 @@ export function useBusinessRegistration() {
         }
       }
 
-      // Create business profile with correct status values
+      // Create business profile - REMOVED operating_since
       console.log('📝 Creating business profile...');
 
-      // Based on the constraint: ARRAY['pending_verification', 'pending', 'approved', 'rejected']
-      // We use 'pending_verification' for new registrations
       const { error: profileError } = await supabase
         .from('businesses')
         .insert({
@@ -238,11 +236,10 @@ export function useBusinessRegistration() {
           country: formData.country,
           city: formData.city?.trim() || null,
           postcode: formData.postcode?.trim() || null,
-          operating_since: formData.operatingTime || null,
+          // ❌ REMOVED operating_since - this column doesn't exist
           verification_document_url: idDocumentUrl || null,
           verification_status: 'pending',
           application_status: 'pending',
-          // ✅ FIXED: Using the correct value from the constraint
           status: 'pending_verification',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
