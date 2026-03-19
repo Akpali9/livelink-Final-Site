@@ -328,60 +328,65 @@ export function BecomeCreator() {
   };
 
   if (isSubmitted) {
-    return (
-      <div className="flex flex-col min-h-screen bg-white items-center justify-center px-4 sm:px-8 text-[#1D1D1D]">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="text-center max-w-md w-full"
-        >
-          <div className="w-24 h-24 bg-[#1D1D1D] border-2 border-[#FEDB71] flex items-center justify-center mx-auto mb-8">
-            <CheckCircle2 className="w-12 h-12 text-[#389C9A]" />
-          </div>
+  return (
+    <div className="flex flex-col min-h-screen bg-white items-center justify-center px-4 sm:px-8 text-[#1D1D1D]">
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="text-center max-w-md w-full"
+      >
+        <div className="w-24 h-24 bg-[#1D1D1D] border-2 border-[#FEDB71] flex items-center justify-center mx-auto mb-8">
+          <CheckCircle2 className="w-12 h-12 text-[#389C9A]" />
+        </div>
 
-          <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tighter italic mb-4">
-            Application Submitted!
-          </h1>
+        <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tighter italic mb-4">
+          Application Submitted!
+        </h1>
 
-          <p className="text-[#1D1D1D]/60 mb-8 italic text-sm">
-            Thank you for applying to become a creator on LiveLink. Our team will review your application.
-          </p>
+        <p className="text-[#1D1D1D]/60 mb-8 italic text-sm">
+          Thank you for applying to become a creator on LiveLink. Our team will review your application.
+        </p>
 
-          <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-6 mb-8 text-left">
-            <p className="text-[10px] font-black uppercase tracking-widest mb-3 opacity-40 italic">What happens next:</p>
-            <ul className="space-y-3">
-              <li className="flex items-start gap-3 text-sm">
-                <span className="text-[#389C9A] font-black">1.</span>
-                <span className="text-xs">Verify your email address</span>
-              </li>
-              <li className="flex items-start gap-3 text-sm">
-                <span className="text-[#389C9A] font-black">2.</span>
-                <span className="text-xs">Our team reviews your application (usually within 48 hours)</span>
-              </li>
-              <li className="flex items-start gap-3 text-sm">
-                <span className="text-[#389C9A] font-black">3.</span>
-                <span className="text-xs">You'll receive an email at <span className="font-bold">{registeredEmail}</span> once approved</span>
-              </li>
-            </ul>
-          </div>
+        <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-6 mb-8 text-left">
+          <p className="text-[10px] font-black uppercase tracking-widest mb-3 opacity-40 italic">What happens next:</p>
+          <ul className="space-y-3">
+            <li className="flex items-start gap-3 text-sm">
+              <span className="text-[#389C9A] font-black">1.</span>
+              <span className="text-xs">Verify your email address</span>
+            </li>
+            <li className="flex items-start gap-3 text-sm">
+              <span className="text-[#389C9A] font-black">2.</span>
+              <span className="text-xs">Our team reviews your application (usually within 48 hours)</span>
+            </li>
+            <li className="flex items-start gap-3 text-sm">
+              <span className="text-[#389C9A] font-black">3.</span>
+              <span className="text-xs">You'll receive an email at <span className="font-bold">{registeredEmail}</span> once approved</span>
+            </li>
+          </ul>
+        </div>
 
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => navigate("/login/creator")}
-              className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
-            >
-              Go to Creator Login
-            </button>
-            
-            <Link to="/" className="w-full border-2 border-[#1D1D1D] text-[#1D1D1D] px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl text-center">
-              Return to Homepage
-            </Link>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
+        <div className="flex flex-col gap-3">
+          {/* 👇 NEW BUTTON - Go to Email Confirmation */}
+          <button
+            onClick={() => navigate("/confirm-email", { 
+              state: { 
+                email: registeredEmail,
+                role: "creator" 
+              } 
+            })}
+            className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
+          >
+            Verify Email Now
+          </button>
+          
+          <Link to="/" className="w-full border-2 border-[#1D1D1D] text-[#1D1D1D] px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl text-center">
+            Return to Homepage
+          </Link>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
   return (
     <div className="flex flex-col min-h-screen bg-white pb-32 text-[#1D1D1D]">
       <div className="px-4 sm:px-8 pt-12 pb-8 border-b-2 border-[#1D1D1D]">
