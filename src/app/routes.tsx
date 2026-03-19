@@ -38,12 +38,14 @@ import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
 import { AdminDashboard } from "../app/components/AdminDashboard";
-import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue"; // ✅ Fixed import
+import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue";
+import { AdminBusinessQueue } from "../app/components/AdminBusinessQueue";
+import { AdminLayout } from "../app/components/AdminLayout";
 import { ForgotPassword } from "./screens/forgot-password";
 import { ResetPassword } from "./screens/reset-password";
 import { Terms } from "./screens/terms";
 import { Privacy } from "./screens/privacy";
-import { AdminBusinessQueue } from "../app/components/AdminBusinessQueue";
+import { ConfirmEmail } from "./screens/confirm-email";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -85,6 +87,11 @@ const routes: RouteObject[] = [
       { path: "browse-businesses", Component: BrowseBusinesses },
       { path: "become-creator", Component: BecomeCreator },
       { path: "become-business", Component: BecomeBusiness },
+      { path: "forgot-password", Component: ForgotPassword },
+      { path: "reset-password", Component: ResetPassword },
+      { path: "confirm-email", Component: ConfirmEmail },
+      { path: "terms", Component: Terms },
+      { path: "privacy", Component: Privacy },
       
       // Protected Creator Routes
       { path: "dashboard", element: protectCreator(Dashboard) },
@@ -118,28 +125,18 @@ const routes: RouteObject[] = [
       { path: "campaign/confirmed", element: protectBoth(CampaignAcceptedBusiness) },
       { path: "campaign/declined", element: protectBoth(CampaignDeclined) },
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
-      { path: "forgot-password", Component: ForgotPassword },
-      { path: "reset-password", Component: ResetPassword },
-      { path: "terms", Component: Terms },
-      { path: "privacy", Component: Privacy },
-      { path: "admin/businesses", element: protectAdmin(AdminBusinessQueue)}
       
-      // ✅ ADMIN ROUTES - CORRECTED
-      { 
-        path: "admin", 
-        element: protectAdmin(AdminDashboard) 
-      },
-      { 
-        path: "admin/dashboard", 
-        element: protectAdmin(AdminDashboard) 
-      },
-      { 
-        path: "admin/creators", 
-        element: protectAdmin(AdminApplicationQueue) // ✅ Fixed: protectAdmin instead of protectBoth
-      },
-      { 
-        path: "admin/applications", 
-        element: protectAdmin(AdminApplicationQueue) // ✅ Fixed: protectAdmin instead of protectBoth
+      // Admin Routes with AdminLayout
+      {
+        path: "admin",
+        element: protectAdmin(<AdminLayout />),
+        children: [
+          { index: true, element: <AdminDashboard /> },
+          { path: "dashboard", element: <AdminDashboard /> },
+          { path: "creators", element: <AdminApplicationQueue /> },
+          { path: "businesses", element: <AdminBusinessQueue /> },
+          { path: "campaigns", element: <AdminCampaigns /> },
+        ],
       },
     ],
   },
