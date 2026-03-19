@@ -699,6 +699,17 @@ export function BecomeCreator() {
           {step === 5 && (
             <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-12">
               <section>
+                <div className="mt-8 mb-12">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" required className="peer hidden" />
+                    <div className="mt-1 w-5 h-5 border-2 border-[#1D1D1D] flex items-center justify-center bg-white peer-checked:bg-[#389C9A] peer-checked:border-[#389C9A] transition-all flex-shrink-0">
+                      <CheckCircle2 className="w-3 h-3 text-white" />
+                    </div>
+                    <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
+                      I agree to LiveLink's Terms of Service and Privacy Policy. I confirm all information provided is accurate.
+                    </span>
+                  </label>
+                </div>
                 <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Final Review</h2>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please confirm your details before submitting.</p>
                 <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-8 flex flex-col gap-6">
@@ -719,17 +730,7 @@ export function BecomeCreator() {
                     <span className="text-[10px] font-black uppercase">{frequency || "Not entered"}</span>
                   </div>
                 </div>
-                <div className="mt-8">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input type="checkbox" required className="peer hidden" />
-                    <div className="mt-1 w-5 h-5 border-2 border-[#1D1D1D] flex items-center justify-center bg-white peer-checked:bg-[#389C9A] peer-checked:border-[#389C9A] transition-all flex-shrink-0">
-                      <CheckCircle2 className="w-3 h-3 text-white" />
-                    </div>
-                    <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
-                      I agree to LiveLink's Terms of Service and Privacy Policy. I confirm all information provided is accurate.
-                    </span>
-                  </label>
-                </div>
+                
               </section>
             </motion.div>
           )}
