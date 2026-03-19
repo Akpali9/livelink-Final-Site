@@ -27,18 +27,26 @@ export function AuthCallback() {
           // Check if business profile exists
           const { data: business, error: businessError } = await supabase
             .from("businesses")
-            .select("id, status")
+            .select("id, status, application_status")
             .eq("user_id", user.id)
             .maybeSingle();
 
-          if (businessError) throw businessError;
+          if (businessError) {
+            console.error("Error checking business:", businessError);
+          }
 
           if (business) {
+            console.log("Business profile found, status:", business.status);
             // Business exists - go to dashboard (they'll see pending banner if needed)
             navigate("/business/dashboard", { replace: true });
           } else {
-            // No business profile - needs to complete registration
-            navigate("/become-business", { replace: true });
+            console.log("No business profile found, but user exists - redirecting to complete registration");
+            // This might happen if profile creation failed during signup
+            // Redirect to complete registration with email pre-filled
+            navigate("/become-business", { 
+              replace: true,
+              state: { email: user.email }
+            });
           }
         } else {
           // Creator role
@@ -48,14 +56,21 @@ export function AuthCallback() {
             .eq("user_id", user.id)
             .maybeSingle();
 
-          if (creatorError) throw creatorError;
+          if (creatorError) {
+            console.error("Error checking creator:", creatorError);
+          }
 
           if (creator) {
+            console.log("Creator profile found, status:", creator.status);
             // Creator exists - go to dashboard (they'll see pending banner if needed)
             navigate("/dashboard", { replace: true });
           } else {
-            // No creator profile - needs to complete registration
-            navigate("/become-creator", { replace: true });
+            console.log("No creator profile found, but user exists - redirecting to complete registration");
+            // This might happen if profile creation failed during signup
+            navigate("/become-creator", { 
+              replace: true,
+              state: { email: user.email }
+            });
           }
         }
 
