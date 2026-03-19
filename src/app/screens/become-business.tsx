@@ -77,9 +77,26 @@ export function BecomeBusiness() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [registeredEmail, setRegisteredEmail] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [rejectedEmail, setRejectedEmail] = useState("");
+  const [isReRegister, setIsReRegister] = useState(false);
   const { submitRegistration, loading, error } = useBusinessRegistration();
 
+
+  useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const email = params.get("email");
+  const rejected = params.get("rejected");
+  
+  if (email) {
+    setRejectedEmail(email);
+    setValue("email", email);
+  }
+  
+  if (rejected === "true") {
+    setIsReRegister(true);
+    toast.info("Please submit a new application with updated information");
+  }
+}, []);
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
