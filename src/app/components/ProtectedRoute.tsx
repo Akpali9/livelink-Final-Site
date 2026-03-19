@@ -1,4 +1,4 @@
-import { Navigate } from "react-router";
+import { Navigate } from "react-router"; // ✅ Add this import
 import { supabase } from "../lib/supabase";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
