@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router";
-import { Mail, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { Mail, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { motion } from "motion/react";
 import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
@@ -53,42 +53,12 @@ export function ForgotPassword() {
             We've sent a password reset link to <span className="font-bold text-[#389C9A]">{email}</span>
           </p>
 
-          <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-6 mb-8 text-left">
-            <h3 className="text-[10px] font-black uppercase tracking-widest mb-4 opacity-40">
-              What happens next
-            </h3>
-            <div className="space-y-4">
-              <div className="flex gap-3">
-                <span className="text-[#389C9A] font-black">1.</span>
-                <p className="text-xs font-medium">Click the link in the email</p>
-              </div>
-              <div className="flex gap-3">
-                <span className="text-[#389C9A] font-black">2.</span>
-                <p className="text-xs font-medium">Create a new password</p>
-              </div>
-              <div className="flex gap-3">
-                <span className="text-[#389C9A] font-black">3.</span>
-                <p className="text-xs font-medium">Log in with your new password</p>
-              </div>
-            </div>
-          </div>
-
           <button
             onClick={() => navigate("/login/portal")}
-            className="w-full bg-[#1D1D1D] text-white py-4 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all flex items-center justify-center gap-2"
+            className="w-full bg-[#1D1D1D] text-white py-4 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all"
           >
-            Return to Login <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
+            Return to Login
           </button>
-
-          <p className="text-[8px] text-[#1D1D1D]/30 text-center mt-6">
-            Didn't receive the email? Check your spam folder or{" "}
-            <button
-              onClick={() => setSubmitted(false)}
-              className="text-[#389C9A] font-black hover:underline"
-            >
-              try again
-            </button>
-          </p>
         </motion.div>
       </div>
     );
@@ -97,7 +67,6 @@ export function ForgotPassword() {
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-md">
-        {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-black uppercase tracking-tighter italic mb-2">
             Forgot Password?
@@ -107,7 +76,6 @@ export function ForgotPassword() {
           </p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1D1D1D]/30" />
@@ -147,10 +115,6 @@ export function ForgotPassword() {
             ← Back to Login
           </button>
         </form>
-
-        <p className="text-[8px] text-[#1D1D1D]/20 text-center mt-8">
-          We'll send you a link to reset your password. The link will expire in 1 hour.
-        </p>
       </div>
     </div>
   );
