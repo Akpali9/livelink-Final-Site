@@ -92,26 +92,25 @@ export function BecomeCreator() {
   const country = watch("country");
   const frequency = watch("frequency");
 
-  useEffect(() => {
-    if (!isSubmitted) return;
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          navigate("/login/creator", {
-            state: {
-              message: "Your creator application has been submitted! Please login to check your status.",
-              type: "success",
-              email: registeredEmail,
-            },
-            replace: true,
-          });
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isSubmitted, navigate, registeredEmail]);
+ useEffect(() => {
+  if (!isSubmitted) return;
+  const timer = setInterval(() => {
+    setCountdown((prev) => {
+      if (prev <= 1) {
+        clearInterval(timer);
+        navigate("/confirm-email", { 
+          state: { 
+            email: registeredEmail,
+            role: "creator"
+          },
+          replace: true,
+        });
+      }
+      return prev - 1;
+    });
+  }, 1000);
+  return () => clearInterval(timer);
+}, [isSubmitted, navigate, registeredEmail]);
 
   const uploadVerificationDocument = async (file: File, userId: string): Promise<string | null> => {
     try {
