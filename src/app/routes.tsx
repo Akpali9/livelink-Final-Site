@@ -49,6 +49,7 @@ import { ConfirmEmail } from "./screens/confirm-email";
 import { AdminCampaigns } from "../app/components/AdminCampaigns";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AuthCallback } from "./screens/auth-callback";
+import { AdminMessages } from "../app/components/AdminMessages";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -142,6 +143,7 @@ const routes: RouteObject[] = [
           { path: "creators", element: <AdminApplicationQueue /> },
           { path: "businesses", element: <AdminBusinessQueue /> },
           { path: "campaigns", element: <AdminCampaigns /> },
+          { path: "messages", element: <AdminMessages /> },
         ],
       },
     ],
