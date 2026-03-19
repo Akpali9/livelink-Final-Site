@@ -154,7 +154,7 @@ export function useBusinessRegistration() {
       }
 
       // Create auth user
-      console.log('Creating auth user for:', cleanEmail);
+      console.log('📝 Creating auth user for:', cleanEmail);
 
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: cleanEmail,
@@ -174,7 +174,7 @@ export function useBusinessRegistration() {
       });
 
       if (signUpError) {
-        console.error('Signup error details:', signUpError);
+        console.error('❌ Signup error:', signUpError);
         
         if (signUpError.message.includes('User already registered') || 
             signUpError.code === 'email_exists' ||
@@ -199,36 +199,66 @@ export function useBusinessRegistration() {
         throw new Error('Failed to create user account - no user returned');
       }
 
-      console.log('Auth user created successfully:', authData.user.id);
+      console.log('✅ Auth user created successfully:', authData.user.id);
 
       const needsEmailConfirmation = !authData.user?.confirmed_at;
 
       // Upload ID document
       let idDocumentUrl = '';
-      const uploadResult = await uploadIdDocument(idFile, authData.user.id);
-      
-      if (uploadResult.success) {
-        idDocumentUrl = uploadResult.url || '';
-        console.log('ID document uploaded successfully');
-      } else {
-        console.warn('ID upload failed:', uploadResult.error);
-        toast.warning('ID upload failed but we saved your application. Support will contact you.');
+      if (idFile) {
+        console.log('📝 Uploading ID document...');
+        const uploadResult = await uploadIdDocument(idFile, authData.user.id);
+        
+        if (uploadResult.success) {
+          idDocumentUrl = uploadResult.url || '';
+          console.log('✅ ID document uploaded successfully');
+        } else {
+          console.warn('⚠️ ID upload failed:', uploadResult.error);
+          toast.warning('ID upload failed but we saved your application. Support will contact you.');
+        }
       }
 
-      // Create business profile
-      console.log('Creating business profile...');
-
-      // First, verify the businesses table exists and has the right columns
-      console.log('Checking businesses table structure...');
+      // MINIMAL INSERT TEST - First try with just the essentials
+      console.log('📝 Attempting minimal business profile insert...');
       
-      const { error: profileError } = await supabase
+      const minimalData = {
+        user_id: authData.user.id,
+        business_name: formData.businessName.trim(),
+        email: cleanEmail,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('📝 Minimal data:', minimalData);
+
+      const { data: minimalResult, error: minimalError } = await supabase
         .from('businesses')
-        .insert({
-          user_id: authData.user.id,
-          business_name: formData.businessName.trim(),
+        .insert(minimalData)
+        .select();
+
+      if (minimalError) {
+        console.error('❌ Minimal insert failed:', {
+          message: minimalError.message,
+          code: minimalError.code,
+          details: minimalError.details,
+          hint: minimalError.hint
+        });
+        
+        return { 
+          success: false, 
+          error: `Failed to create business profile: ${minimalError.message}`,
+          user: authData.user
+        };
+      }
+
+      console.log('✅ Minimal insert succeeded:', minimalResult);
+
+      // Now update with additional fields if needed
+      const { error: updateError } = await supabase
+        .from('businesses')
+        .update({
           full_name: formData.fullName.trim(),
           job_title: formData.jobTitle.trim(),
-          email: cleanEmail,
           phone_number: `${formData.phoneCountryCode}${formData.phoneNumber}`,
           industry: formData.industry,
           description: formData.description?.trim() || null,
@@ -240,28 +270,16 @@ export function useBusinessRegistration() {
           verification_document_url: idDocumentUrl || null,
           verification_status: 'pending',
           application_status: 'pending',
-          status: 'pending_review',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
+          status: 'pending_review'
+        })
+        .eq('user_id', authData.user.id);
 
-      if (profileError) {
-        console.error('🔴 PROFILE CREATION ERROR:', {
-          message: profileError.message,
-          code: profileError.code,
-          details: profileError.details,
-          hint: profileError.hint
-        });
-        
-        // ❌ THIS IS THE KEY FIX - Return failure with error
-        return { 
-          success: false, 
-          error: `Failed to create business profile: ${profileError.message}`,
-          user: authData.user
-        };
+      if (updateError) {
+        console.warn('⚠️ Partial update failed:', updateError);
+        toast.warning('Basic profile created but some details could not be saved.');
+      } else {
+        console.log('✅ Business profile fully updated');
       }
-
-      console.log('✅ Business profile created successfully');
 
       // Update user metadata with preferences
       await supabase.auth.updateUser({
@@ -288,16 +306,6 @@ export function useBusinessRegistration() {
         created_at: new Date().toISOString()
       });
 
-      // Send admin notification
-      await supabase.from('notifications').insert({
-        user_id: 'admin',
-        title: 'New Business Application',
-        message: `${formData.businessName} has submitted an application for review.`,
-        type: 'admin_notification',
-        data: { business_name: formData.businessName, user_id: authData.user.id },
-        created_at: new Date().toISOString()
-      });
-
       const successMessage = needsEmailConfirmation
         ? 'Registration submitted! Please check your email to confirm your account.'
         : 'Registration submitted successfully! You can now log in.';
@@ -311,7 +319,7 @@ export function useBusinessRegistration() {
       };
 
     } catch (err: any) {
-      console.error('Registration error:', err);
+      console.error('❌ Registration error:', err);
       setError(err.message);
       toast.error(err.message);
       return { success: false, error: err.message };
