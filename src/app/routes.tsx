@@ -44,7 +44,7 @@ import { AdminLayout } from "../app/components/AdminLayout";
 import { ForgotPassword } from "./screens/forgot-password";
 import { ResetPassword } from "./screens/reset-password";
 import { Terms } from "./screens/terms";
-import { Privacy } from "./screens/privacy";
+import { Privacy } from "./screens/privacy"
 import { ConfirmEmail } from "./screens/confirm-email";
 
 // Helper functions for protected routes
