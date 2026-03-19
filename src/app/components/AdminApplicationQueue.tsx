@@ -24,6 +24,51 @@ interface ApplicationRow {
   creator_platforms: { platform_type: string; followers_count: number }[];
 }
 
+// Helper function to get user email safely
+async function getUserEmail(userId: string): Promise<string | null> {
+  try {
+    // Try to get from creator_profiles first
+    const { data: profile } = await supabase
+      .from("creator_profiles")
+      .select("email")
+      .eq("user_id", userId)
+      .maybeSingle();
+    
+    if (profile?.email) return profile.email;
+
+    // If not found, try to get from auth via RPC (if available)
+    const { data: userData } = await supabase
+      .rpc('get_user_email', { user_id: userId })
+      .maybeSingle();
+    
+    return userData?.email || null;
+  } catch (error) {
+    console.error("Error fetching user email:", error);
+    return null;
+  }
+}
+
+// Helper function to update user metadata safely
+async function updateUserMetadata(userId: string, metadata: any): Promise<boolean> {
+  try {
+    // Try using RPC first (if available)
+    const { error } = await supabase
+      .rpc('update_user_metadata', {
+        target_user_id: userId,
+        new_metadata: metadata
+      });
+    
+    if (!error) return true;
+
+    // Fallback: just log that we can't update metadata
+    console.log("Cannot update user metadata, but profile was updated");
+    return true; // Still return true since profile was updated
+  } catch (error) {
+    console.error("Error updating user metadata:", error);
+    return false;
+  }
+}
+
 export function AdminApplicationQueue() {
   const navigate = useNavigate();
   const [applications, setApplications] = useState<ApplicationRow[]>([]);
@@ -33,6 +78,12 @@ export function AdminApplicationQueue() {
   const [filter, setFilter] = useState<"all" | "pending_review" | "active" | "rejected">("pending_review");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [adminUser, setAdminUser] = useState<any>(null);
+  const [stats, setStats] = useState({
+    pending: 0,
+    active: 0,
+    rejected: 0,
+    total: 0
+  });
 
   useEffect(() => {
     const getAdmin = async () => {
@@ -41,11 +92,35 @@ export function AdminApplicationQueue() {
     };
     getAdmin();
     fetchApplications();
+    fetchStats();
   }, []);
 
   useEffect(() => {
     fetchApplications();
   }, [filter]);
+
+  const fetchStats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("creator_profiles")
+        .select("status");
+
+      if (error) throw error;
+
+      const pending = data?.filter(a => a.status === "pending_review").length || 0;
+      const active = data?.filter(a => a.status === "active").length || 0;
+      const rejected = data?.filter(a => a.status === "rejected").length || 0;
+
+      setStats({
+        pending,
+        active,
+        rejected,
+        total: data?.length || 0
+      });
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    }
+  };
 
   const fetchApplications = async () => {
     setLoading(true);
@@ -90,7 +165,7 @@ export function AdminApplicationQueue() {
     setActionLoading(true);
     try {
       // Update creator profile
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from("creator_profiles")
         .update({ 
           status: "active",
@@ -99,26 +174,21 @@ export function AdminApplicationQueue() {
         })
         .eq("id", application.id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
-      // Update user metadata
-      await supabase.auth.admin.updateUserById(
-        application.user_id,
-        {
-          user_metadata: {
-            creator_approved: true,
-            approved_at: new Date().toISOString(),
-            application_status: "approved"
-          }
-        }
-      );
+      // Try to update user metadata (optional)
+      await updateUserMetadata(application.user_id, {
+        creator_approved: true,
+        approved_at: new Date().toISOString(),
+        application_status: "approved"
+      });
 
       // Send notification to creator
       await supabase.from("notifications").insert({
         user_id: application.user_id,
         type: "creator_approved",
         title: "🎉 Application Approved!",
-        message: `Congratulations ${application.full_name}! Your creator application has been approved. You can now start accepting offers!`,
+        message: `Congratulations ${application.full_name || "Creator"}! Your creator application has been approved. You can now start accepting offers!`,
         data: { creator_id: application.id },
         created_at: new Date().toISOString()
       });
@@ -130,12 +200,16 @@ export function AdminApplicationQueue() {
         action_type: "APPROVE_CREATOR",
         resource_type: "creator",
         resource_id: application.id,
-        details: { creator_name: application.full_name, creator_email: application.email },
+        details: { 
+          creator_name: application.full_name, 
+          creator_email: application.email 
+        },
         created_at: new Date().toISOString()
       });
 
-      toast.success(`${application.full_name} approved successfully`);
+      toast.success(`${application.full_name || "Creator"} approved successfully`);
       fetchApplications();
+      fetchStats();
     } catch (error) {
       console.error("Error approving creator:", error);
       toast.error("Failed to approve creator");
@@ -173,12 +247,16 @@ export function AdminApplicationQueue() {
         action_type: "REJECT_CREATOR",
         resource_type: "creator",
         resource_id: application.id,
-        details: { creator_name: application.full_name, creator_email: application.email },
+        details: { 
+          creator_name: application.full_name, 
+          creator_email: application.email 
+        },
         created_at: new Date().toISOString()
       });
 
-      toast.success(`${application.full_name} rejected`);
+      toast.success(`${application.full_name || "Creator"} rejected`);
       fetchApplications();
+      fetchStats();
     } catch (error) {
       console.error("Error rejecting creator:", error);
       toast.error("Failed to reject creator");
@@ -216,18 +294,17 @@ export function AdminApplicationQueue() {
       if (updateError) throw updateError;
 
       for (const creator of creators || []) {
-        await supabase.auth.admin.updateUserById(creator.user_id, {
-          user_metadata: {
-            creator_approved: true,
-            approved_at: new Date().toISOString()
-          }
+        // Try to update metadata (optional)
+        await updateUserMetadata(creator.user_id, {
+          creator_approved: true,
+          approved_at: new Date().toISOString()
         });
 
         await supabase.from("notifications").insert({
           user_id: creator.user_id,
           type: "creator_approved",
           title: "🎉 Application Approved!",
-          message: `Congratulations ${creator.full_name}! Your creator application has been approved.`,
+          message: `Congratulations ${creator.full_name || "Creator"}! Your creator application has been approved.`,
           data: { creator_id: creator.id },
           created_at: new Date().toISOString()
         });
@@ -245,6 +322,7 @@ export function AdminApplicationQueue() {
       toast.success(`✅ Approved ${selectedItems.length} creators`);
       setSelectedItems([]);
       fetchApplications();
+      fetchStats();
     } catch (error) {
       console.error("Error in bulk approve:", error);
       toast.error("Failed to approve selected creators");
@@ -304,6 +382,7 @@ export function AdminApplicationQueue() {
       toast.success(`Rejected ${selectedItems.length} creators`);
       setSelectedItems([]);
       fetchApplications();
+      fetchStats();
     } catch (error) {
       console.error("Error in bulk reject:", error);
       toast.error("Failed to reject selected creators");
@@ -315,6 +394,7 @@ export function AdminApplicationQueue() {
   const refresh = async () => {
     setRefreshing(true);
     await fetchApplications();
+    await fetchStats();
     setRefreshing(false);
   };
 
@@ -348,10 +428,16 @@ export function AdminApplicationQueue() {
       <AppHeader showLogo userType="admin" subtitle="Admin Panel" />
 
       <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Header with Stats */}
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-black uppercase tracking-tighter italic">Creator Applications</h1>
-            <p className="text-xs text-gray-400 mt-1">{applications.length} applications</p>
+            <div className="flex gap-4 mt-2 text-sm">
+              <span className="text-[#FEDB71] font-black">Pending: {stats.pending}</span>
+              <span className="text-green-600 font-black">Active: {stats.active}</span>
+              <span className="text-red-600 font-black">Rejected: {stats.rejected}</span>
+              <span className="text-gray-600 font-black">Total: {stats.total}</span>
+            </div>
           </div>
           <div className="flex gap-3">
             {selectedItems.length > 0 && (
@@ -384,6 +470,7 @@ export function AdminApplicationQueue() {
           </div>
         </div>
 
+        {/* Filter Tabs */}
         <div className="flex gap-2 mb-8 border-b border-[#1D1D1D]/10">
           {(["pending_review", "active", "rejected", "all"] as const).map(tab => (
             <button
@@ -395,30 +482,33 @@ export function AdminApplicationQueue() {
                   : "text-gray-400 hover:text-[#1D1D1D]"
               }`}
             >
-              {tab === "pending_review" ? "Pending" : tab} ({applications.filter(a => 
-                tab === "all" ? true : a.status === tab
-              ).length})
+              {tab === "pending_review" ? "Pending" : tab} ({tab === "all" ? stats.total : 
+                tab === "pending_review" ? stats.pending :
+                tab === "active" ? stats.active : stats.rejected})
             </button>
           ))}
         </div>
 
-        <div className="mb-4 flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
-          <button onClick={toggleSelectAll} className="flex items-center gap-2">
-            {selectedItems.length === applications.length ? (
-              <CheckSquare className="w-5 h-5 text-[#389C9A]" />
-            ) : (
-              <Square className="w-5 h-5 text-gray-400" />
+        {/* Select All Bar */}
+        {filter === "pending_review" && applications.length > 0 && (
+          <div className="mb-4 flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+            <button onClick={toggleSelectAll} className="flex items-center gap-2">
+              {selectedItems.length === applications.length ? (
+                <CheckSquare className="w-5 h-5 text-[#389C9A]" />
+              ) : (
+                <Square className="w-5 h-5 text-gray-400" />
+              )}
+              <span className="text-xs font-black uppercase tracking-widest">
+                {selectedItems.length === applications.length ? "Deselect All" : "Select All Pending"}
+              </span>
+            </button>
+            {selectedItems.length > 0 && (
+              <span className="text-xs text-gray-500">
+                {selectedItems.length} of {applications.length} selected
+              </span>
             )}
-            <span className="text-xs font-black uppercase tracking-widest">
-              {selectedItems.length === applications.length ? "Deselect All" : "Select All"}
-            </span>
-          </button>
-          {selectedItems.length > 0 && (
-            <span className="text-xs text-gray-500">
-              {selectedItems.length} of {applications.length} selected
-            </span>
-          )}
-        </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center h-64">
@@ -436,16 +526,26 @@ export function AdminApplicationQueue() {
                 key={app.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="border-2 border-[#1D1D1D] p-6 rounded-xl hover:shadow-lg transition-shadow"
+                className={`border-2 p-6 rounded-xl hover:shadow-lg transition-shadow ${
+                  selectedItems.includes(app.id) && filter === "pending_review"
+                    ? 'border-[#389C9A] bg-[#389C9A]/5' 
+                    : 'border-[#1D1D1D]'
+                }`}
               >
                 <div className="flex items-start gap-4">
-                  <button onClick={() => toggleSelectItem(app.id)} className="mt-1">
-                    {selectedItems.includes(app.id) ? (
-                      <CheckSquare className="w-5 h-5 text-[#389C9A]" />
-                    ) : (
-                      <Square className="w-5 h-5 text-gray-400" />
-                    )}
-                  </button>
+                  {/* Selection checkbox - only show for pending */}
+                  {filter === "pending_review" && (
+                    <button
+                      onClick={() => toggleSelectItem(app.id)}
+                      className="mt-1"
+                    >
+                      {selectedItems.includes(app.id) ? (
+                        <CheckSquare className="w-5 h-5 text-[#389C9A]" />
+                      ) : (
+                        <Square className="w-5 h-5 text-gray-400" />
+                      )}
+                    </button>
+                  )}
 
                   <div className="flex-1">
                     <div className="flex items-start justify-between gap-4 mb-4">
@@ -472,6 +572,7 @@ export function AdminApplicationQueue() {
                       </div>
                     </div>
 
+                    {/* Niches */}
                     {app.niche && app.niche.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-4">
                         {app.niche.map(n => (
@@ -482,6 +583,7 @@ export function AdminApplicationQueue() {
                       </div>
                     )}
 
+                    {/* Stats */}
                     <div className="flex gap-6 mb-4 text-[9px] font-black uppercase">
                       <span className="flex items-center gap-1">
                         <Users className="w-3 h-3 text-[#389C9A]" />
@@ -495,19 +597,36 @@ export function AdminApplicationQueue() {
                       )}
                     </div>
 
+                    {/* Platforms preview */}
+                    {app.creator_platforms && app.creator_platforms.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {app.creator_platforms.slice(0, 3).map((p, i) => (
+                          <span key={i} className="text-[8px] bg-gray-100 px-2 py-1 rounded-full">
+                            {p.platform_type}: {p.followers_count?.toLocaleString() || 0}
+                          </span>
+                        ))}
+                        {app.creator_platforms.length > 3 && (
+                          <span className="text-[8px] bg-gray-100 px-2 py-1 rounded-full">
+                            +{app.creator_platforms.length - 3} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action Buttons - only for pending */}
                     {app.status === "pending_review" && (
                       <div className="flex gap-3 mt-6">
                         <button
                           onClick={() => handleApprove(app)}
                           disabled={actionLoading}
-                          className="flex-1 bg-[#1D1D1D] text-white py-3 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-2"
+                          className="flex-1 bg-[#1D1D1D] text-white py-3 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           <CheckCircle className="w-3.5 h-3.5" /> Approve
                         </button>
                         <button
                           onClick={() => handleReject(app)}
                           disabled={actionLoading}
-                          className="flex-1 border-2 border-[#1D1D1D] py-3 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center gap-2"
+                          className="flex-1 border-2 border-[#1D1D1D] py-3 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           <XCircle className="w-3.5 h-3.5" /> Reject
                         </button>
