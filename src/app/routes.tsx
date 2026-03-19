@@ -55,6 +55,7 @@ const protectCreator = (Component: React.ComponentType) => (
   </ProtectedRoute>
 );
 
+
 const protectBusiness = (Component: React.ComponentType) => (
   <ProtectedRoute userType="business">
     <Component />
