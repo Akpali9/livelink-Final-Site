@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { AdminBusinessQueue } from './AdminBusinessQueue';
-{activeTab === "businesses" && (
-  <AdminBusinessQueue />
-)}
 import {
   Users,
   Building2,
@@ -467,7 +463,6 @@ export function AdminDashboard() {
     
     setActionLoading(true);
     try {
-      // Get all pending businesses with user_ids
       const { data: pendingBusinesses, error: fetchError } = await supabase
         .from("businesses")
         .select("id, user_id, email, business_name")
@@ -480,7 +475,6 @@ export function AdminDashboard() {
         return;
       }
 
-      // Update all businesses to approved
       const { error: updateError } = await supabase
         .from("businesses")
         .update({ 
@@ -494,11 +488,9 @@ export function AdminDashboard() {
 
       if (updateError) throw updateError;
 
-      // Update user metadata and send notifications for each business owner
       for (const business of pendingBusinesses) {
         if (business.user_id) {
           try {
-            // Update user metadata
             const metadata = await getUserMetadata(business.user_id);
             await supabase.auth.admin.updateUserById(
               business.user_id,
@@ -511,7 +503,6 @@ export function AdminDashboard() {
               }
             );
 
-            // Send notification
             await sendApprovalNotification(
               business.user_id, 
               'business', 
@@ -523,7 +514,6 @@ export function AdminDashboard() {
         }
       }
 
-      // Log admin action
       await logAdminAction("BULK_APPROVE", "businesses", { 
         count: pendingBusinesses.length,
         business_ids: pendingBusinesses.map(b => b.id)
@@ -547,7 +537,6 @@ export function AdminDashboard() {
     
     setActionLoading(true);
     try {
-      // Get all pending creators with user_ids
       const { data: pendingCreators, error: fetchError } = await supabase
         .from("creator_profiles")
         .select("id, user_id, full_name, email")
@@ -560,7 +549,6 @@ export function AdminDashboard() {
         return;
       }
 
-      // Update all creators to active
       const { error: updateError } = await supabase
         .from("creator_profiles")
         .update({ 
@@ -572,11 +560,9 @@ export function AdminDashboard() {
 
       if (updateError) throw updateError;
 
-      // Update user metadata and send notifications for each creator
       for (const creator of pendingCreators) {
         if (creator.user_id) {
           try {
-            // Update user metadata
             const metadata = await getUserMetadata(creator.user_id);
             await supabase.auth.admin.updateUserById(
               creator.user_id,
@@ -589,7 +575,6 @@ export function AdminDashboard() {
               }
             );
 
-            // Send notification
             await sendApprovalNotification(
               creator.user_id, 
               'creator', 
@@ -601,7 +586,6 @@ export function AdminDashboard() {
         }
       }
 
-      // Log admin action
       await logAdminAction("BULK_APPROVE", "creators", { 
         count: pendingCreators.length,
         creator_ids: pendingCreators.map(c => c.id)
@@ -625,7 +609,6 @@ export function AdminDashboard() {
     
     setActionLoading(true);
     try {
-      // Get all pending campaigns with business info
       const { data: pendingCampaigns, error: fetchError } = await supabase
         .from("campaigns")
         .select("id, business_id, name, title")
@@ -638,7 +621,6 @@ export function AdminDashboard() {
         return;
       }
 
-      // Update all campaigns to active
       const { error: updateError } = await supabase
         .from("campaigns")
         .update({ 
@@ -650,11 +632,9 @@ export function AdminDashboard() {
 
       if (updateError) throw updateError;
 
-      // Create notifications for businesses
       for (const campaign of pendingCampaigns) {
         if (campaign.business_id) {
           try {
-            // Get business user_id
             const { data: business } = await supabase
               .from("businesses")
               .select("user_id")
@@ -677,7 +657,6 @@ export function AdminDashboard() {
         }
       }
 
-      // Log admin action
       await logAdminAction("BULK_APPROVE", "campaigns", { 
         count: pendingCampaigns.length,
         campaign_ids: pendingCampaigns.map(c => c.id)
@@ -727,7 +706,6 @@ export function AdminDashboard() {
 
       if (updateError) throw updateError;
 
-      // Get details for notifications
       let items: any[] = [];
       if (type === 'business') {
         const { data } = await supabase.from("businesses").select("id, user_id, business_name").in('id', selectedItems);
@@ -740,7 +718,6 @@ export function AdminDashboard() {
         items = data || [];
       }
 
-      // Send notifications
       for (const item of items) {
         if (type === 'campaign' && item.business_id) {
           const { data: business } = await supabase
@@ -1019,17 +996,17 @@ export function AdminDashboard() {
               actionLoading={actionLoading}
             />
           )}
-         {activeTab === "businesses" && (
-  <AdminBusinessQueue 
-    onStatsChange={fetchDashboardData}
-    selectedItems={selectedItems}
-    onToggleSelect={toggleSelectItem}
-    onToggleSelectAll={toggleSelectAll}
-    onApproveSelected={() => approveSelected('business')}
-    onRejectSelected={() => rejectSelected('business')}
-    actionLoading={actionLoading}
-  />
-)}
+          {activeTab === "businesses" && (
+            <AdminBusinesses 
+              onStatsChange={fetchDashboardData}
+              selectedItems={selectedItems}
+              onToggleSelect={toggleSelectItem}
+              onToggleSelectAll={toggleSelectAll}
+              onApproveSelected={() => approveSelected('business')}
+              onRejectSelected={() => rejectSelected('business')}
+              actionLoading={actionLoading}
+            />
+          )}
           {activeTab === "campaigns" && (
             <AdminCampaigns 
               selectedItems={selectedItems}
@@ -1051,7 +1028,7 @@ export function AdminDashboard() {
 }
 
 // ─────────────────────────────────────────────
-// OVERVIEW TAB - With Bulk Approve Buttons
+// ADMIN OVERVIEW COMPONENT
 // ─────────────────────────────────────────────
 
 function AdminOverview({ 
@@ -1241,7 +1218,7 @@ function AdminOverview({
 }
 
 // ─────────────────────────────────────────────
-// CREATORS TAB - With Selection
+// ADMIN CREATORS COMPONENT
 // ─────────────────────────────────────────────
 
 function AdminCreators({ 
@@ -1619,7 +1596,7 @@ function AdminCreators({
 }
 
 // ─────────────────────────────────────────────
-// BUSINESSES TAB - With Selection
+// ADMIN BUSINESSES COMPONENT
 // ─────────────────────────────────────────────
 
 function AdminBusinesses({ 
@@ -1947,7 +1924,7 @@ function AdminBusinesses({
 }
 
 // ─────────────────────────────────────────────
-// CAMPAIGNS TAB - With Selection
+// ADMIN CAMPAIGNS COMPONENT
 // ─────────────────────────────────────────────
 
 function AdminCampaigns({ 
@@ -2238,6 +2215,580 @@ function AdminCampaigns({
 }
 
 // ─────────────────────────────────────────────
+// SUPPORT TAB
+// ─────────────────────────────────────────────
+
+function AdminSupport() {
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"open" | "in_progress" | "resolved" | "all">("open");
+  const [replyText, setReplyText] = useState<{ [key: string]: string }>({});
+  const [showFilters, setShowFilters] = useState(false);
+
+  const fetchTickets = async () => {
+    setLoading(true);
+    try {
+      let query = supabase.from("support_tickets").select("*").order("created_at", { ascending: false });
+      if (filter !== "all") query = query.eq("status", filter);
+      const { data, error } = await query;
+      if (error) { toast.error("Failed to load tickets"); } else { setTickets(data || []); }
+    } catch { toast.error("Failed to load tickets"); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchTickets(); }, [filter]);
+
+  const updateTicketStatus = async (id: string, status: "resolved" | "in_progress", reply?: string) => {
+    const updates: any = { status };
+    if (reply) updates.admin_reply = reply;
+    const { error } = await supabase.from("support_tickets").update(updates).eq("id", id);
+    if (error) { toast.error("Failed to update ticket"); return; }
+    toast.success(`Ticket ${status}`); fetchTickets();
+    setReplyText(prev => ({ ...prev, [id]: "" }));
+  };
+
+  return (
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Support Tickets</h3>
+        
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+        >
+          <Filter className="w-5 h-5" />
+          <span className="text-xs font-black uppercase tracking-widest">
+            Filter: {filter === "all" ? "All Tickets" : filter.replace("_", " ")}
+          </span>
+        </button>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
+            {(["open", "in_progress", "resolved", "all"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
+                  filter === tab 
+                    ? "bg-[#1D1D1D] text-white" 
+                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                }`}
+              >
+                {tab === "all" ? "All" : tab.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
+      ) : tickets.length === 0 ? (
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">No tickets found</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {tickets.map(ticket => (
+            <motion.div
+              key={ticket.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[9px] font-black bg-[#F4F4F4] px-2 py-1 rounded-full">
+                      {ticket.category || "General"}
+                    </span>
+                    <span className="text-[8px] text-gray-400">#{ticket.id.slice(0, 8)}</span>
+                  </div>
+                  {ticket.subject && (
+                    <h4 className="font-black text-sm mb-2">{ticket.subject}</h4>
+                  )}
+                  <p className="text-sm text-[#1D1D1D] mb-3">{ticket.message}</p>
+                  <p className="text-[8px] text-gray-400">
+                    From: {ticket.user_email || ticket.user_id.slice(0, 8)} · {new Date(ticket.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <span className={`text-[8px] font-black px-2 py-1 rounded-full whitespace-nowrap ${
+                  ticket.status === "open" ? "bg-yellow-100 text-yellow-700" :
+                  ticket.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
+                }`}>
+                  {ticket.status.replace("_", " ")}
+                </span>
+              </div>
+
+              {ticket.admin_reply && (
+                <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                  <p className="text-[8px] font-black uppercase tracking-widest mb-1">Admin Reply:</p>
+                  <p className="text-xs text-gray-700">{ticket.admin_reply}</p>
+                </div>
+              )}
+
+              {filter !== "resolved" && (
+                <div className="mt-3">
+                  <textarea
+                    placeholder="Type your reply..."
+                    value={replyText[ticket.id] || ""}
+                    onChange={(e) => setReplyText(prev => ({ ...prev, [ticket.id]: e.target.value }))}
+                    className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm mb-2 rounded-xl"
+                    rows={3}
+                  />
+                  <div className="flex gap-2">
+                    {filter === "open" && (
+                      <button
+                        onClick={() => updateTicketStatus(ticket.id, "in_progress")}
+                        className="flex-1 border-2 border-[#1D1D1D] py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg"
+                      >
+                        In Progress
+                      </button>
+                    )}
+                    <button
+                      onClick={() => updateTicketStatus(ticket.id, "resolved", replyText[ticket.id])}
+                      disabled={!replyText[ticket.id]?.trim()}
+                      className="flex-1 bg-[#1D1D1D] text-white py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Reply & Resolve
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// REPORTS TAB
+// ─────────────────────────────────────────────
+
+function AdminReports() {
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"pending" | "resolved" | "dismissed" | "all">("pending");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const fetchReports = async () => {
+    setLoading(true);
+    try {
+      let query = supabase.from("reported_content").select("*").order("created_at", { ascending: false });
+      if (filter !== "all") query = query.eq("status", filter);
+      const { data, error } = await query;
+      if (error) { toast.error("Failed to load reports"); } else { setReports(data || []); }
+    } catch { toast.error("Failed to load reports"); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchReports(); }, [filter]);
+
+  const updateReportStatus = async (id: string, status: "resolved" | "dismissed") => {
+    const { error } = await supabase.from("reported_content").update({ status }).eq("id", id);
+    if (error) { toast.error("Failed to update report"); return; }
+    toast.success(`Report ${status}`); fetchReports();
+  };
+
+  const deleteReportedContent = async (contentType: string, contentId: string, reportId: string) => {
+    if (!confirm(`Delete this ${contentType}?`)) return;
+    let error;
+    if (contentType === "campaign") ({ error } = await supabase.from("campaigns").delete().eq("id", contentId));
+    else if (contentType === "message") ({ error } = await supabase.from("messages").delete().eq("id", contentId));
+    else if (contentType === "profile") ({ error } = await supabase.from("creator_profiles").delete().eq("id", contentId));
+    if (error) { toast.error("Failed to delete content"); return; }
+    await updateReportStatus(reportId, "resolved");
+    toast.success("Content deleted and report resolved");
+  };
+
+  return (
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Reported Content</h3>
+        
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+        >
+          <Filter className="w-5 h-5" />
+          <span className="text-xs font-black uppercase tracking-widest">
+            Filter: {filter === "all" ? "All Reports" : filter}
+          </span>
+        </button>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
+            {(["pending", "resolved", "dismissed", "all"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
+                  filter === tab 
+                    ? "bg-[#1D1D1D] text-white" 
+                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
+      ) : reports.length === 0 ? (
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <Flag className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">No reports found</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {reports.map(report => (
+            <motion.div
+              key={report.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                      {report.content_type}
+                    </span>
+                    <span className="text-[8px] text-gray-400">#{report.id.slice(0, 8)}</span>
+                  </div>
+                  <p className="text-sm font-medium mb-2">Reason: {report.reason}</p>
+                  <p className="text-xs text-gray-500 mb-2">Content ID: {report.content_id}</p>
+                  {report.details && (
+                    <pre className="text-[8px] bg-gray-50 p-2 rounded-xl mb-2 overflow-x-auto max-h-24">
+                      {JSON.stringify(report.details, null, 2)}
+                    </pre>
+                  )}
+                  <p className="text-[8px] text-gray-400">
+                    Reported by: {report.reported_by} · {new Date(report.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <span className={`text-[8px] font-black px-2 py-1 rounded-full whitespace-nowrap ${
+                  report.status === "pending" ? "bg-yellow-100 text-yellow-700" :
+                  report.status === "resolved" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
+                }`}>
+                  {report.status}
+                </span>
+              </div>
+
+              {filter === "pending" && (
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                  <button
+                    onClick={() => deleteReportedContent(report.content_type, report.content_id, report.id)}
+                    className="bg-red-500 text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete
+                  </button>
+                  <button
+                    onClick={() => updateReportStatus(report.id, "resolved")}
+                    className="bg-[#1D1D1D] text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
+                  >
+                    <CheckCircle className="w-3 h-3" /> Keep
+                  </button>
+                  <button
+                    onClick={() => updateReportStatus(report.id, "dismissed")}
+                    className="border-2 border-gray-500 text-gray-500 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-gray-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
+                  >
+                    <XCircle className="w-3 h-3" /> Dismiss
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// TRANSACTIONS TAB
+// ─────────────────────────────────────────────
+
+function AdminTransactions() {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"all" | "payment" | "withdrawal" | "refund">("all");
+  const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("all");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const fetchTransactions = async () => {
+    setLoading(true);
+    try {
+      let query = supabase.from("business_transactions").select("*").order("created_at", { ascending: false });
+      if (filter !== "all") query = query.eq("type", filter);
+      const now = new Date();
+      if (dateRange === "today") query = query.gte("created_at", new Date(now.setHours(0, 0, 0, 0)).toISOString());
+      else if (dateRange === "week") query = query.gte("created_at", new Date(now.setDate(now.getDate() - 7)).toISOString());
+      else if (dateRange === "month") query = query.gte("created_at", new Date(now.setMonth(now.getMonth() - 1)).toISOString());
+      const { data, error } = await query;
+      if (error) { toast.error("Failed to load transactions"); } else { setTransactions(data || []); }
+    } catch { toast.error("Failed to load transactions"); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchTransactions(); }, [filter, dateRange]);
+
+  const getTotalAmount = () => transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+  const getCompletedCount = () => transactions.filter(t => t.status === "completed").length;
+
+  return (
+    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+      <div className="flex flex-col gap-3 mb-4">
+        <h3 className="font-black uppercase tracking-tight text-lg">Transactions</h3>
+        
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
+        >
+          <Filter className="w-5 h-5" />
+          <span className="text-xs font-black uppercase tracking-widest">Filter Transactions</span>
+        </button>
+
+        {showFilters && (
+          <div className="space-y-3 p-3 bg-[#F8F8F8] rounded-xl">
+            <div>
+              <label className="block text-[9px] font-black uppercase tracking-widest mb-2">Type</label>
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as any)}
+                className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-xs rounded-lg"
+              >
+                <option value="all">All Types</option>
+                <option value="payment">Payments</option>
+                <option value="withdrawal">Withdrawals</option>
+                <option value="refund">Refunds</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[9px] font-black uppercase tracking-widest mb-2">Date Range</label>
+              <select
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value as any)}
+                className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-xs rounded-lg"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">Last 7 Days</option>
+                <option value="month">Last 30 Days</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 mb-4">
+        <div className="bg-[#1D1D1D] text-white p-4 rounded-xl">
+          <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Total Volume</p>
+          <p className="text-2xl font-black">₦{getTotalAmount().toLocaleString()}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="border-2 border-[#1D1D1D] p-4 rounded-xl">
+            <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Transactions</p>
+            <p className="text-2xl font-black">{transactions.length}</p>
+          </div>
+          <div className="border-2 border-[#1D1D1D] p-4 rounded-xl">
+            <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Completed</p>
+            <p className="text-2xl font-black">{getCompletedCount()}</p>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
+        </div>
+      ) : transactions.length === 0 ? (
+        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
+          <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">No transactions found</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {transactions.map((tx) => (
+            <motion.div
+              key={tx.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl"
+            >
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
+                    tx.type === "payment" ? "bg-green-100 text-green-700" :
+                    tx.type === "withdrawal" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
+                  }`}>
+                    {tx.type}
+                  </span>
+                  <p className="text-[9px] font-mono text-gray-500 mt-1">#{tx.id.slice(0, 8)}</p>
+                </div>
+                <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
+                  tx.status === "completed" ? "bg-green-100 text-green-700" :
+                  tx.status === "failed" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {tx.status}
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-[9px] text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</p>
+                </div>
+                <p className="font-black text-lg text-[#389C9A]">₦{tx.amount?.toLocaleString()}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// SETTINGS TAB
+// ─────────────────────────────────────────────
+
+function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: any }) {
+  const [platformSettings, setPlatformSettings] = useState({
+    platformFee: stats.platformFee,
+    minPayout: 1000,
+    maxCampaignDuration: 30,
+    autoApproveCreators: false,
+    requireBusinessVerification: true,
+    allowGuestBrowsing: true,
+    maintenanceMode: false,
+    requireEmailVerification: true,
+  });
+
+  const handleSaveSettings = () => {
+    setStats((prev: DashboardStats) => ({ ...prev, platformFee: platformSettings.platformFee }));
+    toast.success("Settings saved successfully");
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Fee Settings */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
+        <h4 className="font-black text-base uppercase tracking-tight mb-4">Fee Settings</h4>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Platform Fee (%)</label>
+            <input
+              type="number"
+              value={platformSettings.platformFee}
+              onChange={(e) => setPlatformSettings(prev => ({ ...prev, platformFee: parseInt(e.target.value) }))}
+              className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
+              min="0"
+              max="100"
+            />
+            <p className="text-[9px] text-gray-500 mt-1">% taken from each transaction</p>
+          </div>
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Minimum Payout (₦)</label>
+            <input
+              type="number"
+              value={platformSettings.minPayout}
+              onChange={(e) => setPlatformSettings(prev => ({ ...prev, minPayout: parseInt(e.target.value) }))}
+              className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
+              min="0"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Campaign Settings */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
+        <h4 className="font-black text-base uppercase tracking-tight mb-4">Campaign Settings</h4>
+        <div>
+          <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Max Campaign Duration (days)</label>
+          <input
+            type="number"
+            value={platformSettings.maxCampaignDuration}
+            onChange={(e) => setPlatformSettings(prev => ({ ...prev, maxCampaignDuration: parseInt(e.target.value) }))}
+            className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
+            min="1"
+          />
+        </div>
+      </div>
+
+      {/* Approval & System Settings */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
+        <h4 className="font-black text-base uppercase tracking-tight mb-4">Approval & System</h4>
+        <div className="space-y-2">
+          {[
+            { key: "autoApproveCreators", label: "Auto-approve creators" },
+            { key: "requireBusinessVerification", label: "Require business verification" },
+            { key: "requireEmailVerification", label: "Require email verification" },
+            { key: "allowGuestBrowsing", label: "Allow guest browsing" },
+          ].map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-3 cursor-pointer p-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl">
+              <input
+                type="checkbox"
+                checked={(platformSettings as any)[key]}
+                onChange={(e) => setPlatformSettings(prev => ({ ...prev, [key]: e.target.checked }))}
+                className="w-5 h-5"
+              />
+              <span className="text-xs font-black uppercase tracking-widest">{label}</span>
+            </label>
+          ))}
+        </div>
+
+        <div className="mt-3">
+          <label className="flex items-center gap-3 cursor-pointer p-3 border-2 border-red-200 hover:border-red-500 transition-colors bg-red-50 rounded-xl">
+            <input
+              type="checkbox"
+              checked={platformSettings.maintenanceMode}
+              onChange={(e) => setPlatformSettings(prev => ({ ...prev, maintenanceMode: e.target.checked }))}
+              className="w-5 h-5"
+            />
+            <span className="text-xs font-black uppercase tracking-widest text-red-600">Maintenance Mode</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Current Config Summary */}
+      <div className="bg-[#1D1D1D] text-white p-5 rounded-xl">
+        <h4 className="font-black text-base uppercase tracking-tight mb-3 opacity-60">Current Config</h4>
+        <div className="space-y-2">
+          {[
+            { label: "Platform Fee", value: `${platformSettings.platformFee}%` },
+            { label: "Min Payout", value: `₦${platformSettings.minPayout.toLocaleString()}` },
+            { label: "Max Campaign", value: `${platformSettings.maxCampaignDuration} days` },
+          ].map((item, i) => (
+            <div key={i} className="flex justify-between items-center py-2 border-b border-white/10 last:border-0">
+              <span className="text-[9px] uppercase tracking-widest opacity-50">{item.label}</span>
+              <span className="font-black text-sm">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <button
+        onClick={handleSaveSettings}
+        className="w-full bg-[#1D1D1D] text-white px-6 py-4 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl"
+      >
+        Save Settings
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // CREATOR DETAIL MODAL
 // ─────────────────────────────────────────────
 
@@ -2463,620 +3014,6 @@ function BusinessDetailModal({ business, onClose }: { business: any; onClose: ()
           </div>
         </div>
       </motion.div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// SUPPORT TAB
-// ─────────────────────────────────────────────
-
-function AdminSupport() {
-  const [tickets, setTickets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"open" | "in_progress" | "resolved" | "all">("open");
-  const [replyText, setReplyText] = useState<{ [key: string]: string }>({});
-  const [showFilters, setShowFilters] = useState(false);
-
-  const fetchTickets = async () => {
-    setLoading(true);
-    try {
-      // Check if table exists before querying
-      try {
-        let query = supabase.from("support_tickets").select("*").order("created_at", { ascending: false });
-        if (filter !== "all") query = query.eq("status", filter);
-        const { data, error } = await query;
-        if (error) {
-          if (error.code === '42P01') {
-            console.log("support_tickets table doesn't exist yet");
-            setTickets([]);
-          } else {
-            toast.error("Failed to load tickets");
-          }
-        } else {
-          setTickets(data || []);
-        }
-      } catch (e) {
-        console.log("support_tickets table not available:", e);
-        setTickets([]);
-      }
-    } catch { toast.error("Failed to load tickets"); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetchTickets(); }, [filter]);
-
-  const updateTicketStatus = async (id: string, status: "resolved" | "in_progress", reply?: string) => {
-    try {
-      const updates: any = { status };
-      if (reply) updates.admin_reply = reply;
-      const { error } = await supabase.from("support_tickets").update(updates).eq("id", id);
-      if (error) { toast.error("Failed to update ticket"); return; }
-      toast.success(`Ticket ${status}`); fetchTickets();
-      setReplyText(prev => ({ ...prev, [id]: "" }));
-    } catch (e) {
-      console.error("Error updating ticket:", e);
-      toast.error("Failed to update ticket");
-    }
-  };
-
-  return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
-      <div className="flex flex-col gap-3 mb-4">
-        <h3 className="font-black uppercase tracking-tight text-lg">Support Tickets</h3>
-        
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
-        >
-          <Filter className="w-5 h-5" />
-          <span className="text-xs font-black uppercase tracking-widest">
-            Filter: {filter === "all" ? "All Tickets" : filter.replace("_", " ")}
-          </span>
-        </button>
-
-        {showFilters && (
-          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
-            {(["open", "in_progress", "resolved", "all"] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setFilter(tab)}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
-                  filter === tab 
-                    ? "bg-[#1D1D1D] text-white" 
-                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
-                }`}
-              >
-                {tab === "all" ? "All" : tab.replace("_", " ")}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
-        </div>
-      ) : tickets.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
-          <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">No tickets found</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {tickets.map(ticket => (
-            <motion.div
-              key={ticket.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
-            >
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[9px] font-black bg-[#F4F4F4] px-2 py-1 rounded-full">
-                      {ticket.category || "General"}
-                    </span>
-                    <span className="text-[8px] text-gray-400">#{ticket.id.slice(0, 8)}</span>
-                  </div>
-                  {ticket.subject && (
-                    <h4 className="font-black text-sm mb-2">{ticket.subject}</h4>
-                  )}
-                  <p className="text-sm text-[#1D1D1D] mb-3">{ticket.message}</p>
-                  <p className="text-[8px] text-gray-400">
-                    From: {ticket.user_email || ticket.user_id.slice(0, 8)} · {new Date(ticket.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <span className={`text-[8px] font-black px-2 py-1 rounded-full whitespace-nowrap ${
-                  ticket.status === "open" ? "bg-yellow-100 text-yellow-700" :
-                  ticket.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
-                }`}>
-                  {ticket.status.replace("_", " ")}
-                </span>
-              </div>
-
-              {ticket.admin_reply && (
-                <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-                  <p className="text-[8px] font-black uppercase tracking-widest mb-1">Admin Reply:</p>
-                  <p className="text-xs text-gray-700">{ticket.admin_reply}</p>
-                </div>
-              )}
-
-              {filter !== "resolved" && (
-                <div className="mt-3">
-                  <textarea
-                    placeholder="Type your reply..."
-                    value={replyText[ticket.id] || ""}
-                    onChange={(e) => setReplyText(prev => ({ ...prev, [ticket.id]: e.target.value }))}
-                    className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors text-sm mb-2 rounded-xl"
-                    rows={3}
-                  />
-                  <div className="flex gap-2">
-                    {filter === "open" && (
-                      <button
-                        onClick={() => updateTicketStatus(ticket.id, "in_progress")}
-                        className="flex-1 border-2 border-[#1D1D1D] py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg"
-                      >
-                        In Progress
-                      </button>
-                    )}
-                    <button
-                      onClick={() => updateTicketStatus(ticket.id, "resolved", replyText[ticket.id])}
-                      disabled={!replyText[ticket.id]?.trim()}
-                      className="flex-1 bg-[#1D1D1D] text-white py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Reply & Resolve
-                    </button>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// REPORTS TAB - Mobile First
-// ─────────────────────────────────────────────
-
-function AdminReports() {
-  const [reports, setReports] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"pending" | "resolved" | "dismissed" | "all">("pending");
-  const [showFilters, setShowFilters] = useState(false);
-
-  const fetchReports = async () => {
-    setLoading(true);
-    try {
-      // Check if table exists before querying
-      try {
-        let query = supabase.from("reported_content").select("*").order("created_at", { ascending: false });
-        if (filter !== "all") query = query.eq("status", filter);
-        const { data, error } = await query;
-        if (error) {
-          if (error.code === '42P01') {
-            console.log("reported_content table doesn't exist yet");
-            setReports([]);
-          } else {
-            toast.error("Failed to load reports");
-          }
-        } else {
-          setReports(data || []);
-        }
-      } catch (e) {
-        console.log("reported_content table not available:", e);
-        setReports([]);
-      }
-    } catch { toast.error("Failed to load reports"); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetchReports(); }, [filter]);
-
-  const updateReportStatus = async (id: string, status: "resolved" | "dismissed") => {
-    try {
-      const { error } = await supabase.from("reported_content").update({ status }).eq("id", id);
-      if (error) { toast.error("Failed to update report"); return; }
-      toast.success(`Report ${status}`); fetchReports();
-    } catch (e) {
-      console.error("Error updating report:", e);
-      toast.error("Failed to update report");
-    }
-  };
-
-  const deleteReportedContent = async (contentType: string, contentId: string, reportId: string) => {
-    if (!confirm(`Delete this ${contentType}?`)) return;
-    let error;
-    if (contentType === "campaign") ({ error } = await supabase.from("campaigns").delete().eq("id", contentId));
-    else if (contentType === "message") ({ error } = await supabase.from("messages").delete().eq("id", contentId));
-    else if (contentType === "profile") ({ error } = await supabase.from("creator_profiles").delete().eq("id", contentId));
-    if (error) { toast.error("Failed to delete content"); return; }
-    await updateReportStatus(reportId, "resolved");
-    toast.success("Content deleted and report resolved");
-  };
-
-  return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
-      <div className="flex flex-col gap-3 mb-4">
-        <h3 className="font-black uppercase tracking-tight text-lg">Reported Content</h3>
-        
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
-        >
-          <Filter className="w-5 h-5" />
-          <span className="text-xs font-black uppercase tracking-widest">
-            Filter: {filter === "all" ? "All Reports" : filter}
-          </span>
-        </button>
-
-        {showFilters && (
-          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
-            {(["pending", "resolved", "dismissed", "all"] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setFilter(tab)}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-widest transition-colors rounded-lg flex-1 ${
-                  filter === tab 
-                    ? "bg-[#1D1D1D] text-white" 
-                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
-        </div>
-      ) : reports.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
-          <Flag className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">No reports found</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {reports.map(report => (
-            <motion.div
-              key={report.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 transition-all rounded-xl"
-            >
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                      {report.content_type}
-                    </span>
-                    <span className="text-[8px] text-gray-400">#{report.id.slice(0, 8)}</span>
-                  </div>
-                  <p className="text-sm font-medium mb-2">Reason: {report.reason}</p>
-                  <p className="text-xs text-gray-500 mb-2">Content ID: {report.content_id}</p>
-                  {report.details && (
-                    <pre className="text-[8px] bg-gray-50 p-2 rounded-xl mb-2 overflow-x-auto max-h-24">
-                      {JSON.stringify(report.details, null, 2)}
-                    </pre>
-                  )}
-                  <p className="text-[8px] text-gray-400">
-                    Reported by: {report.reported_by} · {new Date(report.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <span className={`text-[8px] font-black px-2 py-1 rounded-full whitespace-nowrap ${
-                  report.status === "pending" ? "bg-yellow-100 text-yellow-700" :
-                  report.status === "resolved" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
-                }`}>
-                  {report.status}
-                </span>
-              </div>
-
-              {filter === "pending" && (
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5">
-                  <button
-                    onClick={() => deleteReportedContent(report.content_type, report.content_id, report.id)}
-                    className="bg-red-500 text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
-                  >
-                    <Trash2 className="w-3 h-3" /> Delete
-                  </button>
-                  <button
-                    onClick={() => updateReportStatus(report.id, "resolved")}
-                    className="bg-[#1D1D1D] text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
-                  >
-                    <CheckCircle className="w-3 h-3" /> Keep
-                  </button>
-                  <button
-                    onClick={() => updateReportStatus(report.id, "dismissed")}
-                    className="border-2 border-gray-500 text-gray-500 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-gray-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 col-span-1"
-                  >
-                    <XCircle className="w-3 h-3" /> Dismiss
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// TRANSACTIONS TAB - Mobile First
-// ─────────────────────────────────────────────
-
-function AdminTransactions() {
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "payment" | "withdrawal" | "refund">("all");
-  const [dateRange, setDateRange] = useState<"today" | "week" | "month" | "all">("all");
-  const [showFilters, setShowFilters] = useState(false);
-
-  const fetchTransactions = async () => {
-    setLoading(true);
-    try {
-      let query = supabase.from("business_transactions").select("*").order("created_at", { ascending: false });
-      if (filter !== "all") query = query.eq("type", filter);
-      const now = new Date();
-      if (dateRange === "today") query = query.gte("created_at", new Date(now.setHours(0, 0, 0, 0)).toISOString());
-      else if (dateRange === "week") query = query.gte("created_at", new Date(now.setDate(now.getDate() - 7)).toISOString());
-      else if (dateRange === "month") query = query.gte("created_at", new Date(now.setMonth(now.getMonth() - 1)).toISOString());
-      const { data, error } = await query;
-      if (error) { toast.error("Failed to load transactions"); } else { setTransactions(data || []); }
-    } catch { toast.error("Failed to load transactions"); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetchTransactions(); }, [filter, dateRange]);
-
-  const getTotalAmount = () => transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-  const getCompletedCount = () => transactions.filter(t => t.status === "completed").length;
-
-  return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
-      <div className="flex flex-col gap-3 mb-4">
-        <h3 className="font-black uppercase tracking-tight text-lg">Transactions</h3>
-        
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl"
-        >
-          <Filter className="w-5 h-5" />
-          <span className="text-xs font-black uppercase tracking-widest">Filter Transactions</span>
-        </button>
-
-        {showFilters && (
-          <div className="space-y-3 p-3 bg-[#F8F8F8] rounded-xl">
-            <div>
-              <label className="block text-[9px] font-black uppercase tracking-widest mb-2">Type</label>
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as any)}
-                className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-xs rounded-lg"
-              >
-                <option value="all">All Types</option>
-                <option value="payment">Payments</option>
-                <option value="withdrawal">Withdrawals</option>
-                <option value="refund">Refunds</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[9px] font-black uppercase tracking-widest mb-2">Date Range</label>
-              <select
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value as any)}
-                className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-xs rounded-lg"
-              >
-                <option value="all">All Time</option>
-                <option value="today">Today</option>
-                <option value="week">Last 7 Days</option>
-                <option value="month">Last 30 Days</option>
-              </select>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 mb-4">
-        <div className="bg-[#1D1D1D] text-white p-4 rounded-xl">
-          <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Total Volume</p>
-          <p className="text-2xl font-black">₦{getTotalAmount().toLocaleString()}</p>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="border-2 border-[#1D1D1D] p-4 rounded-xl">
-            <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Transactions</p>
-            <p className="text-2xl font-black">{transactions.length}</p>
-          </div>
-          <div className="border-2 border-[#1D1D1D] p-4 rounded-xl">
-            <p className="text-[9px] opacity-60 uppercase tracking-widest mb-1">Completed</p>
-            <p className="text-2xl font-black">{getCompletedCount()}</p>
-          </div>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
-        </div>
-      ) : transactions.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-10 text-center rounded-xl">
-          <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">No transactions found</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {transactions.map((tx) => (
-            <motion.div
-              key={tx.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl"
-            >
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
-                    tx.type === "payment" ? "bg-green-100 text-green-700" :
-                    tx.type === "withdrawal" ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
-                  }`}>
-                    {tx.type}
-                  </span>
-                  <p className="text-[9px] font-mono text-gray-500 mt-1">#{tx.id.slice(0, 8)}</p>
-                </div>
-                <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
-                  tx.status === "completed" ? "bg-green-100 text-green-700" :
-                  tx.status === "failed" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                }`}>
-                  {tx.status}
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-[9px] text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</p>
-                </div>
-                <p className="font-black text-lg text-[#389C9A]">₦{tx.amount?.toLocaleString()}</p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// SETTINGS TAB - Mobile First
-// ─────────────────────────────────────────────
-
-function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: any }) {
-  const [platformSettings, setPlatformSettings] = useState({
-    platformFee: stats.platformFee,
-    minPayout: 1000,
-    maxCampaignDuration: 30,
-    autoApproveCreators: false,
-    requireBusinessVerification: true,
-    allowGuestBrowsing: true,
-    maintenanceMode: false,
-    requireEmailVerification: true,
-  });
-
-  const handleSaveSettings = () => {
-    setStats((prev: DashboardStats) => ({ ...prev, platformFee: platformSettings.platformFee }));
-    toast.success("Settings saved successfully");
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Fee Settings */}
-      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
-        <h4 className="font-black text-base uppercase tracking-tight mb-4">Fee Settings</h4>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Platform Fee (%)</label>
-            <input
-              type="number"
-              value={platformSettings.platformFee}
-              onChange={(e) => setPlatformSettings(prev => ({ ...prev, platformFee: parseInt(e.target.value) }))}
-              className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
-              min="0"
-              max="100"
-            />
-            <p className="text-[9px] text-gray-500 mt-1">% taken from each transaction</p>
-          </div>
-          <div>
-            <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Minimum Payout (₦)</label>
-            <input
-              type="number"
-              value={platformSettings.minPayout}
-              onChange={(e) => setPlatformSettings(prev => ({ ...prev, minPayout: parseInt(e.target.value) }))}
-              className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
-              min="0"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Campaign Settings */}
-      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
-        <h4 className="font-black text-base uppercase tracking-tight mb-4">Campaign Settings</h4>
-        <div>
-          <label className="block text-[10px] font-black uppercase tracking-widest mb-2">Max Campaign Duration (days)</label>
-          <input
-            type="number"
-            value={platformSettings.maxCampaignDuration}
-            onChange={(e) => setPlatformSettings(prev => ({ ...prev, maxCampaignDuration: parseInt(e.target.value) }))}
-            className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl"
-            min="1"
-          />
-        </div>
-      </div>
-
-      {/* Approval & System Settings */}
-      <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
-        <h4 className="font-black text-base uppercase tracking-tight mb-4">Approval & System</h4>
-        <div className="space-y-2">
-          {[
-            { key: "autoApproveCreators", label: "Auto-approve creators" },
-            { key: "requireBusinessVerification", label: "Require business verification" },
-            { key: "requireEmailVerification", label: "Require email verification" },
-            { key: "allowGuestBrowsing", label: "Allow guest browsing" },
-          ].map(({ key, label }) => (
-            <label key={key} className="flex items-center gap-3 cursor-pointer p-3 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl">
-              <input
-                type="checkbox"
-                checked={(platformSettings as any)[key]}
-                onChange={(e) => setPlatformSettings(prev => ({ ...prev, [key]: e.target.checked }))}
-                className="w-5 h-5"
-              />
-              <span className="text-xs font-black uppercase tracking-widest">{label}</span>
-            </label>
-          ))}
-        </div>
-
-        <div className="mt-3">
-          <label className="flex items-center gap-3 cursor-pointer p-3 border-2 border-red-200 hover:border-red-500 transition-colors bg-red-50 rounded-xl">
-            <input
-              type="checkbox"
-              checked={platformSettings.maintenanceMode}
-              onChange={(e) => setPlatformSettings(prev => ({ ...prev, maintenanceMode: e.target.checked }))}
-              className="w-5 h-5"
-            />
-            <span className="text-xs font-black uppercase tracking-widest text-red-600">Maintenance Mode</span>
-          </label>
-        </div>
-      </div>
-
-      {/* Current Config Summary */}
-      <div className="bg-[#1D1D1D] text-white p-5 rounded-xl">
-        <h4 className="font-black text-base uppercase tracking-tight mb-3 opacity-60">Current Config</h4>
-        <div className="space-y-2">
-          {[
-            { label: "Platform Fee", value: `${platformSettings.platformFee}%` },
-            { label: "Min Payout", value: `₦${platformSettings.minPayout.toLocaleString()}` },
-            { label: "Max Campaign", value: `${platformSettings.maxCampaignDuration} days` },
-          ].map((item, i) => (
-            <div key={i} className="flex justify-between items-center py-2 border-b border-white/10 last:border-0">
-              <span className="text-[9px] uppercase tracking-widest opacity-50">{item.label}</span>
-              <span className="font-black text-sm">{item.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Save Button */}
-      <button
-        onClick={handleSaveSettings}
-        className="w-full bg-[#1D1D1D] text-white px-6 py-4 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl"
-      >
-        Save Settings
-      </button>
     </div>
   );
 }
