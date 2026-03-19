@@ -831,6 +831,23 @@ export function BecomeBusiness() {
         {step === 5 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
             <section>
+              <div className="mt-8 flex flex-col gap-4 mb-12">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input 
+                    type="checkbox" 
+                    {...register("agreeToTerms")}
+                    className="peer hidden" 
+                  />
+                  <div className={`mt-1 w-5 h-5 border-2 flex items-center justify-center transition-all rounded-none ${
+                    agreeToTerms ? 'bg-[#389C9A] border-[#389C9A]' : 'border-[#1D1D1D] bg-white'
+                  }`}>
+                    {agreeToTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
+                  </div>
+                  <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
+                    I agree to LiveLink's Terms of Service and Privacy Policy. <span className="text-red-500">*</span>
+                  </span>
+                </label>
+              </div>
               <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Review Registration</h2>
               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please confirm your details are correct.</p>
               
@@ -857,23 +874,7 @@ export function BecomeBusiness() {
                 </div>
               </div>
 
-              <div className="mt-8 flex flex-col gap-4">
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <input 
-                    type="checkbox" 
-                    {...register("agreeToTerms")}
-                    className="peer hidden" 
-                  />
-                  <div className={`mt-1 w-5 h-5 border-2 flex items-center justify-center transition-all rounded-none ${
-                    agreeToTerms ? 'bg-[#389C9A] border-[#389C9A]' : 'border-[#1D1D1D] bg-white'
-                  }`}>
-                    {agreeToTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
-                  </div>
-                  <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
-                    I agree to LiveLink's Terms of Service and Privacy Policy. <span className="text-red-500">*</span>
-                  </span>
-                </label>
-              </div>
+              
             </section>
           </motion.div>
         )}
