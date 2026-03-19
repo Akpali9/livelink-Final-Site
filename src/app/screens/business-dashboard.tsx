@@ -1,12 +1,44 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
-import { supabase } from "../lib/supabase";
-import { Toaster, toast } from "sonner";
-import { AppHeader } from "../components/app-header";
+import React, { useState, useRef, useEffect } from "react";
+import { Link, useNavigate } from "react-router";
 import {
-  TrendingUp, Clock, CheckCircle, DollarSign, RefreshCw,
-  ChevronRight, Users, Calendar, Filter, Download,
+  ArrowUpRight,
+  Inbox,
+  Clock,
+  CheckCircle2,
+  Check,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Wallet,
+  User,
+  List,
+  Monitor,
+  RefreshCw,
+  Star,
+  Award,
+  Users,
+  AlertCircle,
+  Briefcase,
+  DollarSign,
+  Calendar,
+  Filter,
+  Download,
+  TrendingUp,
+  Megaphone,
+  Building2,
+  Eye
 } from "lucide-react";
+
+import { motion, AnimatePresence } from "motion/react";
+import { toast, Toaster } from "sonner";
+import { supabase } from "../lib/supabase";
+import { ImageWithFallback } from "../components/ImageWithFallback";
+import { BottomNav } from "../components/bottom-nav";
+import { AppHeader } from "../components/app-header";
+
+// ─────────────────────────────────────────────
+// INTERFACES
+// ─────────────────────────────────────────────
 
 interface Campaign {
   id: string;
@@ -27,7 +59,6 @@ interface CampaignCreator {
   id: string;
   status: string;
   creator_id: string | null;
-  user_id: string | null;
   streams_completed: number;
   streams_target: number;
 }
@@ -63,21 +94,47 @@ interface BusinessProfile {
   status: string | null;
 }
 
+interface DashboardStats {
+  activeCampaigns: number;
+  pendingCampaigns: number;
+  completedCampaigns: number;
+  totalCreators: number;
+  totalSpent: number;
+  pendingCreators: number;
+}
+
+// ─────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────
+
 export function BusinessDashboard() {
   const navigate = useNavigate();
-   const [showPendingBanner, setShowPendingBanner] = useState(false);
+  const earningsRef = useRef<HTMLDivElement>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [campaignsExpanded, setCampaignsExpanded] = useState(false);
+  const [pendingExpanded, setPendingExpanded] = useState(false);
+  const [showPendingBanner, setShowPendingBanner] = useState(false);
+
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [pendingCreators, setPendingCreators] = useState<PendingCreator[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [campaignFilter, setCampaignFilter] = useState<"LIVE" | "PENDING" | "COMPLETED">("LIVE");
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
- 
 
-  // ─── 1. AUTH + BUSINESS PROFILE ───────────────────────────────────────────
+  const [stats, setStats] = useState<DashboardStats>({
+    activeCampaigns: 0,
+    pendingCampaigns: 0,
+    completedCampaigns: 0,
+    totalCreators: 0,
+    totalSpent: 0,
+    pendingCreators: 0,
+  });
+
+  // ─── AUTH + BUSINESS PROFILE ───────────────────────────────────────────
 
   useEffect(() => {
     const fetchBusiness = async () => {
@@ -114,7 +171,7 @@ export function BusinessDashboard() {
         }
 
         // Check if business is pending
-       if (business.status === "pending_review" || business.application_status === "pending") {
+        if (business.status === "pending_review" || business.application_status === "pending") {
           setShowPendingBanner(true);
         }
 
@@ -132,7 +189,7 @@ export function BusinessDashboard() {
     fetchBusiness();
   }, [navigate]);
 
-  // ─── 2. FETCH DASHBOARD DATA ──────────────────────────────────────────────
+  // ─── FETCH DASHBOARD DATA ──────────────────────────────────────────────
 
   useEffect(() => {
     if (!businessId || !authChecked) return;
@@ -177,7 +234,7 @@ export function BusinessDashboard() {
       .select(`
         id, name, type, status, budget, bid_amount, pay_rate,
         created_at, start_date, end_date, description,
-        campaign_creators (id, status, creator_id, user_id, streams_completed, streams_target)
+        campaign_creators (id, status, creator_id, streams_completed, streams_target)
       `)
       .eq("business_id", businessId)
       .order("created_at", { ascending: false });
@@ -187,6 +244,25 @@ export function BusinessDashboard() {
       return;
     }
     setCampaigns((data as Campaign[]) || []);
+
+    // Update stats
+    const active = (data || []).filter(c => ["active","ACTIVE","live","LIVE"].includes(c.status)).length;
+    const pending = (data || []).filter(c => ["pending_review","PENDING_REVIEW","draft","DRAFT","pending","PENDING"].includes(c.status)).length;
+    const completed = (data || []).filter(c => ["completed","COMPLETED"].includes(c.status)).length;
+    const totalCreators = (data || []).reduce((sum, c) => sum + (c.campaign_creators?.length || 0), 0);
+    const totalSpent = (data || []).reduce((sum, c) => { 
+      const val = c.budget ?? c.bid_amount ?? c.pay_rate ?? 0; 
+      return sum + (isNaN(val) ? 0 : val); 
+    }, 0);
+
+    setStats(prev => ({
+      ...prev,
+      activeCampaigns: active,
+      pendingCampaigns: pending,
+      completedCampaigns: completed,
+      totalCreators,
+      totalSpent,
+    }));
   };
 
   const fetchPendingCreators = async () => {
@@ -209,9 +285,10 @@ export function BusinessDashboard() {
 
     const filtered = (data || []).filter((row: any) => row.campaigns !== null) as PendingCreator[];
     setPendingCreators(filtered);
+    setStats(prev => ({ ...prev, pendingCreators: filtered.length }));
   };
 
-  // ─── 3. REFRESH ───────────────────────────────────────────────────────────
+  // ─── REFRESH ───────────────────────────────────────────────────────────
 
   const refreshData = async () => {
     if (!businessId) return;
@@ -223,26 +300,7 @@ export function BusinessDashboard() {
     finally { setRefreshing(false); }
   };
 
-  // ─── 4. STATS ─────────────────────────────────────────────────────────────
-
-  const activeCampaigns = campaigns.filter(c => ["active","ACTIVE","live","LIVE","open","OPEN"].includes(c.status)).length;
-  const pendingCampaigns = campaigns.filter(c => ["pending_review","PENDING_REVIEW","draft","DRAFT","pending","PENDING","review","REVIEW"].includes(c.status)).length;
-  const completedCampaigns = campaigns.filter(c => ["completed","COMPLETED"].includes(c.status)).length;
-  const totalCreators = campaigns.reduce((sum, c) => sum + (c.campaign_creators?.length || 0), 0);
-  const totalSpent = campaigns.reduce((sum, c) => { 
-    const val = c.budget ?? c.bid_amount ?? c.pay_rate ?? 0; 
-    return sum + (isNaN(val) ? 0 : val); 
-  }, 0);
-  const totalPending = pendingCreators.length;
-
-  const stats = [
-    { label: "Active Campaigns", value: activeCampaigns, sub: `${totalCreators} creators working`, icon: TrendingUp, color: "text-[#389C9A]" },
-    { label: "Pending", value: pendingCampaigns, sub: `${totalPending} creators waiting`, icon: Clock, color: "text-[#FEDB71]" },
-    { label: "Completed", value: completedCampaigns, sub: "Campaigns finished", icon: CheckCircle, color: "text-green-500" },
-    { label: "Total Spent", value: `₦${totalSpent.toLocaleString()}`, sub: `Across ${campaigns.length} campaigns`, icon: DollarSign, color: "text-[#389C9A]" },
-  ];
-
-  // ─── 5. ACCEPT / DECLINE CREATOR ─────────────────────────────────────────
+  // ─── ACCEPT / DECLINE CREATOR ─────────────────────────────────────────
 
   const acceptCreator = async (row: PendingCreator) => {
     try {
@@ -255,9 +313,9 @@ export function BusinessDashboard() {
       
       toast.success(`${row.creator_profiles?.full_name || "Creator"} accepted 🎉`);
       setPendingCreators(prev => prev.filter(r => r.id !== row.id));
+      setStats(prev => ({ ...prev, pendingCreators: prev.pendingCreators - 1 }));
       fetchCampaigns();
 
-      // Send notification to creator
       if (row.creator_profiles?.id) {
         await supabase.from("notifications").insert({
           user_id: row.creator_profiles.id,
@@ -285,13 +343,14 @@ export function BusinessDashboard() {
       
       toast.success("Creator declined");
       setPendingCreators(prev => prev.filter(r => r.id !== rowId));
+      setStats(prev => ({ ...prev, pendingCreators: prev.pendingCreators - 1 }));
     } catch (error) { 
       console.error(error); 
       toast.error("Failed to decline creator"); 
     }
   };
 
-  // ─── 6. FILTER CAMPAIGNS ─────────────────────────────────────────────────
+  // ─── FILTER CAMPAIGNS ─────────────────────────────────────────────────
 
   const filteredCampaigns = campaigns.filter(c => {
     const s = c.status?.toLowerCase();
@@ -308,6 +367,28 @@ export function BusinessDashboard() {
       return s === "completed";
     }).length;
 
+  // ─── HELPERS ──────────────────────────────────────────────────────────────
+
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  const getStatusColor = (status: string) => {
+    const s = status?.toLowerCase();
+    if (["active", "live", "open"].includes(s)) return "bg-[#389C9A] text-white";
+    if (["pending_review", "pending", "draft", "review"].includes(s)) return "bg-[#FEDB71] text-[#1D1D1D]";
+    if (["completed"].includes(s)) return "bg-green-500 text-white";
+    return "bg-gray-100 text-gray-500";
+  };
+
+  const spentRatio = stats.totalSpent > 0 ? Math.min(100, (stats.totalSpent / 100000) * 100) : 0;
+
   // ─── LOADING ──────────────────────────────────────────────────────────────
 
   if (loading && !authChecked) {
@@ -320,6 +401,7 @@ export function BusinessDashboard() {
             <p className="text-sm text-gray-500">Loading your dashboard...</p>
           </div>
         </div>
+        <BottomNav />
       </div>
     );
   }
@@ -327,264 +409,399 @@ export function BusinessDashboard() {
   // ─── RENDER ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-white pb-20">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px]">
+      <AppHeader showLogo subtitle="Business Hub" userType="business" showHome={false} />
       <Toaster position="top-center" richColors />
-      <AppHeader showLogo userType="business" subtitle="Business Hub" />
 
-      {/* Welcome Header */}
-      <div className="px-8 py-6 bg-gradient-to-r from-[#1D1D1D] to-gray-800 text-white">
-        <div className="flex justify-between items-center">
+      <main className="max-w-[480px] mx-auto w-full">
+
+        {/* Welcome */}
+        <div className="px-6 pt-6 pb-2 flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-black uppercase tracking-tighter italic">
-              Welcome back, {businessProfile?.business_name || businessProfile?.full_name || "Business"}!
-            </h1>
-            <p className="text-sm text-gray-300 mt-1">
-              {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-            </p>
+            <h1 className="text-2xl font-black uppercase tracking-tighter italic">Welcome back,</h1>
+            <p className="text-sm text-gray-500">{businessProfile?.business_name || businessProfile?.full_name || "Business"}!</p>
           </div>
-          <button 
-            onClick={refreshData} 
-            disabled={refreshing} 
-            className="p-3 border-2 border-white/30 hover:border-white text-white transition-colors disabled:opacity-50 rounded-lg"
+          <button
+            onClick={refreshData}
+            disabled={refreshing}
+            className="p-3 border-2 border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white transition-colors disabled:opacity-50 rounded-xl"
           >
-            <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
         </div>
-      </div>
-  
-      {/* PENDING APPROVAL BANNER - THIS WAS MISSING */}
-  {showPendingBanner && (
-  <div className="mx-8 mt-4 p-5 bg-[#FEDB71]/20 border-2 border-[#FEDB71] rounded-xl">
-    <div className="flex items-start gap-4">
-      <div className="w-10 h-10 bg-[#FEDB71] rounded-xl flex items-center justify-center shrink-0">
-        <Clock className="w-5 h-5 text-[#1D1D1D]" />
-      </div>
-      <div className="flex-1">
-        <h3 className="text-sm font-black uppercase tracking-tight mb-1">Business Application Under Review</h3>
-        <p className="text-xs text-gray-600 mb-2">
-          Your business application is being reviewed by our team. You'll be notified at{' '}
-          <span className="font-bold underline">{businessProfile?.email}</span> once approved.
-        </p>
-        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-          <span className="w-2 h-2 bg-[#FEDB71] rounded-full animate-pulse" />
-          <span>Estimated review time: 24-48 hours</span>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
-      {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-8">
-        {stats.map((stat, i) => {
-          const Icon = stat.icon;
-          return (
-            <div key={i} className="border-2 border-[#1D1D1D] p-6 bg-white hover:shadow-lg transition-shadow rounded-xl">
-              <div className="flex justify-between items-start mb-4">
-                <p className="text-xs font-black uppercase tracking-widest text-gray-400">{stat.label}</p>
-                <Icon className={`w-5 h-5 ${stat.color}`} />
+
+        {/* PENDING APPROVAL BANNER */}
+        {showPendingBanner && (
+          <div className="mx-6 mt-2 mb-2 p-5 bg-[#FEDB71]/20 border-2 border-[#FEDB71] rounded-xl">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 bg-[#FEDB71] rounded-xl flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5 text-[#1D1D1D]" />
               </div>
-              <h2 className="text-3xl font-black mb-2">{stat.value}</h2>
-              <p className="text-xs text-gray-500">{stat.sub}</p>
+              <div className="flex-1">
+                <h3 className="text-sm font-black uppercase tracking-tight mb-1">Business Application Under Review</h3>
+                <p className="text-xs text-gray-600 mb-2">
+                  Your business application is being reviewed by our team. You'll be notified at{' '}
+                  <span className="font-bold underline">{businessProfile?.email}</span> once approved.
+                </p>
+                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                  <span className="w-2 h-2 bg-[#FEDB71] rounded-full animate-pulse" />
+                  <span>Estimated review time: 24-48 hours</span>
+                </div>
+              </div>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Toggle */}
-      <div className="px-8 flex gap-4 mb-4">
-        <button 
-          onClick={() => setShowPendingOnly(false)} 
-          className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors ${!showPendingOnly ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400"}`}
-        >
-          Campaigns ({campaigns.length})
-        </button>
-        <button 
-          onClick={() => setShowPendingOnly(true)} 
-          className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors relative ${showPendingOnly ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400"}`}
-        >
-          Pending Creators ({pendingCreators.length})
-          {pendingCreators.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] text-xs flex items-center justify-center font-black rounded-full">
-              {pendingCreators.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Campaigns */}
-      {!showPendingOnly ? (
-        <div className="px-8 mt-4">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-black uppercase tracking-tight italic">My Campaigns</h2>
-            <button 
-              onClick={() => navigate("/campaign/type")} 
-              className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors rounded-lg"
-            >
-              + New Campaign
-            </button>
           </div>
+        )}
 
-          <div className="flex gap-2 mb-6 border-b overflow-x-auto">
-            {(["LIVE", "PENDING", "COMPLETED"] as const).map(tab => (
-              <button 
-                key={tab} 
-                onClick={() => setCampaignFilter(tab)}
-                className={`px-6 py-3 text-sm font-black uppercase tracking-widest italic transition-colors whitespace-nowrap ${
-                  campaignFilter === tab 
-                    ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" 
-                    : "text-gray-400 hover:text-[#1D1D1D]"
-                }`}
+        {/* Quick Stats */}
+        <div className="px-6 pb-4 grid grid-cols-3 gap-2">
+          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
+            <Award className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
+            <p className="text-sm font-black">{stats.activeCampaigns}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Active</p>
+          </div>
+          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
+            <Users className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
+            <p className="text-sm font-black">{stats.totalCreators}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Creators</p>
+          </div>
+          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
+            <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto mb-1" />
+            <p className="text-sm font-black">{stats.completedCampaigns}</p>
+            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Completed</p>
+          </div>
+        </div>
+
+        {/* Spent Card */}
+        <div className="p-6" ref={earningsRef}>
+          <div className="bg-[#1D1D1D] p-8 text-white relative overflow-hidden border-2 border-[#1D1D1D] rounded-xl">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
+
+            <div className="flex items-center justify-between mb-2 relative z-10">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">Total Spent</span>
+              <button className="p-1 hover:bg-white/10 rounded-lg transition-colors">
+                <ArrowUpRight className="w-4 h-4 text-white/40" />
+              </button>
+            </div>
+
+            <h2 className="text-4xl font-black tracking-tighter leading-none mb-8 text-center italic relative z-10">
+              ₦{stats.totalSpent.toLocaleString()}
+            </h2>
+
+            <div className="h-[1px] bg-white/10 mb-8 relative z-10" />
+
+            <div className="grid grid-cols-2 gap-8 mb-8 relative z-10">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Campaigns</span>
+                <span className="text-xl font-black text-[#FEDB71]">{campaigns.length}</span>
+              </div>
+              <div className="flex flex-col gap-1 text-right">
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Pending</span>
+                <span className="text-xl font-black text-[#389C9A]">{stats.pendingCreators}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 relative z-10">
+              <div className="h-1 bg-white/10 w-full rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#389C9A] rounded-full transition-all duration-1000"
+                  style={{ width: `${spentRatio}%` }}
+                />
+              </div>
+              <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">
+                {Math.round(spentRatio)}% of ₦100k budget utilized
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Primary CTA */}
+        <div className="px-6 pb-6">
+          <Link
+            to="/browse-creators"
+            className="w-full bg-[#1D1D1D] text-white py-8 px-8 text-xl font-black uppercase italic tracking-tighter flex items-center justify-between hover:bg-[#389C9A] transition-all rounded-xl"
+          >
+            Find Creators
+            <ArrowUpRight className="w-6 h-6 text-[#FEDB71]" />
+          </Link>
+        </div>
+
+        {/* Campaign Status Row */}
+        <div className="px-6 pb-12">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { icon: Megaphone, count: stats.activeCampaigns, label: "Live", path: "/campaigns?status=active", color: "text-[#389C9A]" },
+              { icon: Clock, count: stats.pendingCampaigns, label: "Pending", path: "/campaigns?status=pending", color: "text-[#FEDB71]" },
+              { icon: CheckCircle2, count: stats.completedCampaigns, label: "Completed", path: "/campaigns?status=completed", color: "text-green-500" },
+            ].map((card, i) => (
+              <button
+                key={i}
+                onClick={() => navigate(card.path)}
+                className="bg-white border-2 border-[#1D1D1D] p-4 flex flex-col items-center gap-2 hover:bg-[#1D1D1D] hover:text-white transition-all cursor-pointer rounded-xl group"
               >
-                {tab} ({countFor(tab)})
+                <card.icon className={`w-5 h-5 ${card.color} group-hover:text-white`} />
+                <span className="text-xl font-black italic">{card.count}</span>
+                <span className="text-[7px] font-black uppercase tracking-widest text-center leading-tight opacity-40 group-hover:opacity-100">
+                  {card.label}
+                </span>
               </button>
             ))}
           </div>
+        </div>
 
-          {filteredCampaigns.length === 0 ? (
-            <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
-              <p className="text-gray-400 mb-4">No campaigns in this category</p>
-              <button 
-                onClick={() => navigate("/campaign/type")} 
-                className="text-[#389C9A] font-black uppercase text-sm hover:underline"
-              >
-                Create your first campaign →
-              </button>
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {filteredCampaigns.map(campaign => (
-                <div 
-                  key={campaign.id} 
-                  onClick={() => navigate(`/business/campaign/${campaign.id}`)}
-                  className="border-2 border-[#1D1D1D] p-6 cursor-pointer hover:bg-[#1D1D1D] hover:text-white transition-colors group rounded-xl"
+        {/* Toggle */}
+        <div className="px-6 flex gap-4 mb-4">
+          <button
+            onClick={() => setShowPendingOnly(false)}
+            className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors ${
+              !showPendingOnly ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400"
+            }`}
+          >
+            Campaigns ({campaigns.length})
+          </button>
+          <button
+            onClick={() => setShowPendingOnly(true)}
+            className={`px-4 py-2 text-sm font-black uppercase tracking-widest transition-colors relative ${
+              showPendingOnly ? "border-b-2 border-[#1D1D1D] text-[#1D1D1D]" : "text-gray-400"
+            }`}
+          >
+            Pending Creators ({pendingCreators.length})
+            {pendingCreators.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] text-xs flex items-center justify-center font-black rounded-full">
+                {pendingCreators.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Campaigns */}
+        {!showPendingOnly ? (
+          <div className="px-6 mt-4">
+            <div className="flex gap-2 mb-6 overflow-x-auto">
+              {(["LIVE", "PENDING", "COMPLETED"] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setCampaignFilter(tab)}
+                  className={`px-4 py-2 text-[9px] font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
+                    campaignFilter === tab
+                      ? "bg-[#1D1D1D] text-white rounded-lg"
+                      : "text-gray-400 hover:text-[#1D1D1D]"
+                  }`}
                 >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-black text-lg mb-2">{campaign.name}</h3>
-                      <p className="text-sm opacity-60 mb-3">{campaign.type}</p>
-                      <div className="flex flex-wrap gap-4 text-xs">
-                        <span className="flex items-center gap-1">
-                          <Users className="w-4 h-4" />
-                          {campaign.campaign_creators?.length || 0} creators
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <DollarSign className="w-4 h-4" />
-                          ₦{campaign.budget ?? campaign.bid_amount ?? campaign.pay_rate ?? "Negotiable"}
-                        </span>
-                        {campaign.start_date && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
-                            {new Date(campaign.start_date).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <ChevronRight className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </div>
+                  {tab} ({countFor(tab)})
+                </button>
               ))}
             </div>
-          )}
-        </div>
-      ) : (
-        /* Pending Creators */
-        <div className="px-8 mt-4">
-          <h2 className="text-2xl font-black uppercase tracking-tight italic mb-6">
-            Pending Creators ({pendingCreators.length})
-          </h2>
-          {pendingCreators.length === 0 ? (
-            <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
-              <p className="text-gray-400">No pending creator requests</p>
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {pendingCreators.map(row => {
-                const creator = row.creator_profiles;
-                const displayName = creator?.full_name || "Unknown Creator";
-                return (
-                  <div key={row.id} className="border-2 border-[#FEDB71] p-6 bg-yellow-50 rounded-xl">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-3 mb-2">
-                          {creator?.avatar_url ? (
-                            <img 
-                              src={creator.avatar_url} 
-                              alt={displayName} 
-                              className="w-10 h-10 rounded-full border-2 border-[#1D1D1D] object-cover" 
-                            />
-                          ) : (
-                            <div className="w-10 h-10 bg-[#389C9A] flex items-center justify-center text-white font-black rounded-full">
-                              {displayName[0]?.toUpperCase()}
-                            </div>
-                          )}
-                          <div>
-                            <h3 className="font-black">{displayName}</h3>
-                            <p className="text-xs opacity-60">
-                              ~{creator?.avg_viewers?.toLocaleString() ?? 0} avg viewers
-                            </p>
+
+            {filteredCampaigns.length === 0 ? (
+              <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
+                <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-400 mb-4">No campaigns in this category</p>
+                <button
+                  onClick={() => navigate("/campaign/type")}
+                  className="text-[#389C9A] font-black uppercase text-sm hover:underline"
+                >
+                  Create your first campaign →
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <AnimatePresence mode="popLayout">
+                  {(campaignsExpanded ? filteredCampaigns : filteredCampaigns.slice(0, 3)).map(campaign => (
+                    <motion.div
+                      layout
+                      key={campaign.id}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.3 }}
+                      onClick={() => navigate(`/business/campaign/${campaign.id}`)}
+                      className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col gap-4 cursor-pointer hover:bg-[#1D1D1D] hover:text-white transition-colors group rounded-xl"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-black text-lg mb-1">{campaign.name}</h3>
+                          <p className="text-sm opacity-60 mb-2">{campaign.type}</p>
+                          <div className="flex flex-wrap gap-3 text-xs">
+                            <span className="flex items-center gap-1">
+                              <Users className="w-4 h-4" />
+                              {campaign.campaign_creators?.length || 0} creators
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <DollarSign className="w-4 h-4" />
+                              ₦{campaign.budget ?? campaign.bid_amount ?? campaign.pay_rate ?? "Negotiable"}
+                            </span>
                           </div>
                         </div>
-                        <p className="font-bold text-lg">{row.campaigns?.name ?? "Unknown Campaign"}</p>
-                        <p className="text-sm mt-1">Type: {row.campaigns?.type ?? "—"}</p>
-                        {creator?.niche && creator.niche.length > 0 && (
-                          <div className="flex gap-2 mt-2 flex-wrap">
-                            {creator.niche.map(tag => (
-                              <span key={tag} className="text-xs bg-white border border-gray-200 px-2 py-0.5 rounded-full">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        <div className={`px-2 py-1 text-[8px] font-black uppercase tracking-widest rounded ${getStatusColor(campaign.status)}`}>
+                          {campaign.status}
+                        </div>
                       </div>
-                      <div className="flex gap-3">
-                        <button 
-                          onClick={e => { e.stopPropagation(); acceptCreator(row); }}
-                          className="bg-[#1D1D1D] text-white px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-opacity-80 transition-colors rounded-lg"
-                        >
-                          Accept
-                        </button>
-                        <button 
-                          onClick={e => { e.stopPropagation(); declineCreator(row.id); }}
-                          className="border-2 border-[#1D1D1D] px-6 py-3 text-sm font-black uppercase tracking-widest italic hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+                      {campaign.start_date && (
+                        <div className="flex items-center gap-1 text-[9px] opacity-40">
+                          <Calendar className="w-3 h-3" />
+                          Starts: {new Date(campaign.start_date).toLocaleDateString()}
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
 
-      {/* Quick Actions */}
-      <div className="px-8 mt-16">
-        <h2 className="text-2xl font-black uppercase tracking-tight italic mb-6">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[
-            { label: "Find Creators", sub: "Discover creators for your campaigns", icon: Users, color: "text-[#389C9A]", link: "/browse-creators", cta: "Browse →" },
-            { label: "Business Settings", sub: "Update your profile and preferences", icon: Filter, color: "text-[#FEDB71]", link: "/business/settings", cta: "Settings →" },
-            { label: "View Analytics", sub: "Check your campaign performance", icon: TrendingUp, color: "text-green-500", link: "/business/analytics", cta: "Analytics →" },
-            { label: "Download Reports", sub: "Export campaign data and insights", icon: Download, color: "text-blue-500", link: "/business/reports", cta: "Export →" },
-          ].map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <button 
-                key={i} 
-                onClick={() => navigate(item.link)}
-                className="border-2 border-[#1D1D1D] p-6 text-left hover:bg-[#1D1D1D] hover:text-white transition-colors group rounded-xl"
-              >
-                <Icon className={`w-6 h-6 mb-3 ${item.color} group-hover:text-white`} />
-                <h3 className="font-black text-sm mb-2 italic">{item.label}</h3>
-                <p className="text-xs opacity-60 mb-4">{item.sub}</p>
-                <span className={`${item.color} text-xs group-hover:text-white`}>{item.cta}</span>
-              </button>
-            );
-          })}
+                {filteredCampaigns.length > 3 && (
+                  <button
+                    onClick={() => setCampaignsExpanded(!campaignsExpanded)}
+                    className="w-full py-3 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 text-[#1D1D1D]/40 hover:text-[#1D1D1D] transition-colors"
+                  >
+                    {campaignsExpanded ? (
+                      <>Show less <ChevronUp className="w-3 h-3" /></>
+                    ) : (
+                      <>Show {filteredCampaigns.length - 3} more <ChevronDown className="w-3 h-3" /></>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Pending Creators */
+          <div className="px-6 mt-4">
+            <h2 className="text-xl font-black uppercase tracking-tight italic mb-6">
+              Pending Creators ({pendingCreators.length})
+            </h2>
+
+            {pendingCreators.length === 0 ? (
+              <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
+                <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-400">No pending creator requests</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <AnimatePresence mode="popLayout">
+                  {(pendingExpanded ? pendingCreators : pendingCreators.slice(0, 3)).map(row => {
+                    const creator = row.creator_profiles;
+                    const displayName = creator?.full_name || "Unknown Creator";
+                    return (
+                      <motion.div
+                        layout
+                        key={row.id}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        className="border-2 border-[#FEDB71] p-6 bg-yellow-50 rounded-xl"
+                      >
+                        <div className="flex flex-col gap-4">
+                          <div className="flex items-center gap-3">
+                            {creator?.avatar_url ? (
+                              <img
+                                src={creator.avatar_url}
+                                alt={displayName}
+                                className="w-12 h-12 rounded-full border-2 border-[#1D1D1D] object-cover"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 bg-[#389C9A] flex items-center justify-center text-white font-black rounded-full">
+                                {displayName[0]?.toUpperCase()}
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              <h3 className="font-black">{displayName}</h3>
+                              <p className="text-xs opacity-60">
+                                ~{creator?.avg_viewers?.toLocaleString() ?? 0} avg viewers
+                              </p>
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="font-bold text-lg">{row.campaigns?.name ?? "Unknown Campaign"}</p>
+                            <p className="text-sm opacity-60">Type: {row.campaigns?.type ?? "—"}</p>
+                          </div>
+
+                          {creator?.niche && creator.niche.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {creator.niche.map(tag => (
+                                <span key={tag} className="text-[8px] bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex gap-3 mt-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); acceptCreator(row); }}
+                              className="flex-1 bg-[#1D1D1D] text-white py-3 text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#389C9A] transition-colors"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); declineCreator(row.id); }}
+                              className="flex-1 border-2 border-[#1D1D1D] py-3 text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
+                            >
+                              Decline
+                            </button>
+                          </div>
+
+                          <p className="text-[7px] text-gray-400">
+                            Applied {formatDate(row.created_at)}
+                          </p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+
+                {pendingCreators.length > 3 && (
+                  <button
+                    onClick={() => setPendingExpanded(!pendingExpanded)}
+                    className="w-full py-3 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 text-[#1D1D1D]/40 hover:text-[#1D1D1D] transition-colors"
+                  >
+                    {pendingExpanded ? (
+                      <>Show less <ChevronUp className="w-3 h-3" /></>
+                    ) : (
+                      <>Show {pendingCreators.length - 3} more <ChevronDown className="w-3 h-3" /></>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Quick Actions */}
+        <div className="px-6 pb-24">
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              onClick={() => navigate("/campaign/type")}
+              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
+            >
+              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
+                <Megaphone className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
+              </div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">New Campaign</span>
+            </button>
+
+            <button
+              onClick={() => navigate("/business/settings")}
+              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
+            >
+              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
+                <Filter className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
+              </div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">Settings</span>
+            </button>
+
+            <button
+              onClick={() => navigate(`/profile/${businessId || "me"}`)}
+              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
+            >
+              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
+                <Building2 className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
+              </div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">Profile</span>
+            </button>
+          </div>
         </div>
-      </div>
+      </main>
+
+      <BottomNav />
     </div>
   );
 }
