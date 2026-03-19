@@ -584,3 +584,351 @@ export function BecomeBusiness() {
                     className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] rounded-none resize-none italic"
                   />
                 </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Business Website</label>
+                  <div className="relative">
+                    <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
+                    <input 
+                      {...register("website")}
+                      placeholder="e.g. www.yourbusiness.com"
+                      className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-none italic"
+                    />
+                  </div>
+                </div>
+
+                {/* Socials */}
+                <div className="flex flex-col gap-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Social Media Handles</label>
+                  <div className="flex flex-col gap-3">
+                    {fields.map((field, index) => (
+                      <div key={field.id} className="flex gap-2">
+                        <select 
+                          {...register(`socials.${index}.platform` as const)}
+                          className="bg-white border-2 border-[#1D1D1D]/10 p-5 text-[10px] font-black uppercase tracking-tight outline-none rounded-none italic"
+                        >
+                          <option>Instagram</option>
+                          <option>TikTok</option>
+                          <option>Facebook</option>
+                          <option>Twitter/X</option>
+                        </select>
+                        <input 
+                          {...register(`socials.${index}.handle` as const)}
+                          placeholder="@yourbusiness"
+                          className="flex-1 bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] rounded-none italic"
+                        />
+                        {fields.length > 1 && (
+                          <button onClick={() => remove(index)} className="p-5 bg-red-50 text-red-500 border border-red-200">
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {fields.length < 4 && (
+                      <button 
+                        onClick={() => append({ platform: "Instagram", handle: "" })}
+                        className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest opacity-40 hover:opacity-100 transition-all italic text-[#389C9A]"
+                      >
+                        <Plus className="w-3 h-3" /> Add Another Handle
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-8 border-t-2 border-[#1D1D1D]/10">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Country</label>
+                    <select {...register("country", { required: true })} className="w-full bg-white border-2 border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none rounded-none italic">
+                      <option value="">Select Country</option>
+                      <option value="United Kingdom">United Kingdom</option>
+                      <option value="United States">United States</option>
+                      <option value="Canada">Canada</option>
+                      <option value="Nigeria">Nigeria</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">City</label>
+                    <input {...register("city")} className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] rounded-none italic" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Postcode / ZIP</label>
+                    <input {...register("postcode")} className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] rounded-none italic" />
+                  </div>
+                </div>
+              </div>
+            </section>
+          </motion.div>
+        )}
+
+        {/* Step 3: Goals */}
+        {step === 3 && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-16">
+            <section>
+              <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Your Advertising Goals</h2>
+              <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-12 italic">Help us understand what you want to achieve.</p>
+
+              <div className="flex flex-col gap-12">
+                <div className="flex flex-col gap-6">
+                  <label className="text-[10px] font-black uppercase tracking-widest italic">
+                    Primary Goals <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      "Brand Awareness", "Drive Website Traffic", "Promote a Product", 
+                      "Promote a Service", "Grow Social Media", "Drive Footfall", 
+                      "Launch Product", "Promote Event", "Direct Sales", "Other"
+                    ].map(goal => (
+                      <label key={goal} className="cursor-pointer">
+                        <input type="checkbox" {...register("goals")} value={goal} className="peer hidden" />
+                        <div className="px-4 py-2 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[9px] font-black uppercase tracking-widest transition-all rounded-none italic">
+                          {goal}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-6">
+                  <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">
+                    Campaign Type <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 gap-4">
+                    {[
+                      { val: "Banner Advertising", icon: "📺", sub: "My branded banner appears on creator live streams" },
+                      { val: "Promo Code Promotion", icon: "🎟️", sub: "Creators share my discount code" },
+                      { val: "Banner + Promo Code", icon: "⭐", sub: "Maximum exposure combining both options" }
+                    ].map(opt => (
+                      <label key={opt.val} className="cursor-pointer">
+                        <input type="radio" {...register("campaignType", { required: true })} value={opt.val} className="peer hidden" />
+                        <div className="p-8 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#1D1D1D] peer-checked:text-white transition-all flex items-center gap-6 rounded-none">
+                          <span className="text-3xl">{opt.icon}</span>
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-widest mb-1 italic">{opt.val}</p>
+                            <p className="text-[9px] font-medium uppercase tracking-widest opacity-40 peer-checked:opacity-60 italic">{opt.sub}</p>
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-6">
+                  <label className="text-[10px] font-black uppercase tracking-widest italic">
+                    Monthly Budget <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {[
+                      "Under ₦100k", "₦100k to ₦300k", "₦300k to ₦500k", 
+                      "₦500k to ₦1000k", "Over ₦1000k", "Not sure yet"
+                    ].map(opt => (
+                      <label key={opt} className="cursor-pointer">
+                        <input type="radio" {...register("budget", { required: true })} value={opt} className="peer hidden" />
+                        <div className="p-5 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] transition-all text-center rounded-none italic">
+                          <p className="text-[10px] font-black uppercase tracking-widest">{opt}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-8 bg-white border-2 border-[#1D1D1D] p-8 rounded-none">
+                  <label className="text-[10px] font-black uppercase tracking-widest underline decoration-[#389C9A] decoration-2 underline-offset-4 italic">Target Audience</label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="flex flex-col gap-4">
+                      <label className="text-[9px] font-black uppercase tracking-widest italic opacity-40">Age Range</label>
+                      <div className="flex items-center gap-4">
+                        <input type="number" {...register("ageMin")} placeholder="18" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-3 text-xs font-bold rounded-none" />
+                        <span className="font-black italic">TO</span>
+                        <input type="number" {...register("ageMax")} placeholder="65" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-3 text-xs font-bold rounded-none" />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-4">
+                      <label className="text-[9px] font-black uppercase tracking-widest italic opacity-40">Gender</label>
+                      <div className="flex gap-2">
+                        {["M", "F", "All"].map(g => (
+                          <label key={g} className="flex-1 cursor-pointer">
+                            <input type="checkbox" {...register("gender")} value={g} className="peer hidden" />
+                            <div className="p-3 border border-[#1D1D1D]/10 bg-[#F8F8F8] peer-checked:bg-[#1D1D1D] peer-checked:text-white transition-all text-center text-[10px] font-black rounded-none">{g}</div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-4">
+                      <label className="text-[9px] font-black uppercase tracking-widest italic opacity-40">Location</label>
+                      <input {...register("targetLocation")} placeholder="e.g. UK, Nationwide" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-3 text-xs font-bold rounded-none italic" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </motion.div>
+        )}
+
+        {/* Step 4: Verification */}
+        {step === 4 && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
+            <section>
+              <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Account Verification</h2>
+              <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please upload a valid form of government ID for the account holder.</p>
+              
+              {!idFile ? (
+                <div className="border-2 border-dashed border-[#1D1D1D]/20 p-12 flex flex-col items-center gap-6 bg-[#F8F8F8] rounded-none group hover:border-[#1D1D1D] cursor-pointer transition-all">
+                  <input
+                    type="file"
+                    id="id-upload"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={handleIdUpload}
+                    className="hidden"
+                  />
+                  <label htmlFor="id-upload" className="cursor-pointer text-center w-full">
+                    <div className="p-6 border-2 border-[#1D1D1D] bg-white group-hover:bg-[#1D1D1D] group-hover:text-white transition-all rounded-none inline-block mb-4">
+                      <Upload className="w-8 h-8 text-[#389C9A] group-hover:text-[#FEDB71]" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] font-black uppercase tracking-widest mb-2 italic">Upload Government Issued ID</p>
+                      <p className="text-[8px] font-bold uppercase opacity-30 tracking-widest italic">Passport, Driver License, or National ID</p>
+                      <p className="text-[8px] font-bold uppercase text-[#389C9A] mt-2">JPG, PNG, or PDF (Max 5MB)</p>
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                <div className="border-2 border-[#389C9A] p-8 bg-[#F8F8F8] flex items-center gap-6">
+                  {idPreview && idFile.type.startsWith('image/') ? (
+                    <img src={idPreview} alt="ID Preview" className="w-20 h-20 object-cover" />
+                  ) : (
+                    <div className="w-20 h-20 bg-[#1D1D1D] flex items-center justify-center text-white font-black">
+                      PDF
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <p className="text-[10px] font-black uppercase mb-1">{idFile.name}</p>
+                    <p className="text-[8px] opacity-40 uppercase">{(idFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
+                  <button 
+                    onClick={removeIdFile}
+                    className="p-3 bg-red-50 text-red-500 border border-red-200"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-6 pt-12 border-t-2 border-[#1D1D1D]/10">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Referral Code (Optional)</label>
+                  <input 
+                    {...register("referral")}
+                    placeholder="If you were referred by another brand"
+                    className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all rounded-none italic"
+                  />
+                </div>
+              </div>
+            </section>
+          </motion.div>
+        )}
+
+        {/* Step 5: Review */}
+        {step === 5 && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
+            <section>
+              <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Review Registration</h2>
+              <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please confirm your details are correct.</p>
+              
+              <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-8 rounded-none flex flex-col gap-6">
+                <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
+                  <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Business</span>
+                  <span className="text-[10px] font-black uppercase">{watch("businessName") || "Not entered"}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
+                  <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Industry</span>
+                  <span className="text-[10px] font-black uppercase">{watch("industry") || "Not entered"}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
+                  <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Campaign Type</span>
+                  <span className="text-[10px] font-black uppercase">{watch("campaignType") || "Not selected"}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
+                  <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Monthly Budget</span>
+                  <span className="text-[10px] font-black uppercase">{watch("budget") || "Not selected"}</span>
+                </div>
+                <div className="flex justify-between items-center italic">
+                  <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Contact</span>
+                  <span className="text-[10px] font-black uppercase">{watch("fullName") || "Not entered"}</span>
+                </div>
+              </div>
+
+              <div className="mt-8 flex flex-col gap-4">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input 
+                    type="checkbox" 
+                    {...register("agreeToTerms")}
+                    className="peer hidden" 
+                  />
+                  <div className={`mt-1 w-5 h-5 border-2 flex items-center justify-center transition-all rounded-none ${
+                    agreeToTerms ? 'bg-[#389C9A] border-[#389C9A]' : 'border-[#1D1D1D] bg-white'
+                  }`}>
+                    {agreeToTerms && <CheckCircle2 className="w-3 h-3 text-white" />}
+                  </div>
+                  <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
+                    I agree to LiveLink's Terms of Service and Privacy Policy. <span className="text-red-500">*</span>
+                  </span>
+                </label>
+              </div>
+            </section>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Footer Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-50 max-w-[480px] mx-auto">
+        <div className="flex gap-4">
+          {step > 1 && (
+            <button 
+              onClick={prevStep}
+              disabled={isLoading}
+              className="px-6 py-5 border-2 border-[#1D1D1D] text-[#1D1D1D] font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-all rounded-none italic disabled:opacity-50"
+            >
+              Back
+            </button>
+          )}
+          <button 
+            onClick={step === 5 ? handleSubmit(onSubmit) : nextStep}
+            disabled={!validateStep() || isLoading}
+            className={`flex-1 flex items-center justify-between p-6 font-black uppercase tracking-tight transition-all rounded-none italic ${
+              validateStep() && !isLoading
+                ? 'bg-[#1D1D1D] text-white active:scale-[0.98]' 
+                : 'bg-[#1D1D1D]/30 text-white/50 cursor-not-allowed'
+            }`}
+          >
+            <span>
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Submitting...
+                </span>
+              ) : step === 5 ? 'Submit Registration' : 'Continue'}
+            </span>
+            {!isLoading && step < 5 && <ArrowRight className="w-5 h-5 text-[#FEDB71]" />}
+          </button>
+        </div>
+        
+        {/* Step validation messages */}
+        {!validateStep() && step < 5 && (
+          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center">
+            Please fill in all required fields before continuing
+          </p>
+        )}
+        {step === 4 && !idFile && (
+          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center">
+            Please upload your ID document to continue
+          </p>
+        )}
+        {step === 5 && !agreeToTerms && (
+          <p className="text-[9px] font-black uppercase text-red-500 mt-3 text-center">
+            You must agree to the terms to submit
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
