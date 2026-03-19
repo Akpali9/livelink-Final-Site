@@ -41,7 +41,7 @@ export function ConfirmEmail() {
     const tokenHash = queryParams.get("token_hash");
 
     // DEVELOPMENT BYPASS - Set this to true to skip email confirmation
-    const DEV_BYPASS = false; // Change to false in production
+    const DEV_BYPASS = true; // Change to false in production
     
     if (DEV_BYPASS) {
       // Automatically mark as verified for development
