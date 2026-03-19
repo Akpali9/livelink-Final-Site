@@ -2,13 +2,103 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
 
-// ... (keep all your existing interfaces)
+interface BusinessFormData {
+  fullName: string;
+  jobTitle: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  phoneNumber: string;
+  phoneCountryCode: string;
+  businessName: string;
+  businessType: string;
+  industry: string;
+  description?: string;
+  website?: string;
+  socials: { platform: string; handle: string }[];
+  country: string;
+  city?: string;
+  postcode?: string;
+  operatingTime?: string;
+  goals: string[];
+  campaignType: string;
+  budget: string;
+  ageMin: number;
+  ageMax: number;
+  gender: string[];
+  targetLocation?: string;
+  referral?: string;
+  agreeToTerms: boolean;
+}
+
+interface UploadResult {
+  success: boolean;
+  url?: string;
+  error?: string;
+}
+
+interface RegistrationResult {
+  success: boolean;
+  user?: any;
+  error?: string;
+  needsEmailConfirmation?: boolean;
+}
 
 export function useBusinessRegistration() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ... (keep your existing helper functions)
+  const uploadIdDocument = async (file: File, userId: string): Promise<UploadResult> => {
+    try {
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+      if (!allowedTypes.includes(file.type)) {
+        return { success: false, error: 'Invalid file type. Please upload JPG, PNG, or PDF.' };
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        return { success: false, error: 'File too large. Maximum size is 5MB.' };
+      }
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userId}/id-${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('business-verifications')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('business-verifications')
+        .getPublicUrl(fileName);
+
+      return { success: true, url: publicUrl };
+    } catch (err: any) {
+      console.error('ID upload error:', err);
+      return { success: false, error: err.message || 'Failed to upload ID document' };
+    }
+  };
+
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return emailRegex.test(email.trim().toLowerCase());
+  };
+
+  const validatePassword = (password: string): { valid: boolean; message?: string } => {
+    if (password.length < 6) {
+      return { valid: false, message: 'Password must be at least 6 characters long' };
+    }
+    if (!/[A-Z]/.test(password)) {
+      return { valid: false, message: 'Password should contain at least one uppercase letter' };
+    }
+    if (!/[0-9]/.test(password)) {
+      return { valid: false, message: 'Password should contain at least one number' };
+    }
+    return { valid: true };
+  };
 
   const submitRegistration = async (
     formData: BusinessFormData, 
@@ -35,15 +125,46 @@ export function useBusinessRegistration() {
         throw new Error('Passwords do not match');
       }
 
-      // Check if this is a re-registration for a rejected user
+      // Validate required fields
+      const requiredFields = [
+        { field: formData.fullName, name: 'Full name' },
+        { field: formData.jobTitle, name: 'Job title' },
+        { field: formData.businessName, name: 'Business name' },
+        { field: formData.businessType, name: 'Business type' },
+        { field: formData.industry, name: 'Industry' },
+        { field: formData.country, name: 'Country' },
+        { field: formData.phoneNumber, name: 'Phone number' }
+      ];
+
+      for (const req of requiredFields) {
+        if (!req.field || req.field.trim() === '') {
+          throw new Error(`${req.name} is required`);
+        }
+      }
+
+      if (!formData.goals || formData.goals.length === 0) {
+        throw new Error('Please select at least one advertising goal');
+      }
+
+      if (!formData.campaignType) {
+        throw new Error('Please select a campaign type');
+      }
+
+      if (!formData.budget) {
+        throw new Error('Please select a monthly budget range');
+      }
+
+      // Handle re-registration - check for existing rejected user
       if (isReRegister) {
         console.log('🔄 Re-registration detected for:', cleanEmail);
         
-        // Try to find the user first
+        // Try to find the user by email
         const { data: existingUsers } = await supabase.auth.admin.listUsers();
         const existingUser = existingUsers?.users.find(u => u.email === cleanEmail);
         
         if (existingUser) {
+          console.log('Found existing user:', existingUser.id);
+          
           // Delete the old business profile
           const { error: deleteError } = await supabase
             .from('businesses')
@@ -55,6 +176,8 @@ export function useBusinessRegistration() {
           } else {
             console.log('✅ Old rejected profile deleted');
           }
+          
+          // Note: We don't delete the auth user as it's needed for the new registration
         }
       }
 
@@ -82,7 +205,9 @@ export function useBusinessRegistration() {
       if (signUpError) {
         console.error('❌ Signup error:', signUpError);
         
-        if (signUpError.message.includes('User already registered')) {
+        if (signUpError.message.includes('User already registered') || 
+            signUpError.code === 'email_exists' ||
+            signUpError.message.includes('already exists')) {
           throw new Error('An account with this email already exists. Please login instead.');
         } else {
           throw new Error(`Signup failed: ${signUpError.message}`);
@@ -99,14 +224,17 @@ export function useBusinessRegistration() {
 
       // Upload ID document
       let idDocumentUrl = '';
-      const uploadResult = await uploadIdDocument(idFile, authData.user.id);
-      
-      if (uploadResult.success) {
-        idDocumentUrl = uploadResult.url || '';
-        console.log('✅ ID document uploaded successfully');
-      } else {
-        console.warn('⚠️ ID upload failed:', uploadResult.error);
-        toast.warning('ID upload failed but we saved your application. Support will contact you.');
+      if (idFile) {
+        console.log('📝 Uploading ID document...');
+        const uploadResult = await uploadIdDocument(idFile, authData.user.id);
+        
+        if (uploadResult.success) {
+          idDocumentUrl = uploadResult.url || '';
+          console.log('✅ ID document uploaded successfully');
+        } else {
+          console.warn('⚠️ ID upload failed:', uploadResult.error);
+          toast.warning('ID upload failed but we saved your application. Support will contact you.');
+        }
       }
 
       // Create business profile
@@ -137,7 +265,13 @@ export function useBusinessRegistration() {
         });
 
       if (profileError) {
-        console.error('❌ Profile creation error:', profileError);
+        console.error('❌ Profile creation error:', {
+          message: profileError.message,
+          code: profileError.code,
+          details: profileError.details,
+          hint: profileError.hint
+        });
+        
         return { 
           success: false, 
           error: `Failed to create business profile: ${profileError.message}`,
@@ -147,7 +281,23 @@ export function useBusinessRegistration() {
 
       console.log('✅ Business profile created successfully');
 
-      // Send appropriate notification
+      // Update user metadata with preferences
+      await supabase.auth.updateUser({
+        data: {
+          goals: formData.goals,
+          campaign_type_preference: formData.campaignType,
+          budget_range: formData.budget,
+          target_age_range: { min: formData.ageMin, max: formData.ageMax },
+          target_gender: formData.gender,
+          target_location: formData.targetLocation?.trim() || null,
+          referral_code: formData.referral?.trim() || null,
+          application_submitted: true,
+          application_status: 'pending',
+          is_reapplication: isReRegister
+        }
+      });
+
+      // Send confirmation notification
       const notificationMessage = isReRegister
         ? 'Your re-application has been submitted and is under review.'
         : 'Your business registration has been submitted and is under review.';
@@ -158,6 +308,20 @@ export function useBusinessRegistration() {
         message: notificationMessage,
         type: 'system',
         data: { application_status: 'pending', is_reapplication: isReRegister },
+        created_at: new Date().toISOString()
+      });
+
+      // Send admin notification
+      await supabase.from('notifications').insert({
+        user_id: 'admin',
+        title: isReRegister ? 'New Business Re-application' : 'New Business Application',
+        message: `${formData.businessName} has submitted ${isReRegister ? 'a re-application' : 'an application'} for review.`,
+        type: 'admin_notification',
+        data: { 
+          business_name: formData.businessName, 
+          user_id: authData.user.id,
+          is_reapplication: isReRegister 
+        },
         created_at: new Date().toISOString()
       });
 
