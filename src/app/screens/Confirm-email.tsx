@@ -1,20 +1,44 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
-import { Mail, RefreshCw, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Mail, RefreshCw, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
-import { useBusinessRegistration } from "../hooks/useBusinessRegistration";
+import { supabase } from "../lib/supabase";
+import { toast } from "sonner";
 
 export function ConfirmEmail() {
   const navigate = useNavigate();
   const location = useLocation();
   const email = (location.state as any)?.email || "";
+  const role = (location.state as any)?.role || "creator";
   const [resent, setResent] = useState(false);
-  const { resendConfirmationEmail, loading } = useBusinessRegistration();
+  const [loading, setLoading] = useState(false);
 
   const handleResend = async () => {
-    if (!email) return;
-    const ok = await resendConfirmationEmail(email);
-    if (ok) setResent(true);
+    if (!email) {
+      toast.error("No email address provided");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?role=${role}`
+        }
+      });
+
+      if (error) throw error;
+      
+      setResent(true);
+      toast.success("Confirmation email resent! Please check your inbox.");
+    } catch (error: any) {
+      console.error("Resend error:", error);
+      toast.error(error.message || "Failed to resend confirmation email");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -87,7 +111,11 @@ export function ConfirmEmail() {
             disabled={loading || resent}
             className="w-full border-2 border-[#1D1D1D]/20 py-4 text-[10px] font-black uppercase tracking-widest hover:border-[#1D1D1D] transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            )}
             {loading ? "Sending..." : resent ? "Email Sent" : "Resend Email"}
           </button>
         </div>
