@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { AdminBusinessQueue } from './screen/AdminBusinessQueue';
+import { AdminBusinessQueue } from './AdminBusinessQueue';
 {activeTab === "businesses" && (
   <AdminBusinessQueue />
 )}
