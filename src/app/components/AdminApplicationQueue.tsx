@@ -6,7 +6,7 @@ import { AppHeader } from "../components/app-header";
 import {
   Users, Clock, CheckCircle, XCircle, User, RefreshCw,
   Filter, Calendar, Star, Award, Eye,
-  ChevronRight, CheckSquare, Square
+  ChevronRight, CheckSquare, Square, Mail, Phone, MapPin, Briefcase
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -86,49 +86,227 @@ export function AdminApplicationQueue() {
     }
   };
 
-  const updateStatus = async (id: string, newStatus: "active" | "rejected") => {
+  const handleApprove = async (application: ApplicationRow) => {
     setActionLoading(true);
     try {
-      const { data: creator } = await supabase
-        .from("creator_profiles")
-        .select("user_id, full_name, email")
-        .eq("id", id)
-        .single();
-
-      const updates: any = { 
-        status: newStatus,
-        updated_at: new Date().toISOString()
-      };
-      
-      if (newStatus === "active") {
-        updates.approved_at = new Date().toISOString();
-      } else {
-        updates.rejected_at = new Date().toISOString();
-      }
-
+      // Update creator profile
       const { error } = await supabase
         .from("creator_profiles")
-        .update(updates)
-        .eq("id", id);
+        .update({ 
+          status: "active",
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", application.id);
 
       if (error) throw error;
 
-      if (creator?.user_id) {
+      // Update user metadata
+      await supabase.auth.admin.updateUserById(
+        application.user_id,
+        {
+          user_metadata: {
+            creator_approved: true,
+            approved_at: new Date().toISOString(),
+            application_status: "approved"
+          }
+        }
+      );
+
+      // Send notification to creator
+      await supabase.from("notifications").insert({
+        user_id: application.user_id,
+        type: "creator_approved",
+        title: "🎉 Application Approved!",
+        message: `Congratulations ${application.full_name}! Your creator application has been approved. You can now start accepting offers!`,
+        data: { creator_id: application.id },
+        created_at: new Date().toISOString()
+      });
+
+      // Log admin action
+      await supabase.from("admin_actions").insert({
+        admin_id: adminUser?.id,
+        admin_email: adminUser?.email,
+        action_type: "APPROVE_CREATOR",
+        resource_type: "creator",
+        resource_id: application.id,
+        details: { creator_name: application.full_name, creator_email: application.email },
+        created_at: new Date().toISOString()
+      });
+
+      toast.success(`${application.full_name} approved successfully`);
+      fetchApplications();
+    } catch (error) {
+      console.error("Error approving creator:", error);
+      toast.error("Failed to approve creator");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async (application: ApplicationRow) => {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from("creator_profiles")
+        .update({ 
+          status: "rejected",
+          rejected_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", application.id);
+
+      if (error) throw error;
+
+      await supabase.from("notifications").insert({
+        user_id: application.user_id,
+        type: "creator_rejected",
+        title: "Application Update",
+        message: `Thank you for your interest. After review, your creator application was not approved at this time.`,
+        data: { creator_id: application.id },
+        created_at: new Date().toISOString()
+      });
+
+      await supabase.from("admin_actions").insert({
+        admin_id: adminUser?.id,
+        admin_email: adminUser?.email,
+        action_type: "REJECT_CREATOR",
+        resource_type: "creator",
+        resource_id: application.id,
+        details: { creator_name: application.full_name, creator_email: application.email },
+        created_at: new Date().toISOString()
+      });
+
+      toast.success(`${application.full_name} rejected`);
+      fetchApplications();
+    } catch (error) {
+      console.error("Error rejecting creator:", error);
+      toast.error("Failed to reject creator");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedItems.length === 0) {
+      toast.error("No items selected");
+      return;
+    }
+
+    if (!confirm(`Approve ${selectedItems.length} selected creators?`)) return;
+    
+    setActionLoading(true);
+    try {
+      const { data: creators, error: fetchError } = await supabase
+        .from("creator_profiles")
+        .select("id, user_id, full_name, email")
+        .in("id", selectedItems);
+
+      if (fetchError) throw fetchError;
+
+      const { error: updateError } = await supabase
+        .from("creator_profiles")
+        .update({ 
+          status: "active",
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .in("id", selectedItems);
+
+      if (updateError) throw updateError;
+
+      for (const creator of creators || []) {
+        await supabase.auth.admin.updateUserById(creator.user_id, {
+          user_metadata: {
+            creator_approved: true,
+            approved_at: new Date().toISOString()
+          }
+        });
+
         await supabase.from("notifications").insert({
           user_id: creator.user_id,
-          type: newStatus === "active" ? "creator_approved" : "creator_rejected",
-          title: newStatus === "active" ? "🎉 Application Approved!" : "Application Update",
-          message: newStatus === "active" 
-            ? `Congratulations! Your creator application has been approved.`
-            : `After review, your application was not approved at this time.`,
+          type: "creator_approved",
+          title: "🎉 Application Approved!",
+          message: `Congratulations ${creator.full_name}! Your creator application has been approved.`,
+          data: { creator_id: creator.id },
           created_at: new Date().toISOString()
         });
       }
 
-      toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}`);
+      await supabase.from("admin_actions").insert({
+        admin_id: adminUser?.id,
+        admin_email: adminUser?.email,
+        action_type: "BULK_APPROVE_CREATORS",
+        resource_type: "creators",
+        details: { count: selectedItems.length, ids: selectedItems },
+        created_at: new Date().toISOString()
+      });
+
+      toast.success(`✅ Approved ${selectedItems.length} creators`);
+      setSelectedItems([]);
       fetchApplications();
     } catch (error) {
-      toast.error("Failed to update status");
+      console.error("Error in bulk approve:", error);
+      toast.error("Failed to approve selected creators");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedItems.length === 0) {
+      toast.error("No items selected");
+      return;
+    }
+
+    if (!confirm(`Reject ${selectedItems.length} selected creators?`)) return;
+    
+    setActionLoading(true);
+    try {
+      const { data: creators, error: fetchError } = await supabase
+        .from("creator_profiles")
+        .select("id, user_id, full_name, email")
+        .in("id", selectedItems);
+
+      if (fetchError) throw fetchError;
+
+      const { error: updateError } = await supabase
+        .from("creator_profiles")
+        .update({ 
+          status: "rejected",
+          rejected_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .in("id", selectedItems);
+
+      if (updateError) throw updateError;
+
+      for (const creator of creators || []) {
+        await supabase.from("notifications").insert({
+          user_id: creator.user_id,
+          type: "creator_rejected",
+          title: "Application Update",
+          message: `After review, your creator application was not approved at this time.`,
+          data: { creator_id: creator.id },
+          created_at: new Date().toISOString()
+        });
+      }
+
+      await supabase.from("admin_actions").insert({
+        admin_id: adminUser?.id,
+        admin_email: adminUser?.email,
+        action_type: "BULK_REJECT_CREATORS",
+        resource_type: "creators",
+        details: { count: selectedItems.length, ids: selectedItems },
+        created_at: new Date().toISOString()
+      });
+
+      toast.success(`Rejected ${selectedItems.length} creators`);
+      setSelectedItems([]);
+      fetchApplications();
+    } catch (error) {
+      console.error("Error in bulk reject:", error);
+      toast.error("Failed to reject selected creators");
     } finally {
       setActionLoading(false);
     }
@@ -175,13 +353,35 @@ export function AdminApplicationQueue() {
             <h1 className="text-3xl font-black uppercase tracking-tighter italic">Creator Applications</h1>
             <p className="text-xs text-gray-400 mt-1">{applications.length} applications</p>
           </div>
-          <button
-            onClick={refresh}
-            disabled={refreshing}
-            className="p-3 border-2 border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white transition-colors disabled:opacity-50 rounded-xl"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          </button>
+          <div className="flex gap-3">
+            {selectedItems.length > 0 && (
+              <>
+                <button
+                  onClick={handleBulkApprove}
+                  disabled={actionLoading}
+                  className="px-4 py-2 bg-green-500 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Approve {selectedItems.length}
+                </button>
+                <button
+                  onClick={handleBulkReject}
+                  disabled={actionLoading}
+                  className="px-4 py-2 bg-red-500 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Reject {selectedItems.length}
+                </button>
+              </>
+            )}
+            <button
+              onClick={refresh}
+              disabled={refreshing}
+              className="p-3 border-2 border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white transition-colors disabled:opacity-50 rounded-xl"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-8 border-b border-[#1D1D1D]/10">
@@ -195,9 +395,29 @@ export function AdminApplicationQueue() {
                   : "text-gray-400 hover:text-[#1D1D1D]"
               }`}
             >
-              {tab === "pending_review" ? "Pending" : tab}
+              {tab === "pending_review" ? "Pending" : tab} ({applications.filter(a => 
+                tab === "all" ? true : a.status === tab
+              ).length})
             </button>
           ))}
+        </div>
+
+        <div className="mb-4 flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+          <button onClick={toggleSelectAll} className="flex items-center gap-2">
+            {selectedItems.length === applications.length ? (
+              <CheckSquare className="w-5 h-5 text-[#389C9A]" />
+            ) : (
+              <Square className="w-5 h-5 text-gray-400" />
+            )}
+            <span className="text-xs font-black uppercase tracking-widest">
+              {selectedItems.length === applications.length ? "Deselect All" : "Select All"}
+            </span>
+          </button>
+          {selectedItems.length > 0 && (
+            <span className="text-xs text-gray-500">
+              {selectedItems.length} of {applications.length} selected
+            </span>
+          )}
         </div>
 
         {loading ? (
@@ -219,6 +439,14 @@ export function AdminApplicationQueue() {
                 className="border-2 border-[#1D1D1D] p-6 rounded-xl hover:shadow-lg transition-shadow"
               >
                 <div className="flex items-start gap-4">
+                  <button onClick={() => toggleSelectItem(app.id)} className="mt-1">
+                    {selectedItems.includes(app.id) ? (
+                      <CheckSquare className="w-5 h-5 text-[#389C9A]" />
+                    ) : (
+                      <Square className="w-5 h-5 text-gray-400" />
+                    )}
+                  </button>
+
                   <div className="flex-1">
                     <div className="flex items-start justify-between gap-4 mb-4">
                       <div className="flex items-center gap-4">
@@ -270,14 +498,14 @@ export function AdminApplicationQueue() {
                     {app.status === "pending_review" && (
                       <div className="flex gap-3 mt-6">
                         <button
-                          onClick={() => updateStatus(app.id, "active")}
+                          onClick={() => handleApprove(app)}
                           disabled={actionLoading}
                           className="flex-1 bg-[#1D1D1D] text-white py-3 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors flex items-center justify-center gap-2"
                         >
                           <CheckCircle className="w-3.5 h-3.5" /> Approve
                         </button>
                         <button
-                          onClick={() => updateStatus(app.id, "rejected")}
+                          onClick={() => handleReject(app)}
                           disabled={actionLoading}
                           className="flex-1 border-2 border-[#1D1D1D] py-3 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center gap-2"
                         >
