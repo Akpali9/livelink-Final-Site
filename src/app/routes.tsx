@@ -47,6 +47,7 @@ import { Terms } from "./screens/terms";
 import { Privacy } from "./screens/privacy"
 import { ConfirmEmail } from "./screens/confirm-email";
 import { AdminCampaigns } from "../app/components/AdminCampaigns";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Helper functions for protected routes
 const protectCreator = (Component: React.ComponentType) => (
@@ -77,6 +78,8 @@ const protectAdmin = (Component: React.ComponentType) => (
 const routes: RouteObject[] = [
   {
     path: "/",
+    element: <ErrorBoundary><RootLayout /></ErrorBoundary>,
+    errorElement: <ErrorBoundary><div>Error</div></ErrorBoundary>,
     Component: RootLayout,
     children: [
       // Public routes
@@ -131,7 +134,7 @@ const routes: RouteObject[] = [
       // Admin Routes with AdminLayout
       {
           path: "admin",
-        element: protectAdmin(<AdminLayout />),
+        element: protectAdmin(AdminLayout),
         children: [
           { index: true, element: <AdminDashboard /> },
           { path: "dashboard", element: <AdminDashboard /> },
@@ -139,6 +142,7 @@ const routes: RouteObject[] = [
           { path: "businesses", element: <AdminBusinessQueue /> },
           { path: "campaigns", element: <AdminCampaigns /> },
         ],
+      
       },
     ],
   },
