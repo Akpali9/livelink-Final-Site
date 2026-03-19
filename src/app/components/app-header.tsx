@@ -475,105 +475,7 @@ export function AppHeader({
                   )}
                 </button>
 
-                {/* Messages Dropdown */}
-                <AnimatePresence>
-                  {showMessages && (
-                    <>
-                      <motion.div 
-                        initial={{ opacity: 0 }} 
-                        animate={{ opacity: 1 }} 
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowMessages(false)}
-                      />
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }} 
-                        animate={{ opacity: 1, y: 0, scale: 1 }} 
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }} 
-                        transition={{ duration: 0.15 }}
-                        className={`absolute right-0 mt-2 w-80 sm:w-96 bg-white border-2 border-[#1D1D1D] shadow-xl z-50 max-w-[calc(100vw-2rem)]`}
-                        style={{ 
-                          maxHeight: 'calc(100vh - 100px)',
-                          overflowY: 'auto'
-                        }}
-                      >
-                        <div className="p-4 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center sticky top-0 z-10">
-                          <div className="flex items-center gap-2">
-                            <Mail className="w-4 h-4 text-[#389C9A]" />
-                            <h3 className="text-[10px] font-black uppercase tracking-widest italic">Messages</h3>
-                          </div>
-                          {unreadMessages > 0 && (
-                            <span className="bg-[#389C9A] text-white text-[8px] font-black px-2 py-1">
-                              {unreadMessages} unread
-                            </span>
-                          )}
-                        </div>
-                        
-                        <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
-                          {recentConversations.length === 0 ? (
-                            <div className="p-8 text-center">
-                              <div className="w-12 h-12 bg-[#F8F8F8] mx-auto mb-3 flex items-center justify-center border border-[#1D1D1D]/10">
-                                <Send className="w-5 h-5 opacity-20" />
-                              </div>
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No messages yet</p>
-                              <p className="text-[8px] opacity-30 mt-1">Start a conversation with a business</p>
-                            </div>
-                          ) : (
-                            recentConversations.map(conv => (
-                              <Link
-                                key={conv.id}
-                                to={`/messages/${conv.id}?role=${userType}`}
-                                onClick={() => setShowMessages(false)}
-                                className={`block p-4 border-b border-[#1D1D1D]/10 hover:bg-[#F8F8F8] transition-colors ${!conv.is_read ? 'bg-[#389C9A]/5' : ''}`}
-                              >
-                                <div className="flex items-start gap-3">
-                                  {conv.other_participant_avatar ? (
-                                    <ImageWithFallback 
-                                      src={conv.other_participant_avatar} 
-                                      className="w-10 h-10 border-2 border-[#1D1D1D]/10 object-cover flex-shrink-0 rounded-full"
-                                    />
-                                  ) : (
-                                    <div className="w-10 h-10 bg-[#1D1D1D]/5 border-2 border-[#1D1D1D]/10 flex items-center justify-center flex-shrink-0 rounded-full">
-                                      <User className="w-5 h-5 opacity-40" />
-                                    </div>
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-start mb-1">
-                                      <p className="text-[11px] font-black uppercase tracking-widest truncate">
-                                        {conv.other_participant_name}
-                                      </p>
-                                      <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 flex-shrink-0">
-                                        {formatTimestamp(conv.last_message_time)}
-                                      </span>
-                                    </div>
-                                    <p className="text-[9px] opacity-60 line-clamp-2 break-words">
-                                      {conv.last_message}
-                                    </p>
-                                  </div>
-                                  {!conv.is_read && (
-                                    <div className="w-2 h-2 bg-[#389C9A] flex-shrink-0 mt-2 rounded-full" />
-                                  )}
-                                </div>
-                              </Link>
-                            ))
-                          )}
-                        </div>
-                        
-                        {recentConversations.length > 0 && (
-                          <div className="p-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8] sticky bottom-0">
-                            <Link
-                              to={messagesPath}
-                              onClick={() => setShowMessages(false)}
-                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                            >
-                              View All Messages →
-                            </Link>
-                          </div>
-                        )}
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
+                
               </div>
 
               {/* Notifications Button */}
@@ -684,6 +586,105 @@ export function AppHeader({
                               className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
                             >
                               View All Notifications →
+                            </Link>
+                          </div>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+                {/* Messages Dropdown */}
+                <AnimatePresence>
+                  {showMessages && (
+                    <>
+                      <motion.div 
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: 1 }} 
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowMessages(false)}
+                      />
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }} 
+                        animate={{ opacity: 1, y: 0, scale: 1 }} 
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }} 
+                        transition={{ duration: 0.15 }}
+                        className={`absolute right-0 mt-2 w-80 sm:w-96 bg-white border-2 border-[#1D1D1D] shadow-xl z-50 max-w-[calc(100vw-2rem)]`}
+                        style={{ 
+                          maxHeight: 'calc(100vh - 100px)',
+                          overflowY: 'auto'
+                        }}
+                      >
+                        <div className="p-4 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center sticky top-0 z-10">
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-[#389C9A]" />
+                            <h3 className="text-[10px] font-black uppercase tracking-widest italic">Messages</h3>
+                          </div>
+                          {unreadMessages > 0 && (
+                            <span className="bg-[#389C9A] text-white text-[8px] font-black px-2 py-1">
+                              {unreadMessages} unread
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
+                          {recentConversations.length === 0 ? (
+                            <div className="p-8 text-center">
+                              <div className="w-12 h-12 bg-[#F8F8F8] mx-auto mb-3 flex items-center justify-center border border-[#1D1D1D]/10">
+                                <Send className="w-5 h-5 opacity-20" />
+                              </div>
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No messages yet</p>
+                              <p className="text-[8px] opacity-30 mt-1">Start a conversation with a business</p>
+                            </div>
+                          ) : (
+                            recentConversations.map(conv => (
+                              <Link
+                                key={conv.id}
+                                to={`/messages/${conv.id}?role=${userType}`}
+                                onClick={() => setShowMessages(false)}
+                                className={`block p-4 border-b border-[#1D1D1D]/10 hover:bg-[#F8F8F8] transition-colors ${!conv.is_read ? 'bg-[#389C9A]/5' : ''}`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  {conv.other_participant_avatar ? (
+                                    <ImageWithFallback 
+                                      src={conv.other_participant_avatar} 
+                                      className="w-10 h-10 border-2 border-[#1D1D1D]/10 object-cover flex-shrink-0 rounded-full"
+                                    />
+                                  ) : (
+                                    <div className="w-10 h-10 bg-[#1D1D1D]/5 border-2 border-[#1D1D1D]/10 flex items-center justify-center flex-shrink-0 rounded-full">
+                                      <User className="w-5 h-5 opacity-40" />
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start mb-1">
+                                      <p className="text-[11px] font-black uppercase tracking-widest truncate">
+                                        {conv.other_participant_name}
+                                      </p>
+                                      <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 flex-shrink-0">
+                                        {formatTimestamp(conv.last_message_time)}
+                                      </span>
+                                    </div>
+                                    <p className="text-[9px] opacity-60 line-clamp-2 break-words">
+                                      {conv.last_message}
+                                    </p>
+                                  </div>
+                                  {!conv.is_read && (
+                                    <div className="w-2 h-2 bg-[#389C9A] flex-shrink-0 mt-2 rounded-full" />
+                                  )}
+                                </div>
+                              </Link>
+                            ))
+                          )}
+                        </div>
+                        
+                        {recentConversations.length > 0 && (
+                          <div className="p-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8] sticky bottom-0">
+                            <Link
+                              to={messagesPath}
+                              onClick={() => setShowMessages(false)}
+                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                            >
+                              View All Messages →
                             </Link>
                           </div>
                         )}
