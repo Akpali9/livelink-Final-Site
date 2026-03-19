@@ -1,7 +1,7 @@
-import { Navigate } from "react-router";
+import { Navigate, useNavigate } from "react-router";
 import { supabase } from "../lib/supabase";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { XCircle } from "lucide-react";
 
 export function ProtectedRoute({ 
   children, 
@@ -10,11 +10,13 @@ export function ProtectedRoute({
   children: React.ReactNode;
   userType?: "creator" | "business" | "admin";
 }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejected, setRejected] = useState(false);
+  const [rejectedEmail, setRejectedEmail] = useState("");
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -29,6 +31,7 @@ export function ProtectedRoute({
         }
 
         setUser(user);
+        setRejectedEmail(user.email || "");
 
         // Get user metadata
         const userTypeFromMeta = user.user_metadata?.user_type;
@@ -77,8 +80,8 @@ export function ProtectedRoute({
 
           if (!creator) {
             console.log("No creator profile found");
-            // Allow them to register
-            navigateToRegistration("creator", user.email);
+            // Redirect to registration
+            navigate(`/become-creator?email=${encodeURIComponent(user.email || '')}`);
             return;
           }
 
@@ -116,8 +119,8 @@ export function ProtectedRoute({
 
           if (!business) {
             console.log("No business profile found");
-            // Allow them to register
-            navigateToRegistration("business", user.email);
+            // Redirect to registration
+            navigate(`/become-business?email=${encodeURIComponent(user.email || '')}`);
             return;
           }
 
@@ -168,21 +171,13 @@ export function ProtectedRoute({
     });
 
     return () => subscription?.unsubscribe();
-  }, [userType]);
-
-  const navigateToRegistration = (type: string, email: string) => {
-    if (type === "business") {
-      window.location.href = `/become-business?email=${encodeURIComponent(email)}`;
-    } else {
-      window.location.href = `/become-creator?email=${encodeURIComponent(email)}`;
-    }
-  };
+  }, [userType, navigate]);
 
   const handleReRegister = () => {
     if (userType === "business") {
-      navigate(`/become-business?email=${encodeURIComponent(user?.email || '')}&rejected=true`);
+      navigate(`/become-business?email=${encodeURIComponent(rejectedEmail)}&rejected=true`);
     } else {
-      navigate(`/become-creator?email=${encodeURIComponent(user?.email || '')}&rejected=true`);
+      navigate(`/become-creator?email=${encodeURIComponent(rejectedEmail)}&rejected=true`);
     }
   };
 
