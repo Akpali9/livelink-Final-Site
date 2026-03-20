@@ -47,7 +47,7 @@ import { Terms } from "./screens/terms";
 import { Privacy } from "./screens/privacy";
 import { ConfirmEmail } from "./screens/confirm-email";
 import { AdminCampaigns } from "../app/components/AdminCampaigns";
-import { AdminMessages } from "../app/components/AdminMessages"; // Add this if you created the component
+
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Helper functions for protected routes
@@ -140,7 +140,7 @@ const routes: RouteObject[] = [
           { path: "creators", element: <AdminApplicationQueue /> },
           { path: "businesses", element: <AdminBusinessQueue /> },
           { path: "campaigns", element: <AdminCampaigns /> },
-          { path: "messages", element: <AdminMessages /> }, // Add if you have this component
+           // Add if you have this component
         ],
       },
     ],
