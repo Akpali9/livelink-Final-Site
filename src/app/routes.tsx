@@ -16,7 +16,7 @@ import { Notifications } from "./screens/notifications";
 // import { CampaignLiveUpdate } from "./screens/campaign-live-update";
 // import { CampaignSummary } from "./screens/campaign-summary";
 // import { UpcomingGig } from "./screens/upcoming-gig";
-import { AdminDashboard } from "../components/AdminDashboard";
+import { AdminDashboard } from "./components/AdminDashboard";
 import { LoginPortal } from "./screens/login-portal";
 import { BecomeCreator } from "./screens/become-creator";
 import { BecomeBusiness } from "./screens/become-business";
