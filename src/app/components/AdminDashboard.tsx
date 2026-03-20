@@ -7,6 +7,7 @@ import {
   DollarSign,
   Clock,
   Eye,
+  Plus, 
   Search,
   Filter,
   Download,
