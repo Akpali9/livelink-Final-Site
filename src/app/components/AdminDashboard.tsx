@@ -62,7 +62,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { toast, Toaster } from "sonner";
 import { supabase } from "../lib/supabase";
-import { ImageWithFallback } from "../components/ImageWithFallback";
+import { ImageWithFallback } from "../components/ImageWithFallback"; // Ensure this is a named export
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -1587,7 +1587,7 @@ function AdminCampaigns({ selectedItems, onToggleSelect, onToggleSelectAll, acti
 }
 
 // ─────────────────────────────────────────────
-// ADMIN MESSAGES COMPONENT
+// ADMIN MESSAGES COMPONENT (AppHeader removed)
 // ─────────────────────────────────────────────
 
 function AdminMessages({ adminUser, onUnreadChange }: { adminUser: any; onUnreadChange?: (count: number) => void }) {
@@ -1849,180 +1849,189 @@ function AdminMessages({ adminUser, onUnreadChange }: { adminUser: any; onUnread
 
   return (
     <div className="bg-white border-2 border-[#1D1D1D] rounded-xl overflow-hidden h-[calc(100vh-200px)] flex">
-      {/* Left panel - conversation list */}
-      <div className="w-80 border-r border-[#1D1D1D]/10 flex flex-col">
-        <div className="p-4 border-b border-[#1D1D1D]/10">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-black uppercase tracking-tight">Messages</h3>
-            <button
-              onClick={() => setShowUserSearch(true)}
-              className="p-2 bg-[#1D1D1D] text-white rounded-lg hover:bg-[#389C9A] transition-colors"
-            >
-              <MessageSquare className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search conversations..."
-              className="w-full pl-10 pr-4 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-lg text-sm"
-            />
-          </div>
-          <div className="flex gap-2 mt-4">
-            {[
-              { val: "all", label: "All" },
-              { val: "unread", label: "Unread" },
-              { val: "creators", label: "Creators" },
-              { val: "businesses", label: "Businesses" },
-            ].map(f => (
+      {/* Simple inline header instead of AppHeader */}
+      <div className="absolute top-0 left-0 right-0 bg-white border-b border-[#1D1D1D]/10 py-3 px-4 z-10 flex items-center">
+        <button onClick={() => window.history.back()} className="mr-3 p-1 hover:bg-gray-100 rounded-lg">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h1 className="font-black text-lg">Messages</h1>
+      </div>
+      <div className="flex w-full pt-14"> {/* Add padding to account for header */}
+        {/* Left panel - conversation list */}
+        <div className="w-80 border-r border-[#1D1D1D]/10 flex flex-col">
+          <div className="p-4 border-b border-[#1D1D1D]/10">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-black uppercase tracking-tight">Messages</h3>
               <button
-                key={f.val}
-                onClick={() => setFilter(f.val as any)}
-                className={`flex-1 py-2 text-[8px] font-black uppercase rounded-lg transition-colors ${
-                  filter === f.val ? 'bg-[#1D1D1D] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                onClick={() => setShowUserSearch(true)}
+                className="p-2 bg-[#1D1D1D] text-white rounded-lg hover:bg-[#389C9A] transition-colors"
               >
-                {f.label}
+                <MessageSquare className="w-4 h-4" />
               </button>
-            ))}
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search conversations..."
+                className="w-full pl-10 pr-4 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex gap-2 mt-4">
+              {[
+                { val: "all", label: "All" },
+                { val: "unread", label: "Unread" },
+                { val: "creators", label: "Creators" },
+                { val: "businesses", label: "Businesses" },
+              ].map(f => (
+                <button
+                  key={f.val}
+                  onClick={() => setFilter(f.val as any)}
+                  className={`flex-1 py-2 text-[8px] font-black uppercase rounded-lg transition-colors ${
+                    filter === f.val ? 'bg-[#1D1D1D] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-[#389C9A]" /></div>
-          ) : filteredConversations.length === 0 ? (
-            <div className="p-8 text-center text-gray-400">No conversations</div>
-          ) : (
-            filteredConversations.map(conv => (
-              <button
-                key={conv.id}
-                onClick={() => {
-                  setSelectedConversation(conv);
-                  fetchMessages(conv.id);
-                  markAsRead(conv.id);
-                }}
-                className={`w-full p-4 flex items-start gap-3 border-b border-[#1D1D1D]/10 hover:bg-gray-50 transition-colors ${
-                  selectedConversation?.id === conv.id ? 'bg-[#389C9A]/5' : ''
-                }`}
-              >
-                <div className="relative shrink-0">
-                  {conv.participant_avatar ? (
-                    <ImageWithFallback src={conv.participant_avatar} className="w-10 h-10 rounded-full border-2 border-[#1D1D1D]/10 object-cover" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-[#1D1D1D] text-white flex items-center justify-center font-black text-sm">
-                      {getInitials(conv.participant_name)}
-                    </div>
-                  )}
-                  {conv.participant_type === 'creator' ? (
-                    <Users className="absolute -bottom-1 -right-1 w-4 h-4 p-0.5 bg-[#389C9A] text-white rounded-full" />
-                  ) : (
-                    <Building2 className="absolute -bottom-1 -right-1 w-4 h-4 p-0.5 bg-[#FEDB71] text-[#1D1D1D] rounded-full" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center mb-1">
-                    <h4 className={`font-black text-sm truncate ${conv.unread_count > 0 ? 'text-[#1D1D1D]' : 'text-gray-600'}`}>
-                      {conv.participant_name}
-                    </h4>
-                    <span className="text-[8px] text-gray-400 ml-2">{new Date(conv.last_message_time).toLocaleTimeString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <p className="text-[9px] text-gray-500 truncate">{conv.last_message}</p>
-                    {conv.unread_count > 0 && (
-                      <span className="ml-2 px-1.5 py-0.5 bg-[#389C9A] text-white text-[7px] font-black rounded-full">
-                        {conv.unread_count}
-                      </span>
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-[#389C9A]" /></div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="p-8 text-center text-gray-400">No conversations</div>
+            ) : (
+              filteredConversations.map(conv => (
+                <button
+                  key={conv.id}
+                  onClick={() => {
+                    setSelectedConversation(conv);
+                    fetchMessages(conv.id);
+                    markAsRead(conv.id);
+                  }}
+                  className={`w-full p-4 flex items-start gap-3 border-b border-[#1D1D1D]/10 hover:bg-gray-50 transition-colors ${
+                    selectedConversation?.id === conv.id ? 'bg-[#389C9A]/5' : ''
+                  }`}
+                >
+                  <div className="relative shrink-0">
+                    {conv.participant_avatar ? (
+                      <ImageWithFallback src={conv.participant_avatar} className="w-10 h-10 rounded-full border-2 border-[#1D1D1D]/10 object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-[#1D1D1D] text-white flex items-center justify-center font-black text-sm">
+                        {getInitials(conv.participant_name)}
+                      </div>
+                    )}
+                    {conv.participant_type === 'creator' ? (
+                      <Users className="absolute -bottom-1 -right-1 w-4 h-4 p-0.5 bg-[#389C9A] text-white rounded-full" />
+                    ) : (
+                      <Building2 className="absolute -bottom-1 -right-1 w-4 h-4 p-0.5 bg-[#FEDB71] text-[#1D1D1D] rounded-full" />
                     )}
                   </div>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Right panel - messages */}
-      <div className="flex-1 flex flex-col">
-        {selectedConversation ? (
-          <>
-            <div className="p-4 border-b border-[#1D1D1D]/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {selectedConversation.participant_avatar ? (
-                  <ImageWithFallback src={selectedConversation.participant_avatar} className="w-8 h-8 rounded-full border-2 border-[#1D1D1D]/10 object-cover" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-[#1D1D1D] text-white flex items-center justify-center font-black text-xs">
-                    {getInitials(selectedConversation.participant_name)}
-                  </div>
-                )}
-                <div>
-                  <h4 className="font-black text-sm">{selectedConversation.participant_name}</h4>
-                  <p className="text-[8px] text-gray-500">{selectedConversation.participant_type}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map((msg, i) => {
-                const isAdmin = msg.sender_id === adminUser.id;
-                return (
-                  <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] ${isAdmin ? 'bg-[#1D1D1D] text-white' : 'bg-gray-100'} p-3 rounded-2xl text-sm`}>
-                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                      {msg.attachments && msg.attachments.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {msg.attachments.map((att, idx) => (
-                            <a
-                              key={idx}
-                              href={att.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={`flex items-center gap-2 p-1 rounded text-xs ${
-                                isAdmin ? 'bg-white/10' : 'bg-white'
-                              }`}
-                            >
-                              {att.type.startsWith('image/') ? <ImageIcon className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
-                              <span className="truncate flex-1">{att.name}</span>
-                            </a>
-                          ))}
-                        </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-1">
+                      <h4 className={`font-black text-sm truncate ${conv.unread_count > 0 ? 'text-[#1D1D1D]' : 'text-gray-600'}`}>
+                        {conv.participant_name}
+                      </h4>
+                      <span className="text-[8px] text-gray-400 ml-2">{new Date(conv.last_message_time).toLocaleTimeString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <p className="text-[9px] text-gray-500 truncate">{conv.last_message}</p>
+                      {conv.unread_count > 0 && (
+                        <span className="ml-2 px-1.5 py-0.5 bg-[#389C9A] text-white text-[7px] font-black rounded-full">
+                          {conv.unread_count}
+                        </span>
                       )}
-                      <div className={`text-[8px] mt-1 ${isAdmin ? 'text-white/50' : 'text-gray-400'} flex justify-end`}>
-                        {new Date(msg.created_at).toLocaleTimeString()}
-                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-
-            <div className="p-4 border-t border-[#1D1D1D]/10">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                  placeholder="Type a message..."
-                  className="flex-1 px-4 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-lg"
-                />
-                <button
-                  onClick={sendMessage}
-                  disabled={!messageInput.trim() && attachments.length === 0 || sending}
-                  className="p-2 bg-[#1D1D1D] text-white rounded-lg hover:bg-[#389C9A] transition-colors disabled:opacity-50"
-                >
-                  {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                 </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400">
-            Select a conversation to start messaging
+              ))
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Right panel - messages */}
+        <div className="flex-1 flex flex-col">
+          {selectedConversation ? (
+            <>
+              <div className="p-4 border-b border-[#1D1D1D]/10 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {selectedConversation.participant_avatar ? (
+                    <ImageWithFallback src={selectedConversation.participant_avatar} className="w-8 h-8 rounded-full border-2 border-[#1D1D1D]/10 object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-[#1D1D1D] text-white flex items-center justify-center font-black text-xs">
+                      {getInitials(selectedConversation.participant_name)}
+                    </div>
+                  )}
+                  <div>
+                    <h4 className="font-black text-sm">{selectedConversation.participant_name}</h4>
+                    <p className="text-[8px] text-gray-500">{selectedConversation.participant_type}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.map((msg, i) => {
+                  const isAdmin = msg.sender_id === adminUser.id;
+                  return (
+                    <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[70%] ${isAdmin ? 'bg-[#1D1D1D] text-white' : 'bg-gray-100'} p-3 rounded-2xl text-sm`}>
+                        <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                        {msg.attachments && msg.attachments.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {msg.attachments.map((att, idx) => (
+                              <a
+                                key={idx}
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center gap-2 p-1 rounded text-xs ${
+                                  isAdmin ? 'bg-white/10' : 'bg-white'
+                                }`}
+                              >
+                                {att.type.startsWith('image/') ? <ImageIcon className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                                <span className="truncate flex-1">{att.name}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                        <div className={`text-[8px] mt-1 ${isAdmin ? 'text-white/50' : 'text-gray-400'} flex justify-end`}>
+                          {new Date(msg.created_at).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="p-4 border-t border-[#1D1D1D]/10">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                    placeholder="Type a message..."
+                    className="flex-1 px-4 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-lg"
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={!messageInput.trim() && attachments.length === 0 || sending}
+                    className="p-2 bg-[#1D1D1D] text-white rounded-lg hover:bg-[#389C9A] transition-colors disabled:opacity-50"
+                  >
+                    {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-gray-400">
+              Select a conversation to start messaging
+            </div>
+          )}
+        </div>
       </div>
 
       {/* New message modal */}
@@ -2148,4 +2157,4 @@ function BusinessDetailModal({ business, onClose }: any) {
 }
 
 export { AdminDashboard as AdminDashboardScreen };
-export default AdminDashboard; 
+export default AdminDashboard;
