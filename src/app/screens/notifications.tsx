@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import {
   Bell,
@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Mail,
   CreditCard,
+  RefreshCw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase } from "../lib/supabase";
@@ -28,10 +29,6 @@ import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
-
-// ─────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────
 
 type NotificationType =
   | "earnings" 
@@ -54,7 +51,8 @@ type NotificationType =
   | "campaign_rejected" 
   | "payout" 
   | "welcome"
-  | "campaign_invite";
+  | "campaign_invite"
+  | "new_application";
 
 interface Notification {
   id: string;
@@ -67,10 +65,6 @@ interface Notification {
   created_at: string;
   grouping: "TODAY" | "YESTERDAY" | "THIS_WEEK" | "EARLIER";
 }
-
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
 
 const getGrouping = (dateString: string): Notification["grouping"] => {
   const diffDays = Math.floor((Date.now() - new Date(dateString).getTime()) / 86400000);
@@ -88,10 +82,6 @@ const GROUP_LABELS = {
 };
 
 const GROUP_ORDER: Notification["grouping"][] = ["TODAY", "YESTERDAY", "THIS_WEEK", "EARLIER"];
-
-// ─────────────────────────────────────────────
-// ICON + COLOR per type
-// ─────────────────────────────────────────────
 
 function NotifIcon({ type }: { type: NotificationType }) {
   const cls = "w-5 h-5";
@@ -112,6 +102,7 @@ function NotifIcon({ type }: { type: NotificationType }) {
     action: <Zap className={`${cls} text-yellow-600`} />,
     offer: <Zap className={`${cls} text-yellow-600`} />,
     new_offer: <Zap className={`${cls} text-yellow-600`} />,
+    new_application: <Users className={`${cls} text-purple-500`} />,
     campaign: <Megaphone className={`${cls} text-purple-500`} />,
     campaign_invite: <Mail className={`${cls} text-purple-500`} />,
     match: <Target className={`${cls} text-indigo-500`} />,
@@ -140,6 +131,7 @@ function notifBg(type: NotificationType): string {
     action: "bg-yellow-100",
     offer: "bg-yellow-100",
     new_offer: "bg-yellow-100",
+    new_application: "bg-purple-100",
     campaign: "bg-purple-100",
     campaign_invite: "bg-purple-100",
     match: "bg-indigo-100",
@@ -150,10 +142,6 @@ function notifBg(type: NotificationType): string {
   
   return bgMap[type] || "bg-gray-100";
 }
-
-// ─────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────
 
 export function Notifications() {
   const navigate      = useNavigate();
@@ -168,13 +156,17 @@ export function Notifications() {
   const [loading, setLoading]             = useState(true);
   const [selectedType, setSelectedType]   = useState("all");
   const [isDeleting, setIsDeleting]       = useState<string | null>(null);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [lastUpdated, setLastUpdated]     = useState<Date>(new Date());
 
-  // ── Fetch Notifications ─────────────────────────────────────────────────
-
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async (showRefreshToast = false) => {
     if (!user) return;
     
     try {
+      if (showRefreshToast) {
+        setRefreshing(true);
+      }
+      
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
@@ -190,15 +182,21 @@ export function Notifications() {
       }));
       
       setNotifications(formattedData);
+      setLastUpdated(new Date());
+      
+      if (showRefreshToast) {
+        toast.success(`Updated ${formattedData.length} notifications`);
+      }
     } catch (error) {
       console.error("Error fetching notifications:", error);
-      toast.error("Failed to load notifications");
+      if (showRefreshToast) {
+        toast.error("Failed to refresh notifications");
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
-
-  // ── Create Test Notification (for debugging) ───────────────────────────
+  }, [user]);
 
   const createTestNotification = async () => {
     if (!user) return;
@@ -207,7 +205,7 @@ export function Notifications() {
       {
         user_id: user.id,
         type: "new_offer",
-        title: "New Campaign Offer!",
+        title: "New Campaign Offer! 🎯",
         message: "TechCorp wants you to promote their new gaming laptop. $500 per post.",
         data: { campaign_id: "test-123", amount: 500 },
         created_at: new Date().toISOString()
@@ -215,7 +213,7 @@ export function Notifications() {
       {
         user_id: user.id,
         type: "message",
-        title: "New Message",
+        title: "New Message 💬",
         message: "Sarah from GamingCo sent you a message about your recent campaign.",
         data: { conversation_id: "conv-123" },
         created_at: new Date(Date.now() - 3600000).toISOString()
@@ -223,7 +221,7 @@ export function Notifications() {
       {
         user_id: user.id,
         type: "campaign_approved",
-        title: "Campaign Approved!",
+        title: "Campaign Approved! ✅",
         message: "Your campaign 'Summer Gaming Stream' has been approved and is now live.",
         data: { campaign_id: "camp-456" },
         created_at: new Date(Date.now() - 86400000).toISOString()
@@ -231,10 +229,18 @@ export function Notifications() {
       {
         user_id: user.id,
         type: "payment",
-        title: "Payment Received",
+        title: "Payment Received 💰",
         message: "You received $750 from Nike Campaign #1234.",
         data: { amount: 750, campaign_id: "nike-123" },
         created_at: new Date(Date.now() - 172800000).toISOString()
+      },
+      {
+        user_id: user.id,
+        type: "new_application",
+        title: "New Application! 📝",
+        message: "A creator applied to your campaign 'Summer Sale 2024'.",
+        data: { campaign_id: "camp-789", creator_id: "creator-123" },
+        created_at: new Date(Date.now() - 259200000).toISOString()
       }
     ];
     
@@ -244,55 +250,79 @@ export function Notifications() {
     }
     
     await fetchNotifications();
-    toast.success("Test notifications created!");
+    toast.success(`${testNotifications.length} test notifications created!`);
   };
 
   useEffect(() => {
-    if (user) {
-      fetchNotifications();
-      
-      // Setup real-time subscription
-      const subscription = supabase
-        .channel(`notifications-${user.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${user.id}`
-          },
-          (payload) => {
-            const newNotif = {
-              ...payload.new,
-              grouping: getGrouping(payload.new.created_at),
-              data: payload.new.data || {}
-            } as Notification;
-            
-            setNotifications(prev => [newNotif, ...prev]);
-            
-            // Show toast for new notification
-            if (!newNotif.is_read) {
-              toast.info(newNotif.title, {
-                description: newNotif.message,
-                duration: 5000,
-                action: {
-                  label: "View",
-                  onClick: () => handleClick(newNotif)
-                }
-              });
-            }
+    if (!user) return;
+
+    fetchNotifications();
+    
+    // Setup real-time subscription
+    const channel = supabase
+      .channel(`notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          const newNotif = {
+            ...payload.new,
+            grouping: getGrouping(payload.new.created_at),
+            data: payload.new.data || {}
+          } as Notification;
+          
+          setNotifications(prev => [newNotif, ...prev]);
+          
+          // Show toast for new notification
+          if (!newNotif.is_read) {
+            toast.info(newNotif.title, {
+              description: newNotif.message,
+              duration: 5000,
+              action: {
+                label: "View",
+                onClick: () => handleClick(newNotif)
+              }
+            });
           }
-        )
-        .subscribe();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          setNotifications(prev => 
+            prev.map(n => n.id === payload.new.id ? { ...n, ...payload.new, grouping: getGrouping(payload.new.created_at) } : n)
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
+        }
+      )
+      .subscribe();
 
-      return () => {
-        subscription.unsubscribe();
-      };
-    }
+    return () => {
+      channel.unsubscribe();
+    };
   }, [user]);
-
-  // ── Actions ───────────────────────────────────────────────────────────────
 
   const markAllRead = async () => {
     if (!user || notifications.filter(n => !n.is_read).length === 0) return;
@@ -370,8 +400,6 @@ export function Notifications() {
     }
   };
 
-  // ── Navigation on click ───────────────────────────────────────────────────
-
   const handleClick = (n: Notification) => {
     if (!n.is_read) {
       markAsRead(n.id);
@@ -380,7 +408,6 @@ export function Notifications() {
     const data = n.data || {};
 
     if (isBiz) {
-      // Business navigation
       if (data.campaign_id) {
         navigate(`/business/campaign/overview/${data.campaign_id}`);
       } else if (n.type === "message" && data.conversation_id) {
@@ -397,7 +424,6 @@ export function Notifications() {
         navigate(`/business/dashboard`);
       }
     } else {
-      // Creator navigation
       if (data.campaign_id) {
         navigate(`/creator/campaign/${data.campaign_id}`);
       } else if (data.conversation_id) {
@@ -414,12 +440,11 @@ export function Notifications() {
     }
   };
 
-  // ── Filter tabs ───────────────────────────────────────────────────────────
-
   const bizTabs = [
     { value: "all", label: "All", icon: Bell, types: ["all"] },
     { value: "campaign", label: "Campaigns", icon: Megaphone, types: ["campaign", "campaign_approved", "campaign_rejected", "campaign_invite"] },
     { value: "offer", label: "Offers", icon: Zap, types: ["offer", "new_offer", "action"] },
+    { value: "application", label: "Applications", icon: Users, types: ["new_application"] },
     { value: "message", label: "Messages", icon: MessageSquare, types: ["message"] },
     { value: "payment", label: "Payments", icon: DollarSign, types: ["payment", "earnings", "payout"] },
     { value: "system", label: "System", icon: Info, types: ["system", "announcement", "welcome"] },
@@ -451,8 +476,6 @@ export function Notifications() {
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  // ── Loading ───────────────────────────────────────────────────────────────
-
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
@@ -465,25 +488,44 @@ export function Notifications() {
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
       <AppHeader showBack title="Notifications" backPath={backPath} userType={isBiz ? "business" : "creator"} />
 
       <main className="flex-1 max-w-[480px] mx-auto w-full">
 
-        {/* Sticky header */}
         <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-[#1D1D1D]/10">
+          {/* Real-time Status Bar */}
           <div className="flex justify-between items-center mb-4">
-            <span className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40">
-              {unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}
-            </span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-[8px] font-black uppercase tracking-widest text-green-600">
+                  LIVE
+                </span>
+              </div>
+              <span className="text-[8px] text-[#1D1D1D]/40">
+                • {unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}
+              </span>
+              <span className="text-[8px] text-[#1D1D1D]/30">
+                • Updated {lastUpdated.toLocaleTimeString()}
+              </span>
+            </div>
             <div className="flex gap-3">
+              <button
+                onClick={() => fetchNotifications(true)}
+                disabled={refreshing}
+                className="flex items-center gap-1 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+                <span className="text-[8px] font-black uppercase tracking-widest">
+                  {refreshing ? 'Updating...' : 'Refresh'}
+                </span>
+              </button>
               {notifications.length === 0 && (
                 <button onClick={createTestNotification}
                   className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1">
-                  <Mail className="w-3 h-3" /> Add Test Notifications
+                  <Mail className="w-3 h-3" /> Add Test
                 </button>
               )}
               {unreadCount > 0 && (
@@ -566,12 +608,10 @@ export function Notifications() {
                           !n.is_read ? "bg-[#389C9A]/5" : ""
                         }`}
                       >
-                        {/* Icon */}
                         <div className={`shrink-0 w-11 h-11 rounded-xl flex items-center justify-center ${notifBg(n.type)}`}>
                           <NotifIcon type={n.type} />
                         </div>
 
-                        {/* Content */}
                         <div className="flex-1 min-w-0 pr-6">
                           <div className="flex justify-between items-start mb-0.5">
                             <h4 className={`text-sm font-black uppercase tracking-tight ${
@@ -596,12 +636,10 @@ export function Notifications() {
                           )}
                         </div>
 
-                        {/* Unread dot */}
                         {!n.is_read && (
                           <div className="absolute right-4 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#389C9A] rounded-full" />
                         )}
 
-                        {/* Delete — visible on hover */}
                         <button
                           onClick={e => deleteNotif(n.id, e)}
                           disabled={isDeleting === n.id}
