@@ -14,30 +14,24 @@ export function BottomNav() {
     ? [
         { icon: Home,      label: "Home",      path: "/business/dashboard" },
         { icon: Search,    label: "Browse",    path: "/browse" },
-        { icon: Briefcase, label: "My Campaigns", path: "/business/dashboard" },
-        { icon: Bell,      label: "Notification",    path: "/notifications?role=business" },
+        { icon: Briefcase, label: "My Campaigns", path: "/business/campaigns" },
+        { icon: Bell,      label: "Notifications",    path: "/notifications?role=business" },
       ]
     : [
         { icon: Home,      label: "Home",      path: "/dashboard" },
         { icon: Search,    label: "Browse",    path: "/browse" },
         { icon: Briefcase, label: "Campaigns", path: "/campaigns" },
-        { icon: Bell,      label: "Notification",    path: "/notifications?role=creator" },
+        { icon: Bell,      label: "Notifications",    path: "/notifications?role=creator" },
       ];
 
   const isActive = (path: string, label: string) => {
     const p = location.pathname;
-    if (label === "Home") {
-      return isBusiness
-        ? p === "/business/dashboard"
-        : p === "/dashboard";
-    }
-    if (label === "Campaigns") {
-      return isBusiness
-        ? p.startsWith("/business/campaign") || p === "/business/dashboard"
-        : p === "/campaigns" || p.startsWith("/campaign");
-    }
-    if (label === "Browse")  return p === "/browse" || p.startsWith("/profile");
-    if (label === "Alerts")  return p === "/notifications";
+    if (label === "Home")      return isBusiness ? p === "/business/dashboard" : p === "/dashboard";
+    if (label === "Campaigns") return isBusiness
+      ? p === "/business/campaigns" || p.startsWith("/business/campaign")
+      : p === "/campaigns" || p.startsWith("/campaign");
+    if (label === "Browse")    return p === "/browse" || p.startsWith("/profile");
+    if (label === "Alerts")    return p === "/notifications";
     return p === path;
   };
 
@@ -45,7 +39,7 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-[#1D1D1D] py-2 px-4 max-w-[480px] mx-auto z-50">
       <div className="flex justify-around items-center">
         {navItems.map((item) => {
-          const Icon = item.icon;
+          const Icon   = item.icon;
           const active = isActive(item.path, item.label);
           return (
             <Link
@@ -56,9 +50,7 @@ export function BottomNav() {
               }`}
             >
               <Icon className="w-5 h-5" />
-              <span className="text-[8px] font-black uppercase tracking-widest">
-                {item.label}
-              </span>
+              <span className="text-[8px] font-black uppercase tracking-widest">{item.label}</span>
             </Link>
           );
         })}
