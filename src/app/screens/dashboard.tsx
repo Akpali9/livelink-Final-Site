@@ -522,10 +522,11 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px]">
-      <AppHeader showLogo subtitle="Creator Hub" userType="creator" showHome={false} />
+      
       <Toaster position="top-center" richColors />
 
       <main className="max-w-[480px] mx-auto w-full">
+        <AppHeader showLogo subtitle="Creator Hub" userType="creator" showHome={false} />
 
         {/* Welcome */}
         <div className="px-6 pt-6 pb-2 flex justify-between items-center">
