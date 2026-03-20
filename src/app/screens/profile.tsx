@@ -14,29 +14,20 @@ import {
   Users,
   BarChart,
   Star,
-  Calendar,
   TrendingUp,
   MessageSquare,
   Zap,
   Eye,
   AlertCircle,
   X,
-  DollarSign,
   Clock,
-  Award,
   Settings,
-  Edit,
   Mail,
   Phone,
   Globe,
-  Link as LinkIcon,
   Twitter,
-  Github,
-  Linkedin,
   Package,
   Info,
-  Shield,
-  Camera,
   ExternalLink,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -69,7 +60,6 @@ interface CreatorPackage {
   is_default?: boolean;
 }
 
-// ── Added email + phone_number to FormattedCreator ──
 interface FormattedCreator {
   id: string;
   user_id: string;
@@ -152,6 +142,7 @@ export function Profile() {
     const fetchCreator = async () => {
       setLoading(true);
       try {
+        // Correct table: creator_profiles — all columns matched to real schema
         const { data: creatorData, error: creatorError } = await supabase
           .from("creator_profiles")
           .select(`
@@ -160,17 +151,29 @@ export function Profile() {
             full_name,
             username,
             email,
+            phone_number,
+            phone_country_code,
             avatar_url,
             bio,
             location,
-            phone_number,
+            country,
+            city,
             niche,
+            categories,
             avg_viewers,
+            avg_concurrent,
             total_streams,
             rating,
             status,
-            created_at,
-            updated_at
+            verification_status,
+            frequency,
+            duration,
+            days,
+            time_of_day,
+            total_earned,
+            pending_earnings,
+            paid_out,
+            created_at
           `)
           .eq("id", id)
           .maybeSingle();
@@ -178,15 +181,16 @@ export function Profile() {
         if (creatorError) throw creatorError;
         if (!creatorData) { setCreator(null); return; }
 
+        // ✅ creator_platforms — uses creator_id which matches creator_profiles.id
         const { data: platformsData } = await supabase
           .from("creator_platforms")
           .select("*")
           .eq("creator_id", id);
 
         const defaultPackages: CreatorPackage[] = [
-          { id: "1", name: "Bronze Package", streams: 4,  price: 15000, description: "Perfect for testing the partnership",       enabled: true, is_default: true },
-          { id: "2", name: "Silver Package", streams: 8,  price: 28000, description: "Best value for ongoing campaigns",          enabled: true },
-          { id: "3", name: "Gold Package",   streams: 12, price: 40000, description: "Maximum exposure for premium brands",       enabled: false },
+          { id: "1", name: "Bronze Package", streams: 4,  price: 15000, description: "Perfect for testing the partnership",   enabled: true, is_default: true },
+          { id: "2", name: "Silver Package", streams: 8,  price: 28000, description: "Best value for ongoing campaigns",      enabled: true },
+          { id: "3", name: "Gold Package",   streams: 12, price: 40000, description: "Maximum exposure for premium brands",   enabled: false },
         ];
 
         // Own profile check
@@ -194,6 +198,7 @@ export function Profile() {
 
         // Business check
         if (user) {
+          // ✅ Correct table: businesses
           const { data: business } = await supabase
             .from("businesses")
             .select("id, business_name, email, logo_url")
@@ -205,7 +210,6 @@ export function Profile() {
           }
         }
 
-        // ── Map all fields including email + phone_number ──
         const formatted: FormattedCreator = {
           id:           creatorData.id,
           user_id:      creatorData.user_id,
@@ -217,14 +221,15 @@ export function Profile() {
           phone_number: creatorData.phone_number || "",
           avatar:       creatorData.avatar_url || "https://via.placeholder.com/200",
           bio:          creatorData.bio || "Live streamer and content creator passionate about engaging with audiences.",
-          location:     creatorData.location || "Remote",
-          verified:     false,
+          location:     creatorData.location || `${creatorData.city || ""}, ${creatorData.country || ""}`.replace(/^, |, $/, "") || "Remote",
+          verified:     creatorData.verification_status === "approved",
           availability: creatorData.status === "active" ? "Available for campaigns" : "Not available",
-          niches:       creatorData.niche || ["Gaming", "Entertainment"],
+          // use categories if niche is empty (both columns exist in schema)
+          niches:       (creatorData.niche?.length ? creatorData.niche : creatorData.categories) || [],
           stats: {
-            avgViewers:   creatorData.avg_viewers || 0,
-            totalStreams:  creatorData.total_streams || 0,
-            rating:        creatorData.rating || 0,
+            avgViewers:  creatorData.avg_viewers || creatorData.avg_concurrent || 0,
+            totalStreams: creatorData.total_streams || 0,
+            rating:       creatorData.rating || 0,
           },
           platforms: (platformsData || []).map((p: CreatorPlatform) => ({
             name:      p.platform_type,
@@ -232,7 +237,7 @@ export function Profile() {
             url:       p.profile_url || "#",
             username:  p.username,
           })),
-          packages: defaultPackages.filter(p => p.enabled),
+          packages: defaultPackages.filter((p) => p.enabled),
         };
 
         setCreator(formatted);
@@ -294,7 +299,10 @@ export function Profile() {
         .maybeSingle();
 
       if (campaignError) throw campaignError;
-      if (!campaignRow) { toast.error("Please create a campaign first before sending an offer."); return; }
+      if (!campaignRow) {
+        toast.error("Please create a campaign first before sending an offer.");
+        return;
+      }
 
       const { data: existing } = await supabase
         .from("campaign_creators")
@@ -310,7 +318,9 @@ export function Profile() {
       }
 
       const streams = selectedPackage ? selectedPackage.streams : parseInt(customOffer.streams);
-      const rate    = selectedPackage ? selectedPackage.price / selectedPackage.streams : parseFloat(customOffer.rate);
+      const rate    = selectedPackage
+        ? selectedPackage.price / selectedPackage.streams
+        : parseFloat(customOffer.rate);
 
       const { error } = await supabase.from("campaign_creators").insert({
         campaign_id:       campaignRow.id,
@@ -387,7 +397,7 @@ export function Profile() {
         <AppHeader showBack title="Creator Profile" />
         <div className="flex items-center justify-center h-[80vh]">
           <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
             <p className="text-sm text-gray-500">Loading profile...</p>
           </div>
         </div>
@@ -403,9 +413,13 @@ export function Profile() {
         <div className="flex flex-col items-center justify-center h-[80vh] px-8">
           <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
           <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Profile Not Found</h2>
-          <p className="text-gray-400 text-center mb-8">The creator you're looking for doesn't exist or is not active.</p>
-          <button onClick={() => navigate("/browse")}
-            className="bg-[#1D1D1D] text-white px-8 py-4 text-sm font-black uppercase tracking-widest rounded-xl">
+          <p className="text-gray-400 text-center mb-8">
+            The creator you're looking for doesn't exist or is not active.
+          </p>
+          <button
+            onClick={() => navigate("/browse")}
+            className="bg-[#1D1D1D] text-white px-8 py-4 text-sm font-black uppercase tracking-widest rounded-xl"
+          >
             Browse Creators
           </button>
         </div>
@@ -422,13 +436,15 @@ export function Profile() {
 
       <main className="max-w-[480px] mx-auto w-full">
 
-        {/* Profile Header */}
+        {/* ── Profile Header ── */}
         <div className="bg-white border-b border-[#1D1D1D]">
           <div className="px-6 py-12 flex flex-col items-center text-center relative">
 
             {isOwnProfile && (
-              <button onClick={() => navigate("/settings")}
-                className="absolute top-6 right-6 p-3 border-2 border-[#1D1D1D] rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors group">
+              <button
+                onClick={() => navigate("/settings")}
+                className="absolute top-6 right-6 p-3 border-2 border-[#1D1D1D] rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors group"
+              >
                 <Settings className="w-5 h-5 group-hover:rotate-90 transition-transform" />
               </button>
             )}
@@ -459,8 +475,13 @@ export function Profile() {
             {creator.platforms.length > 0 && (
               <div className="flex flex-wrap justify-center gap-2 mb-4">
                 {creator.platforms.map((p, i) => (
-                  <a key={i} href={p.url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 bg-[#389C9A]/10 px-3 py-1.5 rounded-full border border-[#389C9A]/20 hover:bg-[#389C9A] hover:text-white transition-colors">
+                  <a
+                    key={i}
+                    href={p.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 bg-[#389C9A]/10 px-3 py-1.5 rounded-full border border-[#389C9A]/20 hover:bg-[#389C9A] hover:text-white transition-colors"
+                  >
                     {getPlatformIconComponent(p.name)}
                     <span className="text-[8px] font-black uppercase">{p.name}</span>
                     <span className="text-[7px] font-medium opacity-60 ml-1">{formatNumber(p.followers)}</span>
@@ -476,12 +497,16 @@ export function Profile() {
                 <span>{creator.location}</span>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 border-2 border-[#1D1D1D] text-[8px] uppercase font-black italic rounded-full">
-                <span className={`w-1.5 h-1.5 ${creator.availability.includes("Available") ? "bg-[#389C9A]" : "bg-gray-400"} rounded-full`} />
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    creator.availability.includes("Available") ? "bg-[#389C9A]" : "bg-gray-400"
+                  }`}
+                />
                 {creator.availability}
               </div>
             </div>
 
-            {/* ── Contact Info — only for businesses ── */}
+            {/* Contact Info — businesses only */}
             {isBusiness && (creator.email || creator.phone_number) && (
               <div className="flex flex-col gap-2 w-full max-w-sm mb-6 p-4 bg-[#F8F8F8] border border-[#1D1D1D]/10 rounded-xl text-left">
                 <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Contact Details</p>
@@ -504,8 +529,10 @@ export function Profile() {
             {creator.niches.length > 0 && (
               <div className="flex flex-wrap justify-center gap-2 mb-6">
                 {creator.niches.map((n, i) => (
-                  <span key={i}
-                    className="text-[8px] font-black uppercase bg-[#F8F8F8] px-3 py-1.5 rounded-full border border-[#1D1D1D]/10 italic">
+                  <span
+                    key={i}
+                    className="text-[8px] font-black uppercase bg-[#F8F8F8] px-3 py-1.5 rounded-full border border-[#1D1D1D]/10 italic"
+                  >
                     {n}
                   </span>
                 ))}
@@ -532,18 +559,24 @@ export function Profile() {
             {/* Action Buttons */}
             <div className="flex gap-3 w-full">
               {isOwnProfile ? (
-                <button onClick={() => navigate("/settings")}
-                  className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2">
+                <button
+                  onClick={() => navigate("/settings")}
+                  className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
+                >
                   <Settings className="w-4 h-4 text-[#FEDB71]" /> Edit Profile
                 </button>
               ) : isBusiness ? (
                 <>
-                  <button onClick={handleCustomOffer}
-                    className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2">
+                  <button
+                    onClick={handleCustomOffer}
+                    className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
+                  >
                     <Zap className="w-4 h-4 text-[#FEDB71]" /> Send Offer
                   </button>
-                  <button onClick={handleContact}
-                    className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2">
+                  <button
+                    onClick={handleContact}
+                    className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
+                  >
                     <MessageSquare className="w-4 h-4" /> Message
                   </button>
                 </>
@@ -552,7 +585,7 @@ export function Profile() {
           </div>
         </div>
 
-        {/* Stats Grid */}
+        {/* ── Stats Grid ── */}
         <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
           <div className="grid grid-cols-3 gap-3">
             {[
@@ -569,7 +602,7 @@ export function Profile() {
           </div>
         </div>
 
-        {/* Packages Section */}
+        {/* ── Packages ── */}
         {creator.packages.length > 0 && (
           <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
             <div className="flex items-center justify-between mb-6">
@@ -578,11 +611,16 @@ export function Profile() {
             </div>
             <div className="space-y-4">
               {creator.packages.map((pkg) => (
-                <motion.div key={pkg.id} whileHover={{ y: -2 }}
+                <motion.div
+                  key={pkg.id}
+                  whileHover={{ y: -2 }}
                   className={`relative bg-white border-2 rounded-xl p-6 cursor-pointer transition-all ${
-                    pkg.is_default ? "border-[#389C9A] shadow-lg" : "border-[#1D1D1D] hover:border-[#389C9A]"
+                    pkg.is_default
+                      ? "border-[#389C9A] shadow-lg"
+                      : "border-[#1D1D1D] hover:border-[#389C9A]"
                   }`}
-                  onClick={() => isBusiness && handleSelectPackage(pkg)}>
+                  onClick={() => isBusiness && handleSelectPackage(pkg)}
+                >
                   {pkg.is_default && (
                     <div className="absolute -top-3 right-4 bg-[#389C9A] text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest">
                       Popular
@@ -619,14 +657,19 @@ export function Profile() {
           </div>
         )}
 
-        {/* Platforms Detail */}
+        {/* ── Connected Platforms ── */}
         {creator.platforms.length > 0 && (
           <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">Connected Platforms</h3>
             <div className="space-y-3">
               {creator.platforms.map((platform, i) => (
-                <a key={i} href={platform.url} target="_blank" rel="noopener noreferrer"
-                  className="bg-[#F8F8F8] p-4 rounded-xl flex items-center justify-between hover:bg-[#1D1D1D] hover:text-white transition-colors group">
+                <a
+                  key={i}
+                  href={platform.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-[#F8F8F8] p-4 rounded-xl flex items-center justify-between hover:bg-[#1D1D1D] hover:text-white transition-colors group"
+                >
                   <div className="flex items-center gap-3">
                     {getPlatformIconComponent(platform.name)}
                     <div>
@@ -646,15 +689,17 @@ export function Profile() {
           </div>
         )}
 
-        {/* CTA for Businesses */}
+        {/* ── CTA for Businesses ── */}
         {isBusiness && (
           <div className="px-6 py-8">
             <div className="bg-gradient-to-r from-[#1D1D1D] to-gray-800 p-8 rounded-xl text-white relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
               <h4 className="text-xl font-black uppercase italic mb-2">Ready to collaborate?</h4>
               <p className="text-[9px] opacity-60 mb-6">Send an offer to start working with {creator.name}</p>
-              <button onClick={handleCustomOffer}
-                className="w-full bg-white text-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] hover:text-white transition-all flex items-center justify-center gap-2">
+              <button
+                onClick={handleCustomOffer}
+                className="w-full bg-white text-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] hover:text-white transition-all flex items-center justify-center gap-2"
+              >
                 Send Offer <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -664,18 +709,24 @@ export function Profile() {
 
       <BottomNav />
 
-      {/* Offer Modal */}
+      {/* ── Offer Modal ── */}
       <AnimatePresence>
         {showOfferModal && (
           <div className="fixed inset-0 z-[100] flex items-end justify-center px-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setShowOfferModal(false)}
-              className="absolute inset-0 bg-[#1D1D1D]/80 backdrop-blur-sm" />
-
             <motion.div
-              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowOfferModal(false)}
+              className="absolute inset-0 bg-[#1D1D1D]/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="relative w-full max-w-[480px] bg-white border-t-4 border-[#1D1D1D] rounded-t-3xl max-h-[90vh] overflow-y-auto">
+              className="relative w-full max-w-[480px] bg-white border-t-4 border-[#1D1D1D] rounded-t-3xl max-h-[90vh] overflow-y-auto"
+            >
               <div className="w-12 h-1 bg-[#1D1D1D]/10 rounded-full mx-auto my-4" />
 
               <div className="px-6 py-4">
@@ -686,8 +737,10 @@ export function Profile() {
                     </h2>
                     <p className="text-[8px] font-medium opacity-40 uppercase tracking-widest">to {creator.name}</p>
                   </div>
-                  <button onClick={() => setShowOfferModal(false)}
-                    className="p-2 border border-[#1D1D1D]/10 rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors">
+                  <button
+                    onClick={() => setShowOfferModal(false)}
+                    className="p-2 border border-[#1D1D1D]/10 rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -695,8 +748,11 @@ export function Profile() {
                 <form onSubmit={handleSendOffer} className="space-y-4">
                   <div>
                     <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">Campaign Type</label>
-                    <select value={customOffer.type} onChange={(e) => setCustomOffer({ ...customOffer, type: e.target.value })}
-                      className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl">
+                    <select
+                      value={customOffer.type}
+                      onChange={(e) => setCustomOffer({ ...customOffer, type: e.target.value })}
+                      className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
+                    >
                       <option>Banner Only</option>
                       <option>Promo Code</option>
                       <option>Banner + Promo Code</option>
@@ -707,26 +763,36 @@ export function Profile() {
                     <>
                       <div>
                         <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">Number of Streams</label>
-                        <input type="number" min="4" max="50" value={customOffer.streams}
+                        <input
+                          type="number" min="4" max="50"
+                          value={customOffer.streams}
                           onChange={(e) => setCustomOffer({ ...customOffer, streams: e.target.value })}
                           className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
-                          required />
+                          required
+                        />
                       </div>
                       <div>
                         <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">Rate per Stream (₦)</label>
-                        <input type="number" min="1000" step="500" value={customOffer.rate}
+                        <input
+                          type="number" min="1000" step="500"
+                          value={customOffer.rate}
                           onChange={(e) => setCustomOffer({ ...customOffer, rate: e.target.value })}
                           className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
-                          required />
+                          required
+                        />
                       </div>
                     </>
                   )}
 
                   <div>
                     <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">Personal Message (optional)</label>
-                    <textarea value={customOffer.message} onChange={(e) => setCustomOffer({ ...customOffer, message: e.target.value })}
-                      rows={3} placeholder="Tell the creator about your campaign..."
-                      className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl resize-none" />
+                    <textarea
+                      value={customOffer.message}
+                      onChange={(e) => setCustomOffer({ ...customOffer, message: e.target.value })}
+                      rows={3}
+                      placeholder="Tell the creator about your campaign..."
+                      className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl resize-none"
+                    />
                   </div>
 
                   {estimates && (
@@ -743,8 +809,10 @@ export function Profile() {
                     </div>
                   )}
 
-                  <button type="submit"
-                    className="w-full bg-[#1D1D1D] text-white py-5 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all flex items-center justify-center gap-2">
+                  <button
+                    type="submit"
+                    className="w-full bg-[#1D1D1D] text-white py-5 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all flex items-center justify-center gap-2"
+                  >
                     Send Offer <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
                   </button>
                 </form>
@@ -754,7 +822,7 @@ export function Profile() {
         )}
       </AnimatePresence>
 
-      {/* Success Banner */}
+      {/* ── Success Banner ── */}
       {offerSent && (
         <div className="fixed top-4 left-0 right-0 flex justify-center z-50 pointer-events-none">
           <div className="bg-[#389C9A] text-white px-6 py-4 rounded-xl shadow-lg flex items-center gap-3">
