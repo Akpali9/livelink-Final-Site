@@ -276,7 +276,7 @@ export function BecomeBusiness() {
 
   if (isSubmitted) {
     return (
-      <div className="flex flex-col min-h-screen bg-white items-center justify-center px-8 text-[#1D1D1D]">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
         <motion.div 
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -339,7 +339,7 @@ export function BecomeBusiness() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white pb-32 text-[#1D1D1D]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
      
       {/* Header */}
       <div className="px-8 pt-12 pb-8 border-b-2 border-[#1D1D1D]">
