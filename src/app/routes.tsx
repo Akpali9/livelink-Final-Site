@@ -68,6 +68,7 @@ const protectBoth = (Component: React.ComponentType) => (
   </ProtectedRoute>
 );
 
+
 const routes: RouteObject[] = [
   {
     path: "/",
