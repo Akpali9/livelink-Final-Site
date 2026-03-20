@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { 
-  Search, Filter, ArrowRight, X, Users, CheckCircle2, Bookmark, BookmarkCheck, Briefcase, MapPin, DollarSign, Clock, Building2, Star
+  Search, Filter, ArrowRight, X, Users, CheckCircle2, Bookmark, BookmarkCheck, Briefcase, MapPin, DollarSign, Clock, Building2, Star, RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router";
@@ -43,116 +43,16 @@ interface CampaignWithBusiness {
     verification_status: string;
   } | null;
   
-  // Computed fields
   partnership_type: PartnershipType;
   streams_required: number;
 }
-
-// Sample data for testing when database is empty
-const SAMPLE_CAMPAIGNS: CampaignWithBusiness[] = [
-  {
-    id: "sample-1",
-    name: "Gaming Laptop Launch",
-    type: "product",
-    description: "Promote our new gaming laptop with high-performance specs perfect for streamers. Create engaging content showcasing the laptop's capabilities during your streams.",
-    budget: 1000,
-    pay_rate: 500,
-    bid_amount: 500,
-    status: "active",
-    start_date: new Date().toISOString(),
-    end_date: new Date(Date.now() + 30 * 86400000).toISOString(),
-    target_niches: ["Gaming", "Tech Reviews"],
-    target_locations: ["Global"],
-    min_followers: 1000,
-    created_at: new Date().toISOString(),
-    business_id: "sample-biz-1",
-    business: {
-      id: "sample-biz-1",
-      business_name: "TechCorp Gaming",
-      logo_url: "https://via.placeholder.com/100",
-      industry: "Technology",
-      city: "San Francisco",
-      country: "USA",
-      description: "Leading manufacturer of gaming hardware and peripherals.",
-      email: "partners@techcorp.com",
-      phone_number: "+1234567890",
-      website: "https://techcorp.com",
-      verification_status: "verified"
-    },
-    partnership_type: "Paying",
-    streams_required: 3
-  },
-  {
-    id: "sample-2",
-    name: "Fashion Collection",
-    type: "sponsorship",
-    description: "Showcase our latest streetwear collection. Create stylish content that resonates with your audience while wearing our gear.",
-    budget: 750,
-    pay_rate: 250,
-    bid_amount: 250,
-    status: "active",
-    start_date: new Date().toISOString(),
-    end_date: new Date(Date.now() + 45 * 86400000).toISOString(),
-    target_niches: ["Fashion", "Lifestyle"],
-    target_locations: ["Global"],
-    min_followers: 500,
-    created_at: new Date().toISOString(),
-    business_id: "sample-biz-2",
-    business: {
-      id: "sample-biz-2",
-      business_name: "Urban Threads",
-      logo_url: "https://via.placeholder.com/100",
-      industry: "Fashion",
-      city: "Los Angeles",
-      country: "USA",
-      description: "Modern streetwear brand for the creative generation.",
-      email: "collab@urbanthreads.com",
-      phone_number: "+1234567890",
-      website: "https://urbanthreads.com",
-      verification_status: "verified"
-    },
-    partnership_type: "Pay + Code",
-    streams_required: 2
-  },
-  {
-    id: "sample-3",
-    name: "Fitness App Promotion",
-    type: "affiliate",
-    description: "Promote our fitness app to your audience. Get a commission for every signup through your unique code.",
-    budget: 500,
-    pay_rate: 100,
-    bid_amount: 0,
-    status: "active",
-    start_date: new Date().toISOString(),
-    end_date: new Date(Date.now() + 60 * 86400000).toISOString(),
-    target_niches: ["Fitness", "Health"],
-    target_locations: ["Global"],
-    min_followers: 0,
-    created_at: new Date().toISOString(),
-    business_id: "sample-biz-3",
-    business: {
-      id: "sample-biz-3",
-      business_name: "FitLife App",
-      logo_url: "https://via.placeholder.com/100",
-      industry: "Health & Fitness",
-      city: "New York",
-      country: "USA",
-      description: "Revolutionary fitness app with personalized workout plans.",
-      email: "partners@fitlife.com",
-      phone_number: "+1234567890",
-      website: "https://fitlife.com",
-      verification_status: "pending"
-    },
-    partnership_type: "Code Only",
-    streams_required: 4
-  }
-];
 
 export function BrowseBusinesses() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [campaigns, setCampaigns] = useState<CampaignWithBusiness[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignWithBusiness | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -169,7 +69,111 @@ export function BrowseBusinesses() {
   });
   const [creatorProfile, setCreatorProfile] = useState<any>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
-  const [useSampleData, setUseSampleData] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+
+  // Fetch campaigns with business details
+  const fetchCampaigns = useCallback(async (showRefreshToast = false) => {
+    if (!user) return;
+
+    try {
+      if (showRefreshToast) {
+        setRefreshing(true);
+      }
+      
+      const { data: campaignsData, error: campaignsError } = await supabase
+        .from("campaigns")
+        .select(`
+          id,
+          name,
+          type,
+          description,
+          budget,
+          pay_rate,
+          bid_amount,
+          status,
+          start_date,
+          end_date,
+          target_niches,
+          target_locations,
+          min_followers,
+          created_at,
+          business_id
+        `)
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
+
+      if (campaignsError) throw campaignsError;
+
+      if (campaignsData && campaignsData.length > 0) {
+        // Get unique business IDs
+        const businessIds = [...new Set(campaignsData.map(c => c.business_id).filter(Boolean))];
+        
+        // Fetch business details
+        let businessesData: any[] = [];
+        if (businessIds.length > 0) {
+          const { data: bizData, error: bizError } = await supabase
+            .from("businesses")
+            .select("*")
+            .in("id", businessIds);
+          
+          if (!bizError && bizData) {
+            businessesData = bizData;
+          }
+        }
+        
+        // Create a map of businesses by ID
+        const businessMap = new Map();
+        businessesData.forEach(biz => {
+          businessMap.set(biz.id, biz);
+        });
+        
+        // Format campaigns with business data
+        const formattedCampaigns = campaignsData.map(c => {
+          let partnershipType: PartnershipType = "Open to Offers";
+          if (c.pay_rate && c.pay_rate > 0 && c.type?.toLowerCase().includes('code')) {
+            partnershipType = "Pay + Code";
+          } else if (c.pay_rate && c.pay_rate > 0) {
+            partnershipType = "Paying";
+          } else if (c.type?.toLowerCase().includes('code')) {
+            partnershipType = "Code Only";
+          }
+          
+          return {
+            ...c,
+            partnership_type: partnershipType,
+            streams_required: 3,
+            business: businessMap.get(c.business_id) || null
+          };
+        });
+        
+        setCampaigns(formattedCampaigns);
+        setIsDemoMode(false);
+        
+        if (showRefreshToast) {
+          toast.success(`Updated ${formattedCampaigns.length} campaigns`);
+        }
+      } else {
+        // No campaigns in database, show empty state
+        setCampaigns([]);
+        setIsDemoMode(false);
+        
+        if (showRefreshToast) {
+          toast.info('No active campaigns found');
+        }
+      }
+      
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      if (showRefreshToast) {
+        toast.error('Failed to refresh campaigns');
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user]);
 
   // Fetch creator profile
   useEffect(() => {
@@ -197,109 +201,69 @@ export function BrowseBusinesses() {
     fetchCreatorProfile();
   }, [user]);
 
-  // Fetch campaigns with business details
+  // Initial fetch and real-time subscription
   useEffect(() => {
-    async function fetchCampaigns() {
-      try {
-        setLoading(true);
-        
-        // Try to fetch from database first
-        let { data: campaignsData, error: campaignsError } = await supabase
-          .from("campaigns")
-          .select(`
-            id,
-            name,
-            type,
-            description,
-            budget,
-            pay_rate,
-            bid_amount,
-            status,
-            start_date,
-            end_date,
-            target_niches,
-            target_locations,
-            min_followers,
-            created_at,
-            business_id
-          `)
-          .eq("status", "active")
-          .order("created_at", { ascending: false });
-
-        if (campaignsError) {
-          console.error('Error fetching campaigns:', campaignsError);
-          // Use sample data if database query fails
-          setUseSampleData(true);
-          setCampaigns(SAMPLE_CAMPAIGNS);
-          setLoading(false);
-          return;
-        }
-
-        if (campaignsData && campaignsData.length > 0) {
-          // Get unique business IDs
-          const businessIds = [...new Set(campaignsData.map(c => c.business_id).filter(Boolean))];
-          
-          // Fetch business details
-          let businessesData: any[] = [];
-          if (businessIds.length > 0) {
-            const { data: bizData, error: bizError } = await supabase
-              .from("businesses")
-              .select("*")
-              .in("id", businessIds);
-            
-            if (!bizError && bizData) {
-              businessesData = bizData;
-            }
-          }
-          
-          // Create a map of businesses by ID
-          const businessMap = new Map();
-          businessesData.forEach(biz => {
-            businessMap.set(biz.id, biz);
-          });
-          
-          // Format campaigns with business data
-          const formattedCampaigns = campaignsData.map(c => {
-            // Determine partnership type based on campaign fields
-            let partnershipType: PartnershipType = "Open to Offers";
-            if (c.pay_rate && c.pay_rate > 0 && c.type?.toLowerCase().includes('code')) {
-              partnershipType = "Pay + Code";
-            } else if (c.pay_rate && c.pay_rate > 0) {
-              partnershipType = "Paying";
-            } else if (c.type?.toLowerCase().includes('code')) {
-              partnershipType = "Code Only";
-            }
-            
-            return {
-              ...c,
-              partnership_type: partnershipType,
-              streams_required: 3, // Default, could be stored elsewhere
-              business: businessMap.get(c.business_id) || null
-            };
-          });
-          
-          setCampaigns(formattedCampaigns);
-          setUseSampleData(false);
-        } else {
-          // No campaigns in database, use sample data
-          setUseSampleData(true);
-          setCampaigns(SAMPLE_CAMPAIGNS);
-        }
-      } catch (error) {
-        console.error('Error fetching campaigns:', error);
-        // Use sample data on error
-        setUseSampleData(true);
-        setCampaigns(SAMPLE_CAMPAIGNS);
-        toast.info('Using sample campaigns for demonstration');
-      } finally {
-        setLoading(false);
-      }
-    }
+    if (!user) return;
 
     fetchCampaigns();
-  }, []);
 
-  // Fetch user's campaign_creators entries (applications)
+    // Set up real-time subscription for campaigns
+    const campaignsSubscription = supabase
+      .channel('campaigns-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'campaigns',
+          filter: `status=eq.active`
+        },
+        (payload) => {
+          console.log('Campaign change detected:', payload);
+          
+          // Refresh campaigns when any change occurs
+          fetchCampaigns(true);
+          
+          // Show toast notification based on event type
+          if (payload.eventType === 'INSERT') {
+            toast.info('New campaign available!', {
+              description: 'A new opportunity has been posted',
+              duration: 5000,
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            toast.info('Campaign updated', {
+              description: 'A campaign has been updated',
+              duration: 3000,
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    // Set up real-time subscription for businesses (in case business details change)
+    const businessesSubscription = supabase
+      .channel('businesses-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'businesses',
+        },
+        () => {
+          // Refresh campaigns when business details change
+          fetchCampaigns();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      campaignsSubscription.unsubscribe();
+      businessesSubscription.unsubscribe();
+    };
+  }, [user, fetchCampaigns]);
+
+  // Fetch user's applications
   useEffect(() => {
     if (!creatorId) return;
 
@@ -326,12 +290,34 @@ export function BrowseBusinesses() {
       }
     }
 
+    // Set up real-time subscription for applications
+    const applicationsSubscription = supabase
+      .channel('applications-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'campaign_creators',
+          filter: `creator_id=eq.${creatorId}`
+        },
+        (payload) => {
+          // Update applied IDs when new application is created
+          setAppliedIds(prev => new Set(prev).add(payload.new.campaign_id));
+        }
+      )
+      .subscribe();
+
     fetchUserApplications();
+
+    return () => {
+      applicationsSubscription.unsubscribe();
+    };
   }, [creatorId, user]);
 
   // Check if user meets minimum viewer requirements
   const meetsViewerRequirement = (minFollowers: number) => {
-    if (!creatorProfile) return minFollowers === 0; // Allow if no requirement
+    if (!creatorProfile) return minFollowers === 0;
     return (creatorProfile.avg_viewers || 0) >= minFollowers;
   };
 
@@ -360,7 +346,7 @@ export function BrowseBusinesses() {
     });
   }, [searchQuery, activeFilters, campaigns]);
 
-  // Toggle save campaign (using localStorage)
+  // Toggle save campaign
   const toggleSave = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -388,7 +374,7 @@ export function BrowseBusinesses() {
     }
   };
 
-  // Apply to campaign using campaign_creators
+  // Apply to campaign
   const applyToCampaign = async (campaign: CampaignWithBusiness) => {
     if (!user) {
       toast.error('Please login to apply');
@@ -402,12 +388,11 @@ export function BrowseBusinesses() {
       return;
     }
 
-    if (creatorProfile.status !== 'active' && creatorProfile.status !== 'active') {
+    if (creatorProfile.status !== 'active') {
       toast.error('Your creator account must be approved first');
       return;
     }
 
-    // Check viewer requirement
     if (campaign.min_followers > 0 && !meetsViewerRequirement(campaign.min_followers)) {
       toast.error(`This campaign requires at least ${campaign.min_followers} average viewers`);
       return;
@@ -448,7 +433,7 @@ export function BrowseBusinesses() {
       setAppliedIds(prev => new Set(prev).add(campaign.id));
       toast.success('Application submitted successfully!');
       
-      // Create notification for business if business exists
+      // Create notification for business
       if (campaign.business?.id) {
         await supabase.from("notifications").insert({
           user_id: campaign.business.id,
@@ -499,6 +484,10 @@ export function BrowseBusinesses() {
     return amount ? `₦${amount.toLocaleString()}` : 'Negotiable';
   };
 
+  const handleManualRefresh = async () => {
+    await fetchCampaigns(true);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -514,13 +503,33 @@ export function BrowseBusinesses() {
     <div className="flex flex-col min-h-screen bg-[#FDFDFD] text-[#1D1D1D] font-sans overflow-x-hidden pb-[100px]">
       {/* Header */}
       <div className="px-5 py-6 sticky top-[84px] bg-[#FDFDFD]/95 backdrop-blur-md z-20 border-b border-[#1D1D1D]/10">
-        {useSampleData && (
-          <div className="mb-3 px-3 py-2 bg-[#FEDB71]/20 border border-[#FEDB71] rounded-lg text-center">
-            <p className="text-[8px] font-black uppercase tracking-widest text-[#D2691E]">
-              Demo Mode • Sample campaigns shown
-            </p>
+        {/* Real-time Status Bar */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-[8px] font-black uppercase tracking-widest text-green-600">
+                LIVE
+              </span>
+            </div>
+            <span className="text-[8px] text-[#1D1D1D]/40">
+              • {campaigns.length} active campaigns
+            </span>
+            <span className="text-[8px] text-[#1D1D1D]/30">
+              • Updated {lastUpdated.toLocaleTimeString()}
+            </span>
           </div>
-        )}
+          <button
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+            <span className="text-[8px] font-black uppercase tracking-widest">
+              {refreshing ? 'Updating...' : 'Refresh'}
+            </span>
+          </button>
+        </div>
         
         <div className="flex gap-3">
           <div className="relative flex-1">
@@ -609,132 +618,150 @@ export function BrowseBusinesses() {
           <div className="text-center py-12">
             <Briefcase className="w-12 h-12 mx-auto mb-4 opacity-20" />
             <p className="text-sm font-medium opacity-40">No campaigns found</p>
-            <p className="text-xs opacity-30 mt-2">Try adjusting your filters</p>
+            <p className="text-xs opacity-30 mt-2">Try adjusting your filters or check back later</p>
           </div>
         ) : (
-          filteredData.map((campaign) => {
-            const isSaved = savedIds.has(campaign.id);
-            const hasApplied = appliedIds.has(campaign.id);
-            const meetsViewers = meetsViewerRequirement(campaign.min_followers || 0);
-            const daysLeft = formatDate(campaign.end_date);
+          <>
+            {/* Real-time indicator for new campaigns */}
+            {refreshing && (
+              <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-[#1D1D1D] text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest z-50 shadow-lg">
+                Updating campaigns...
+              </div>
+            )}
             
-            return (
-              <motion.div 
-                key={campaign.id} 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                onClick={() => setSelectedCampaign(campaign)}
-                className="relative bg-white border-2 border-[#1D1D1D] rounded-xl overflow-visible transition-all cursor-pointer group hover:shadow-lg active:scale-[0.99]"
-              >
-                {/* Partnership Type Badge */}
-                <div className={`absolute -top-3 right-6 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest z-10 ${getBadgeColor(campaign.partnership_type)}`}>
-                  {campaign.partnership_type}
-                </div>
-
-                {/* Save Button */}
-                <button
-                  onClick={(e) => toggleSave(campaign.id, e)}
-                  className="absolute top-4 left-4 z-10 p-2 bg-white border-2 border-[#1D1D1D] rounded-full hover:bg-[#1D1D1D] hover:text-white transition-all"
+            {filteredData.map((campaign) => {
+              const isSaved = savedIds.has(campaign.id);
+              const hasApplied = appliedIds.has(campaign.id);
+              const meetsViewers = meetsViewerRequirement(campaign.min_followers || 0);
+              const daysLeft = formatDate(campaign.end_date);
+              
+              return (
+                <motion.div 
+                  key={campaign.id} 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  layout
+                  onClick={() => setSelectedCampaign(campaign)}
+                  className="relative bg-white border-2 border-[#1D1D1D] rounded-xl overflow-visible transition-all cursor-pointer group hover:shadow-lg active:scale-[0.99]"
                 >
-                  {isSaved ? (
-                    <BookmarkCheck className="w-4 h-4 text-[#389C9A]" />
-                  ) : (
-                    <Bookmark className="w-4 h-4" />
+                  {/* New Campaign Badge */}
+                  {new Date(campaign.created_at).getTime() > Date.now() - 86400000 && (
+                    <div className="absolute -top-3 left-6 px-3 py-1 bg-green-500 text-white rounded-full text-[8px] font-black uppercase tracking-widest z-10">
+                      NEW
+                    </div>
                   )}
-                </button>
-
-                {/* Verification Badge */}
-                {campaign.business?.verification_status === 'verified' && (
-                  <div className="absolute top-4 right-20 z-10 flex items-center gap-1 bg-[#389C9A]/10 px-2 py-1 rounded-full">
-                    <CheckCircle2 className="w-3 h-3 text-[#389C9A]" />
-                    <span className="text-[7px] font-black uppercase tracking-widest">Verified</span>
-                  </div>
-                )}
-
-                {/* Main Content */}
-                <div className="p-6 flex gap-5 pt-12">
-                  <div className="relative w-24 h-32 shrink-0 bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-lg overflow-hidden">
-                    <ImageWithFallback 
-                      src={campaign.business?.logo_url || 'https://via.placeholder.com/100'} 
-                      className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" 
-                      alt={campaign.name}
-                      fallbackSrc="https://via.placeholder.com/100?text=Brand"
-                    />
-                  </div>
                   
-                  <div className="flex-1 flex flex-col justify-start gap-3 pt-2">
-                    <h3 className="text-xl font-black uppercase tracking-tight leading-tight">
-                      {campaign.business?.business_name || campaign.name}
-                    </h3>
-                    
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/40 italic">
-                        {campaign.business?.industry?.toUpperCase() || 'GENERAL'}
-                      </span>
-                      <span className="text-[#1D1D1D]/20">·</span>
-                      <MapPin className="w-3 h-3 text-[#389C9A]" />
-                      <span className="text-[9px] font-bold text-[#1D1D1D]/40 italic">
-                        {campaign.business?.city?.toUpperCase() || 'REMOTE'}
-                      </span>
-                    </div>
-                    
-                    <p className="text-[11px] font-medium leading-relaxed text-[#1D1D1D]/60 italic line-clamp-2">
-                      {campaign.description}
-                    </p>
-                    
-                    <div className="flex items-center gap-2 mt-1">
-                      <Users className="w-3.5 h-3.5 text-[#389C9A]" />
-                      <span className={`text-[9px] font-bold italic ${
-                        meetsViewers ? 'text-green-600' : 'text-[#1D1D1D]/50'
-                      }`}>
-                        Min. {campaign.min_followers || 0} avg viewers required
-                        {!meetsViewers && creatorProfile && creatorProfile.avg_viewers && ` (You have ${creatorProfile.avg_viewers})`}
-                      </span>
-                    </div>
+                  {/* Partnership Type Badge */}
+                  <div className={`absolute -top-3 right-6 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest z-10 ${getBadgeColor(campaign.partnership_type)}`}>
+                    {campaign.partnership_type}
+                  </div>
 
-                    {/* Niche Tags */}
-                    {campaign.target_niches && campaign.target_niches.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {campaign.target_niches.slice(0, 3).map(tag => (
-                          <span key={tag} className="px-2 py-0.5 bg-[#F8F8F8] text-[8px] font-black uppercase tracking-widest">
-                            {tag}
-                          </span>
-                        ))}
+                  {/* Save Button */}
+                  <button
+                    onClick={(e) => toggleSave(campaign.id, e)}
+                    className="absolute top-4 left-4 z-10 p-2 bg-white border-2 border-[#1D1D1D] rounded-full hover:bg-[#1D1D1D] hover:text-white transition-all"
+                  >
+                    {isSaved ? (
+                      <BookmarkCheck className="w-4 h-4 text-[#389C9A]" />
+                    ) : (
+                      <Bookmark className="w-4 h-4" />
+                    )}
+                  </button>
+
+                  {/* Verification Badge */}
+                  {campaign.business?.verification_status === 'verified' && (
+                    <div className="absolute top-4 right-20 z-10 flex items-center gap-1 bg-[#389C9A]/10 px-2 py-1 rounded-full">
+                      <CheckCircle2 className="w-3 h-3 text-[#389C9A]" />
+                      <span className="text-[7px] font-black uppercase tracking-widest">Verified</span>
+                    </div>
+                  )}
+
+                  {/* Main Content */}
+                  <div className="p-6 flex gap-5 pt-12">
+                    <div className="relative w-24 h-32 shrink-0 bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-lg overflow-hidden">
+                      <ImageWithFallback 
+                        src={campaign.business?.logo_url || 'https://via.placeholder.com/100'} 
+                        className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" 
+                        alt={campaign.name}
+                        fallbackSrc="https://via.placeholder.com/100?text=Brand"
+                      />
+                    </div>
+                    
+                    <div className="flex-1 flex flex-col justify-start gap-3 pt-2">
+                      <h3 className="text-xl font-black uppercase tracking-tight leading-tight">
+                        {campaign.business?.business_name || campaign.name}
+                      </h3>
+                      
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/40 italic">
+                          {campaign.business?.industry?.toUpperCase() || 'GENERAL'}
+                        </span>
+                        <span className="text-[#1D1D1D]/20">·</span>
+                        <MapPin className="w-3 h-3 text-[#389C9A]" />
+                        <span className="text-[9px] font-bold text-[#1D1D1D]/40 italic">
+                          {campaign.business?.city?.toUpperCase() || 'REMOTE'}
+                        </span>
                       </div>
+                      
+                      <p className="text-[11px] font-medium leading-relaxed text-[#1D1D1D]/60 italic line-clamp-2">
+                        {campaign.description}
+                      </p>
+                      
+                      <div className="flex items-center gap-2 mt-1">
+                        <Users className="w-3.5 h-3.5 text-[#389C9A]" />
+                        <span className={`text-[9px] font-bold italic ${
+                          meetsViewers ? 'text-green-600' : 'text-[#1D1D1D]/50'
+                        }`}>
+                          Min. {campaign.min_followers || 0} avg viewers required
+                          {!meetsViewers && creatorProfile && creatorProfile.avg_viewers && ` (You have ${creatorProfile.avg_viewers})`}
+                        </span>
+                      </div>
+
+                      {/* Niche Tags */}
+                      {campaign.target_niches && campaign.target_niches.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {campaign.target_niches.slice(0, 3).map(tag => (
+                            <span key={tag} className="px-2 py-0.5 bg-[#F8F8F8] text-[8px] font-black uppercase tracking-widest">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="h-[2px] bg-[#1D1D1D]" />
+
+                  {/* Footer */}
+                  <div className="bg-[#F8F8F8] p-6 flex items-center justify-between gap-4">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-3xl font-black leading-none text-[#D2691E] tracking-tight">
+                        {getPayRate(campaign)}
+                      </p>
+                      <p className="text-[11px] font-medium leading-none text-[#D2691E]/70">
+                        for {campaign.streams_required} Live Streams
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Clock className="w-3 h-3 opacity-40" />
+                        <span className="text-[8px] font-medium opacity-40">{daysLeft}</span>
+                      </div>
+                    </div>
+                    
+                    {hasApplied ? (
+                      <div className="bg-green-500 text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest rounded-lg">
+                        <CheckCircle2 className="w-4 h-4" /> APPLIED
+                      </div>
+                    ) : (
+                      <button className="bg-[#1D1D1D] text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all active:scale-[0.98] whitespace-nowrap rounded-lg">
+                        VIEW DETAILS <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
+                      </button>
                     )}
                   </div>
-                </div>
-
-                <div className="h-[2px] bg-[#1D1D1D]" />
-
-                {/* Footer */}
-                <div className="bg-[#F8F8F8] p-6 flex items-center justify-between gap-4">
-                  <div className="flex flex-col gap-1">
-                    <p className="text-3xl font-black leading-none text-[#D2691E] tracking-tight">
-                      {getPayRate(campaign)}
-                    </p>
-                    <p className="text-[11px] font-medium leading-none text-[#D2691E]/70">
-                      for {campaign.streams_required} Live Streams
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Clock className="w-3 h-3 opacity-40" />
-                      <span className="text-[8px] font-medium opacity-40">{daysLeft}</span>
-                    </div>
-                  </div>
-                  
-                  {hasApplied ? (
-                    <div className="bg-green-500 text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                      <CheckCircle2 className="w-4 h-4" /> APPLIED
-                    </div>
-                  ) : (
-                    <button className="bg-[#1D1D1D] text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all active:scale-[0.98] whitespace-nowrap rounded-lg">
-                      VIEW DETAILS <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })
+                </motion.div>
+              );
+            })}
+          </>
         )}
       </main>
 
