@@ -306,10 +306,8 @@ export function AppHeader({
   const showActions = !isHome && !isMessages && isAuthenticated;
 
   return (
-    <header className=" px-5 pt-10 pb-4 border-b border-[#1D1D1D]/10 sticky top-0 bg-white z-50 left-0 right-0 flex">
-      <div className="max-w-[480px] mx-auto flex justify-between items-center">
-
-        {/* Left side */}
+   <header className="px-5 pt-10 pb-4 border-b border-[#1D1D1D]/10 sticky top-0 bg-white z-50">
+      <div className="flex justify-between items-center max-w-7xl mx-auto">
         <div className="flex items-center gap-3">
           {showBack && (
             <button 
