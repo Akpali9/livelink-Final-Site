@@ -2908,76 +2908,54 @@ function BusinessDetailModal({ business, onClose }: { business: any; onClose: ()
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="bg-white border- y: 0 }}
-        exit={{ opacity: 0, y: "100%" }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
         className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"
       >
-       2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl"
-      >
         <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center">
-          <h3 className="font-black uppercase tracking-tight text-lg">Business Details</h3>
-          <button onClick={onClose} className <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center">
           <h3 className="font-black uppercase tracking-tight text-lg">Business Details</h3>
           <button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
-        
-        <div className="p-5 space-y-5">
-          <div className="flex items-center gap-4">
-            {business.logo_url="p-2 hover:bg-[#F8F8F8] rounded-lg">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        
+
         <div className="p-5 space-y-5">
           <div className="flex items-center gap-4">
             {business.logo_url ? (
-              <img src={business.logo_url} alt={business.business_name} className="w-20 h-20 border-2 border-[#1D1D1D] object-cover rounded-xl" />
-            ) : (
-              <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[# ? (
-              <img src={business.logo_url} alt={business.business_name} className="w-20 h-20 border-2 border-[#1D1D1D] object-cover rounded-xl" />
+              <img
+                src={business.logo_url}
+                alt={business.business_name || business.name}
+                className="w-20 h-20 border-2 border-[#1D1D1D] object-cover rounded-xl"
+              />
             ) : (
               <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] flex items-center justify-center rounded-xl">
                 <Building2 className="w-8 h-8 text-gray-400" />
               </div>
             )}
             <div className="flex-1">
-              <h2 className="text-xl font-black uppercase tracking-tight">{business.business_name || business.name}</h2>
-              <p className="text-sm text-gray-500 mbF8F8F8] flex items-center justify-center rounded-xl">
-                <Building2 className="w-8 h-8 text-gray-400" />
-              </div>
-            )}
-            <div className="flex-1">
-              <h2 className="text-xl font-black uppercase tracking-tight">{business.business_name || business.name}</h2>
+              <h2 className="text-xl font-black uppercase tracking-tight">
+                {business.business_name || business.name}
+              </h2>
               <p className="text-sm text-gray-500 mb-2">{business.email}</p>
               <div className="flex flex-wrap gap-2">
-                <span className={`text-[9px] font-black px-3 py-1 rounded-full ${
-                  (business.application_status === "approved" || business.status === "active") ? "bg-green-100 text-green-700" :
-                  (business.application_status === "rejected" || business.status === "rejected") ? "bg-red-100 text-red-2">{business.email}</p>
-              <div className="flex flex-wrap gap-2">
-                <span className={`text-[9px] font-black px-3 py-1 rounded-full ${
-                  (business.application_status === "approved" || business.status === "active") ? "bg-green-100 text-green-700" :
-                  (business.application_status === "rejected" || business.status === "rejected") ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                }`}>
+                <span
+                  className={`text-[9px] font-black px-3 py-1 rounded-full ${
+                    business.application_status === "approved" || business.status === "active"
+                      ? "bg-green-100 text-green-700"
+                      : business.application_status === "rejected" || business.status === "rejected"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-yellow-100 text-yellow-700"
+                  }`}
+                >
                   {business.application_status || business.status}
                 </span>
-                <span className={`text-[9px] px-3 py-1 rounded-full ${
-                  business.verification_status === "verified" ? "bg-blue-100 text-blue-700" :
-                  business.verification_status === "rejected" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"
-                }`}>
-                  {business.verification_status || "pending"}
-                </span>
-              </div>
-           -700" : "bg-yellow-100 text-yellow-700"
-                }`}>
-                  {business.application_status || business.status}
-                </span>
-                <span className={`text-[9px] px-3 py-1 rounded-full ${
-                  business.verification_status === "verified" ? "bg-blue-100 text-blue-700" :
-                  business.verification_status === "rejected" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"
-                }`}>
+                <span
+                  className={`text-[9px] px-3 py-1 rounded-full ${
+                    business.verification_status === "verified"
+                      ? "bg-blue-100 text-blue-700"
+                      : business.verification_status === "rejected"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-700"
+                  }`}
+                >
                   {business.verification_status || "pending"}
                 </span>
               </div>
@@ -2989,15 +2967,9 @@ function BusinessDetailModal({ business, onClose }: { business: any; onClose: ()
               { label: "Contact Person", value: business.full_name || "—" },
               { label: "Phone", value: business.phone_number || "—" },
               { label: "Industry", value: business.industry || business.sector || "—" },
-              { label: "Location", value: `${business.city || business.location || "—"}${business.country ? `, ${business.country}` : ""}` </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: "Contact Person", value: business.full_name || "—" },
-              { label: "Phone", value: business.phone_number || "—" },
-              { label: "Industry", value: business.industry || business.sector || "—" },
-              { label: "Location", value: `${business.city || business.location || "—"}${business.country ? `, ${business.country}` : ""}` },
+              { label: "Location", value: `${business.city || business.location || "—"}${
+                business.country ? `, ${business.country}` : ""
+              }` },
               { label: "Joined", value: new Date(business.created_at).toLocaleDateString() },
             ].map((item, i) => (
               <div key={i} className="border-2 border-[#1D1D1D] p-3 rounded-xl">
@@ -3008,18 +2980,12 @@ function BusinessDetailModal({ business, onClose }: { business: any; onClose: ()
             {business.website && (
               <div className="border-2 border-[#1D1D1D] p-3 rounded-xl">
                 <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">Website</p>
- },
-              { label: "Joined", value: new Date(business.created_at).toLocaleDateString() },
-            ].map((item, i) => (
-              <div key={i} className="border-2 border-[#1D1D1D] p-3 rounded-xl">
-                <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p>
-                <p className="font-black text-sm">{item.value}</p>
-              </div>
-            ))}
-            {business.website && (
-              <div className="border-2 border-[#1D1D1D] p-3 rounded-xl">
-                <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">Website</p>
-                <a href={business.website} target="_blank" rel="noopener norefer                <a href={business.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm font-black truncate block">
+                <a
+                  href={business.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline text-sm font-black truncate block"
+                >
                   {business.website}
                 </a>
               </div>
@@ -3034,34 +3000,12 @@ function BusinessDetailModal({ business, onClose }: { business: any; onClose: ()
           )}
 
           <div className="grid grid-cols-3 gap-2">
-            {[{ label: "Campaigns", value: "0" }, { label: "Spent", value: "₦0" }, { label: "Reviews", value: "0" }].map((s, i) => (
-              <div key={rer" className="text-blue-600 hover:underline text-sm font-black truncate block">
-                  {business.website}
-                </a>
-              </div>
-            )}
-          </div>
-
-          {business.description && (
-            <div>
-              <h4 className="font-black text-xs mb-2 uppercase tracking-widest">About</h4>
-              <p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{business.description}</p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-3 gap-2">
-            {[{ label: "Campaigns", value: "0" }, { label: "Spent", value: "₦0" }, { label: "Reviews", value: "0" }].map((s, i) => (
+            {[
+              { label: "Campaigns", value: business.campaign_count?.toLocaleString() || "0" },
+              { label: "Spent", value: business.total_spent ? `₦${business.total_spent.toLocaleString()}` : "₦0" },
+              { label: "Reviews", value: business.review_count?.toLocaleString() || "0" },
+            ].map((s, i) => (
               <div key={i} className="border-2 border-[#1D1D1D] p-3 text-center rounded-xl">
-                <p className="text-lg font-black">{s.value}</p>
-                <p className="text-[8px] uppercase tracking-widest opacity-60">{s.label}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button
-              onClick={onClose}
-              className="flex-1 border-2 border-[#1D1D1i} className="border-2 border-[#1D1D1D] p-3 text-center rounded-xl">
                 <p className="text-lg font-black">{s.value}</p>
                 <p className="text-[8px] uppercase tracking-widest opacity-60">{s.label}</p>
               </div>
