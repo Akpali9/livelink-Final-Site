@@ -1,366 +1,573 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
-import {
-  Megaphone,
-  Plus,
-  Search,
-  Filter,
-  Clock,
-  CheckCircle,
-  XCircle,
+import { useNavigate, Link } from "react-router";
+import { 
+  Search, 
+  Plus, 
+  ChevronRight, 
+  Clock, 
+  CheckCircle2, 
   AlertCircle,
-  ChevronRight,
-  Users,
+  Video as VideoIcon,
   DollarSign,
-  BarChart2,
-  Calendar,
-  Loader2,
-  Eye,
   TrendingUp,
-  Zap,
+  RefreshCw,
+  Users,
+  Eye,
+  Edit,
+  Trash2,
+  MoreVertical,
+  Calendar,
+  Copy,
+  Megaphone
 } from "lucide-react";
-import { motion } from "motion/react";
-import { AppHeader } from "../components/app-header";
-import { BottomNav } from "../components/bottom-nav";
-import { supabase } from "../lib/supabase";
-import { useAuth } from "../lib/contexts/AuthContext";
+import { motion, AnimatePresence } from "motion/react";
+import { ImageWithFallback } from "../../components/ImageWithFallback";
+import { BottomNav } from "../../components/bottom-nav";
+import { AppHeader } from "../../components/app-header";
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface Campaign {
   id: string;
+  business_id: string;
   name: string;
-  title?: string;
   type: string;
-  status: string;
-  budget?: number;
-  pay_rate?: number;
-  bid_amount?: number;
+  description: string;
+  status: 'draft' | 'active' | 'paused' | 'completed' | 'cancelled';
+  budget: number;
+  pay_rate: number;
+  start_date: string;
+  end_date: string;
+  target_niches: string[];
+  target_locations: string[];
+  min_followers: number;
   created_at: string;
-  published_at?: string;
-  completed_at?: string;
-  creator_count?: number;
-  streams_completed?: number;
-  streams_target?: number;
+  applications_count?: number;
+  accepted_creators?: number;
+}
+
+interface CampaignStats {
+  total_applications: number;
+  accepted_creators: number;
+  total_spent: number;
+  active_campaigns: number;
 }
 
 export function BusinessCampaigns() {
   const navigate = useNavigate();
   const { user } = useAuth();
-
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filter, setFilter] = useState<"all" | "active" | "pending_review" | "completed" | "rejected">("all");
+  const [refreshing, setRefreshing] = useState(false);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [stats, setStats] = useState<CampaignStats>({
+    total_applications: 0,
+    accepted_creators: 0,
+    total_spent: 0,
+    active_campaigns: 0
+  });
   const [businessId, setBusinessId] = useState<string | null>(null);
 
-  // ── Fetch business ID then campaigns ──────────────────────────────────────
   useEffect(() => {
-    if (!user) return;
-
-    const init = async () => {
-      try {
-        const { data: biz, error: bizError } = await supabase
-          .from("businesses")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (bizError || !biz) {
-          toast.error("Business profile not found");
-          return;
-        }
-
-        setBusinessId(biz.id);
-        await fetchCampaigns(biz.id);
-      } catch (err) {
-        console.error("Init error:", err);
-      }
-    };
-
-    init();
+    if (user) {
+      fetchBusinessProfile();
+    }
   }, [user]);
 
-  const fetchCampaigns = async (bizId: string) => {
-    setLoading(true);
+  const fetchBusinessProfile = async () => {
+    if (!user) return;
+    
     try {
-      let query = supabase
+      const { data, error } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      if (data) {
+        setBusinessId(data.id);
+        fetchCampaigns(data.id);
+      } else {
+        toast.error("Business profile not found");
+        navigate("/business/setup");
+      }
+    } catch (error) {
+      console.error("Error fetching business profile:", error);
+      toast.error("Failed to load business profile");
+    }
+  };
+
+  const fetchCampaigns = async (bizId: string) => {
+    if (!bizId) return;
+    
+    try {
+      setLoading(true);
+
+      // Fetch campaigns
+      const { data: campaignsData, error: campaignsError } = await supabase
         .from("campaigns")
-        .select(`
-          id,
-          name,
-          title,
-          type,
-          status,
-          budget,
-          pay_rate,
-          bid_amount,
-          created_at,
-          published_at,
-          completed_at
-        `)
+        .select("*")
         .eq("business_id", bizId)
         .order("created_at", { ascending: false });
 
-      if (filter !== "all") query = query.eq("status", filter);
-      if (searchTerm) query = query.or(`name.ilike.%${searchTerm}%,title.ilike.%${searchTerm}%`);
+      if (campaignsError) throw campaignsError;
 
-      const { data, error } = await query;
-      if (error) throw error;
+      if (campaignsData && campaignsData.length > 0) {
+        // Get application counts for each campaign
+        const campaignsWithStats = await Promise.all(
+          campaignsData.map(async (campaign) => {
+            // Get total applications
+            const { count: applicationsCount } = await supabase
+              .from("campaign_creators")
+              .select("*", { count: 'exact', head: true })
+              .eq("campaign_id", campaign.id);
 
-      // Fetch creator counts per campaign
-      const enriched = await Promise.all(
-        (data || []).map(async (camp) => {
-          const { count: creatorCount } = await supabase
-            .from("campaign_creators")
-            .select("*", { count: "exact", head: true })
-            .eq("campaign_id", camp.id);
+            // Get accepted creators
+            const { count: acceptedCount } = await supabase
+              .from("campaign_creators")
+              .select("*", { count: 'exact', head: true })
+              .eq("campaign_id", campaign.id)
+              .eq("status", "active");
 
-          const { data: streamData } = await supabase
-            .from("campaign_creators")
-            .select("streams_completed, streams_target")
-            .eq("campaign_id", camp.id);
+            return {
+              ...campaign,
+              applications_count: applicationsCount || 0,
+              accepted_creators: acceptedCount || 0
+            };
+          })
+        );
 
-          const streamsCompleted = (streamData || []).reduce((s, r) => s + (r.streams_completed || 0), 0);
-          const streamsTarget    = (streamData || []).reduce((s, r) => s + (r.streams_target || 0), 0);
+        setCampaigns(campaignsWithStats);
 
-          return {
-            ...camp,
-            creator_count:     creatorCount || 0,
-            streams_completed: streamsCompleted,
-            streams_target:    streamsTarget,
-          };
-        })
-      );
+        // Calculate overall stats
+        const total_applications = campaignsWithStats.reduce((sum, c) => sum + (c.applications_count || 0), 0);
+        const accepted_creators = campaignsWithStats.reduce((sum, c) => sum + (c.accepted_creators || 0), 0);
+        const total_spent = campaignsWithStats
+          .filter(c => c.status === 'completed')
+          .reduce((sum, c) => sum + (c.budget || 0), 0);
+        const active_campaigns = campaignsWithStats.filter(c => c.status === 'active').length;
 
-      setCampaigns(enriched);
-    } catch (err) {
-      console.error("Error fetching campaigns:", err);
-      toast.error("Failed to load campaigns");
+        setStats({
+          total_applications,
+          accepted_creators,
+          total_spent,
+          active_campaigns
+        });
+      } else {
+        setCampaigns([]);
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      toast.error('Failed to load campaigns');
     } finally {
       setLoading(false);
     }
   };
 
-  // Re-fetch when filter or search changes
-  useEffect(() => {
-    if (businessId) fetchCampaigns(businessId);
-  }, [filter, searchTerm, businessId]);
+  const refreshData = async () => {
+    if (!businessId) return;
+    setRefreshing(true);
+    await fetchCampaigns(businessId);
+    setRefreshing(false);
+    toast.success('Campaigns updated');
+  };
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  const handleDeleteCampaign = async (campaignId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!confirm("Are you sure you want to delete this campaign? This action cannot be undone.")) {
+      return;
+    }
 
-  const getCampaignName = (c: Campaign) => c.name || c.title || "Untitled Campaign";
+    try {
+      const { error } = await supabase
+        .from("campaigns")
+        .delete()
+        .eq("id", campaignId);
 
-  const getPrice = (c: Campaign) =>
-    c.pay_rate ?? c.bid_amount ?? c.budget ?? 0;
+      if (error) throw error;
 
-  const getStatusConfig = (status: string) => {
-    switch (status) {
-      case "active":
-        return { label: "Active", bg: "bg-green-100", text: "text-green-700", icon: <CheckCircle className="w-3 h-3" /> };
-      case "pending_review":
-        return { label: "Under Review", bg: "bg-yellow-100", text: "text-yellow-700", icon: <Clock className="w-3 h-3" /> };
-      case "completed":
-        return { label: "Completed", bg: "bg-blue-100", text: "text-blue-700", icon: <TrendingUp className="w-3 h-3" /> };
-      case "rejected":
-        return { label: "Rejected", bg: "bg-red-100", text: "text-red-700", icon: <XCircle className="w-3 h-3" /> };
-      case "draft":
-        return { label: "Draft", bg: "bg-gray-100", text: "text-gray-600", icon: <AlertCircle className="w-3 h-3" /> };
-      default:
-        return { label: status, bg: "bg-gray-100", text: "text-gray-600", icon: <AlertCircle className="w-3 h-3" /> };
+      setCampaigns(prev => prev.filter(c => c.id !== campaignId));
+      toast.success("Campaign deleted successfully");
+    } catch (error) {
+      console.error("Error deleting campaign:", error);
+      toast.error("Failed to delete campaign");
     }
   };
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const handleDuplicateCampaign = async (campaign: Campaign, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    try {
+      const { data, error } = await supabase
+        .from("campaigns")
+        .insert({
+          business_id: campaign.business_id,
+          name: `${campaign.name} (Copy)`,
+          type: campaign.type,
+          description: campaign.description,
+          budget: campaign.budget,
+          pay_rate: campaign.pay_rate,
+          start_date: campaign.start_date,
+          end_date: campaign.end_date,
+          target_niches: campaign.target_niches,
+          target_locations: campaign.target_locations,
+          min_followers: campaign.min_followers,
+          status: 'draft',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-  const filteredCampaigns = campaigns.filter((c) => {
-    const name = getCampaignName(c).toLowerCase();
-    return name.includes(searchTerm.toLowerCase());
-  });
+      if (error) throw error;
 
-  const stats = {
-    total:     campaigns.length,
-    active:    campaigns.filter(c => c.status === "active").length,
-    pending:   campaigns.filter(c => c.status === "pending_review").length,
-    completed: campaigns.filter(c => c.status === "completed").length,
+      if (businessId) {
+        await fetchCampaigns(businessId);
+      }
+      
+      toast.success("Campaign duplicated successfully");
+      navigate(`/business/campaign/edit/${data.id}`);
+    } catch (error) {
+      console.error("Error duplicating campaign:", error);
+      toast.error("Failed to duplicate campaign");
+    }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'active': return 'bg-[#389C9A] text-white border-[#389C9A]';
+      case 'draft': return 'bg-gray-100 text-gray-600 border-gray-200';
+      case 'paused': return 'bg-[#FEDB71] text-[#1D1D1D] border-[#FEDB71]';
+      case 'completed': return 'bg-green-500 text-white border-green-500';
+      case 'cancelled': return 'bg-red-500 text-white border-red-500';
+      default: return 'bg-gray-100 text-gray-400 border-gray-200';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch(status) {
+      case 'active': return <CheckCircle2 className="w-3 h-3" />;
+      case 'draft': return <Edit className="w-3 h-3" />;
+      case 'paused': return <Clock className="w-3 h-3" />;
+      case 'completed': return <CheckCircle2 className="w-3 h-3" />;
+      case 'cancelled': return <AlertCircle className="w-3 h-3" />;
+      default: return null;
+    }
+  };
+
+  const filters = [
+    { value: "all", label: "All Campaigns" },
+    { value: "active", label: "Active" },
+    { value: "draft", label: "Draft" },
+    { value: "paused", label: "Paused" },
+    { value: "completed", label: "Completed" }
+  ];
+
+  const filteredCampaigns = campaigns.filter(camp => {
+    const matchesSearch = 
+      camp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      camp.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      camp.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesFilter = activeFilter === "all" || camp.status === activeFilter;
+    
+    return matchesSearch && matchesFilter;
+  });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <AppHeader showBack title="Campaigns" userType="business" />
+        <div className="flex items-center justify-center h-[80vh]">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+            <p className="text-sm text-gray-500">Loading your campaigns...</p>
+          </div>
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#F8F8F8] pb-24">
-      <AppHeader showLogo userType="business" subtitle="Business" />
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+      <AppHeader showBack title="Campaigns" userType="business" />
+      
+      <div className="px-6 py-6 sticky top-[84px] bg-white z-20 border-b border-[#1D1D1D]/10">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-[#F8F8F8] p-4 border-2 border-[#1D1D1D]">
+            <div className="flex items-center justify-between mb-2">
+              <Users className="w-4 h-4 text-[#389C9A]" />
+              <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Applications</span>
+            </div>
+            <p className="text-2xl font-black">{stats.total_applications}</p>
+            <p className="text-[8px] font-medium opacity-40 mt-1">Total applications received</p>
+          </div>
+          
+          <div className="bg-[#F8F8F8] p-4 border-2 border-[#1D1D1D]">
+            <div className="flex items-center justify-between mb-2">
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Accepted</span>
+            </div>
+            <p className="text-2xl font-black">{stats.accepted_creators}</p>
+            <p className="text-[8px] font-medium opacity-40 mt-1">Creators accepted</p>
+          </div>
+          
+          <div className="bg-[#F8F8F8] p-4 border-2 border-[#1D1D1D]">
+            <div className="flex items-center justify-between mb-2">
+              <DollarSign className="w-4 h-4 text-[#D2691E]" />
+              <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Spent</span>
+            </div>
+            <p className="text-2xl font-black">₦{stats.total_spent.toLocaleString()}</p>
+            <p className="text-[8px] font-medium opacity-40 mt-1">Total campaign spend</p>
+          </div>
+          
+          <div className="bg-[#F8F8F8] p-4 border-2 border-[#1D1D1D]">
+            <div className="flex items-center justify-between mb-2">
+              <TrendingUp className="w-4 h-4 text-[#389C9A]" />
+              <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Active</span>
+            </div>
+            <p className="text-2xl font-black">{stats.active_campaigns}</p>
+            <p className="text-[8px] font-medium opacity-40 mt-1">Live campaigns</p>
+          </div>
+        </div>
 
-      <div className="max-w-[480px] mx-auto px-4 pt-6 space-y-5">
-
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-black uppercase tracking-tighter italic">My Campaigns</h1>
-            <p className="text-[9px] opacity-40 uppercase tracking-widest mt-0.5">{stats.total} total campaigns</p>
+        {/* Create Campaign Button */}
+        <div className="flex items-center justify-between mb-6">
+          <Link 
+            to="/business/create-campaign" 
+            className="w-full bg-[#1D1D1D] text-white py-4 px-6 text-[10px] font-black uppercase italic tracking-widest flex items-center justify-between active:scale-[0.98] transition-all hover:bg-[#389C9A]"
+          >
+            Create New Campaign
+            <Plus className="w-5 h-5 text-[#FEDB71]" />
+          </Link>
+        </div>
+        
+        {/* Search and Refresh */}
+        <div className="flex gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-20" />
+            <input 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="SEARCH CAMPAIGNS..."
+              className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 py-3 pl-10 pr-4 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#1D1D1D] italic transition-all"
+            />
           </div>
           <button
-            onClick={() => navigate("/campaign/type")}
-            className="flex items-center gap-2 bg-[#1D1D1D] text-white px-4 py-3 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
+            onClick={refreshData}
+            disabled={refreshing}
+            className="px-4 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors disabled:opacity-50"
           >
-            <Plus className="w-4 h-4" /> New
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
-        {/* Stats strip */}
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: "Total",     value: stats.total,     color: "border-[#1D1D1D]" },
-            { label: "Active",    value: stats.active,    color: "border-green-400" },
-            { label: "Pending",   value: stats.pending,   color: "border-yellow-400" },
-            { label: "Done",      value: stats.completed, color: "border-blue-400" },
-          ].map((s, i) => (
-            <div key={i} className={`bg-white border-2 ${s.color} rounded-xl p-3 text-center`}>
-              <p className="text-xl font-black">{s.value}</p>
-              <p className="text-[7px] font-black uppercase tracking-widest opacity-40">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search campaigns..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-white border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-          />
-        </div>
-
-        {/* Filter tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-          {(["all", "active", "pending_review", "completed", "rejected"] as const).map((tab) => (
+        {/* Status Filters */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+          {filters.map((filter) => (
             <button
-              key={tab}
-              onClick={() => setFilter(tab)}
-              className={`px-4 py-2 text-[8px] font-black uppercase tracking-widest rounded-full whitespace-nowrap transition-colors ${
-                filter === tab
-                  ? "bg-[#1D1D1D] text-white"
-                  : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/50 hover:text-[#1D1D1D]"
+              key={filter.value}
+              onClick={() => setActiveFilter(filter.value)}
+              className={`whitespace-nowrap px-4 py-2 text-[9px] font-black uppercase tracking-widest italic border-2 transition-all ${
+                activeFilter === filter.value 
+                ? "bg-[#1D1D1D] text-white border-[#1D1D1D]" 
+                : "bg-white text-[#1D1D1D]/40 border-[#1D1D1D]/10 hover:border-[#1D1D1D]/40"
               }`}
             >
-              {tab === "all" ? "All" : tab.replace("_", " ")}
+              {filter.label} 
+              {filter.value !== 'all' && ` (${campaigns.filter(c => c.status === filter.value).length})`}
             </button>
           ))}
         </div>
+      </div>
 
-        {/* Campaign list */}
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" />
-          </div>
-        ) : filteredCampaigns.length === 0 ? (
-          <div className="bg-white border-2 border-dashed border-[#1D1D1D]/10 rounded-xl p-12 text-center">
-            <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="font-black uppercase text-sm mb-1">No campaigns yet</p>
-            <p className="text-[9px] text-gray-400 mb-6">Create your first campaign to start working with creators</p>
-            <button
-              onClick={() => navigate("/campaign/type")}
-              className="bg-[#1D1D1D] text-white px-6 py-3 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors inline-flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Create Campaign
-            </button>
+      <main className="max-w-[480px] mx-auto w-full px-6 py-8">
+        {filteredCampaigns.length === 0 ? (
+          <div className="mt-12 p-8 border-2 border-dashed border-[#1D1D1D]/10 flex flex-col items-center text-center">
+            <Megaphone className="w-12 h-12 opacity-20 mb-4 text-[#389C9A]" />
+            <p className="text-sm font-medium text-[#1D1D1D]/40 leading-relaxed max-w-[220px] italic mb-4">
+              {searchQuery 
+                ? "No campaigns match your search"
+                : "You haven't created any campaigns yet."}
+            </p>
+            {!searchQuery && (
+              <Link to="/business/create-campaign" className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] underline italic">
+                Create Your First Campaign →
+              </Link>
+            )}
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredCampaigns.map((camp, i) => {
-              const statusConfig = getStatusConfig(camp.status);
-              const price        = getPrice(camp);
-              const progress     = camp.streams_target
-                ? Math.min(100, Math.round((camp.streams_completed! / camp.streams_target) * 100))
-                : 0;
-
-              return (
-                <motion.div
+          <div className="flex flex-col gap-6">
+            <AnimatePresence mode="popLayout">
+              {filteredCampaigns.map((camp) => (
+                <motion.div 
                   key={camp.id}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  onClick={() => navigate(`/business/campaign/overview/${camp.id}`)}
-                  className="bg-white border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] rounded-xl p-4 cursor-pointer transition-all active:scale-[0.99]"
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="bg-white border-2 border-[#1D1D1D] overflow-hidden transition-all group"
                 >
-                  {/* Top row */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0 pr-3">
-                      <h3 className="font-black text-sm uppercase tracking-tight truncate">
-                        {getCampaignName(camp)}
-                      </h3>
-                      <p className="text-[9px] text-gray-400 mt-0.5 capitalize">
-                        {camp.type?.replace(/_/g, " ") || "Standard"}
-                      </p>
-                    </div>
-                    <span className={`flex items-center gap-1 text-[8px] font-black px-2 py-1 rounded-full whitespace-nowrap ${statusConfig.bg} ${statusConfig.text}`}>
-                      {statusConfig.icon}
-                      {statusConfig.label}
-                    </span>
-                  </div>
-
-                  {/* Stats row */}
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <div className="bg-[#F8F8F8] rounded-lg p-2 text-center">
-                      <div className="flex items-center justify-center gap-1 mb-0.5">
-                        <DollarSign className="w-3 h-3 text-[#389C9A]" />
+                  {/* Header with Status */}
+                  <div className={`p-4 border-b-2 border-[#1D1D1D] ${camp.status === 'active' ? 'bg-[#389C9A]/5' : 'bg-white'}`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-black uppercase tracking-tight leading-tight mb-1">
+                          {camp.name}
+                        </h3>
+                        <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic">
+                          {camp.type} • Created {new Date(camp.created_at).toLocaleDateString()}
+                        </p>
                       </div>
-                      <p className="text-xs font-black text-[#389C9A]">₦{Number(price).toLocaleString()}</p>
-                      <p className="text-[6px] uppercase tracking-widest opacity-40">Budget</p>
-                    </div>
-                    <div className="bg-[#F8F8F8] rounded-lg p-2 text-center">
-                      <div className="flex items-center justify-center gap-1 mb-0.5">
-                        <Users className="w-3 h-3 text-blue-500" />
+                      <div className={`px-3 py-1 text-[8px] font-black uppercase tracking-widest border flex items-center gap-1 ${getStatusColor(camp.status)}`}>
+                        {getStatusIcon(camp.status)}
+                        {camp.status.charAt(0).toUpperCase() + camp.status.slice(1)}
                       </div>
-                      <p className="text-xs font-black">{camp.creator_count}</p>
-                      <p className="text-[6px] uppercase tracking-widest opacity-40">Creators</p>
-                    </div>
-                    <div className="bg-[#F8F8F8] rounded-lg p-2 text-center">
-                      <div className="flex items-center justify-center gap-1 mb-0.5">
-                        <Zap className="w-3 h-3 text-[#FEDB71]" />
-                      </div>
-                      <p className="text-xs font-black">{camp.streams_completed}/{camp.streams_target || 0}</p>
-                      <p className="text-[6px] uppercase tracking-widest opacity-40">Streams</p>
                     </div>
                   </div>
 
-                  {/* Progress bar — only for active campaigns */}
-                  {camp.status === "active" && camp.streams_target! > 0 && (
-                    <div className="mb-3">
-                      <div className="flex justify-between text-[7px] font-black uppercase tracking-widest opacity-40 mb-1">
-                        <span>Progress</span>
-                        <span>{progress}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-[#F0F0F0] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#389C9A] rounded-full transition-all duration-500"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
+                  {/* Campaign Details */}
+                  <div className="p-4 space-y-4">
+                    {/* Description */}
+                    <p className="text-[11px] text-[#1D1D1D]/60 line-clamp-2">
+                      {camp.description || "No description provided"}
+                    </p>
 
-                  {/* Footer */}
-                  <div className="flex items-center justify-between pt-2 border-t border-[#1D1D1D]/5">
-                    <div className="flex items-center gap-1 text-[8px] text-gray-400">
-                      <Calendar className="w-3 h-3" />
-                      <span>{formatDate(camp.created_at)}</span>
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-3 gap-3 pt-2">
+                      <div className="text-center">
+                        <DollarSign className="w-4 h-4 text-[#D2691E] mx-auto mb-1" />
+                        <p className="text-sm font-black">₦{camp.budget?.toLocaleString() || 0}</p>
+                        <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Budget</p>
+                      </div>
+                      <div className="text-center">
+                        <Users className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
+                        <p className="text-sm font-black">{camp.applications_count || 0}</p>
+                        <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Applications</p>
+                      </div>
+                      <div className="text-center">
+                        <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto mb-1" />
+                        <p className="text-sm font-black">{camp.accepted_creators || 0}</p>
+                        <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Accepted</p>
+                      </div>
                     </div>
-                    <span className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] flex items-center gap-1">
-                      View Details <ChevronRight className="w-3 h-3" />
-                    </span>
+
+                    {/* Timeline */}
+                    <div className="flex items-center justify-between text-[8px] font-medium text-[#1D1D1D]/40 pt-2 border-t border-[#1D1D1D]/10">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        <span>Start: {new Date(camp.start_date).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>End: {new Date(camp.end_date).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+
+                    {/* Niches */}
+                    {camp.target_niches && camp.target_niches.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {camp.target_niches.slice(0, 3).map(niche => (
+                          <span key={niche} className="px-2 py-0.5 bg-[#F8F8F8] text-[7px] font-black uppercase tracking-widest">
+                            {niche}
+                          </span>
+                        ))}
+                        {camp.target_niches.length > 3 && (
+                          <span className="px-2 py-0.5 bg-[#F8F8F8] text-[7px] font-black uppercase tracking-widest">
+                            +{camp.target_niches.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="bg-[#F8F8F8] p-3 flex items-center gap-2 border-t-2 border-[#1D1D1D]">
+                    <button
+                      onClick={() => navigate(`/business/campaign/overview/${camp.id}`)}
+                      className="flex-1 py-2 bg-[#1D1D1D] text-white text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1 hover:bg-[#389C9A] transition-colors"
+                    >
+                      <Eye className="w-3 h-3" /> View Details
+                    </button>
+                    
+                    {camp.status === 'draft' && (
+                      <button
+                        onClick={() => navigate(`/business/campaign/edit/${camp.id}`)}
+                        className="px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </button>
+                    )}
+                    
+                    <div className="relative group/actions">
+                      <button className="px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors">
+                        <MoreVertical className="w-3 h-3" />
+                      </button>
+                      
+                      {/* Dropdown Menu */}
+                      <div className="absolute right-0 bottom-full mb-1 bg-white border-2 border-[#1D1D1D] shadow-xl hidden group-hover/actions:block z-10 min-w-[140px]">
+                        <button
+                          onClick={(e) => handleDuplicateCampaign(camp, e)}
+                          className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <Copy className="w-3 h-3" /> Duplicate
+                        </button>
+                        {camp.status !== 'completed' && camp.status !== 'cancelled' && (
+                          <button
+                            onClick={() => navigate(`/business/campaign/edit/${camp.id}`)}
+                            className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-gray-100 flex items-center gap-2"
+                          >
+                            <Edit className="w-3 h-3" /> Edit
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => handleDeleteCampaign(camp.id, e)}
+                          className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 flex items-center gap-2"
+                        >
+                          <Trash2 className="w-3 h-3" /> Delete
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
-              );
-            })}
+              ))}
+            </AnimatePresence>
+
+            {/* Summary Stats */}
+            <div className="mt-8 p-6 bg-[#F8F8F8] border-2 border-[#1D1D1D]">
+              <h4 className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-4">Campaign Summary</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-2xl font-black">{campaigns.length}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Total Campaigns</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-black">{stats.active_campaigns}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Active Now</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-black">₦{stats.total_spent.toLocaleString()}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Total Spent</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-black">{stats.accepted_creators}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Creators Hired</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
-      </div>
+      </main>
 
       <BottomNav />
     </div>
   );
 }
+
+export default BusinessCampaigns;
