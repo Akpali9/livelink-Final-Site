@@ -45,11 +45,11 @@ export const routes: RouteObject[] = [
   { path: "/dashboard", element: protectCreator(Dashboard) },
   { path: "/profile/:id", element: protectCreator(Profile) },
   { path: "/settings", element: protectCreator(Settings) },
-  { path: "/campaigns", element: protectCreator(Campaigns) },
-  { path: "/campaign/live-update/:id", element: protectCreator(CampaignLiveUpdate) },
-  { path: "/campaign/:id/summary", element: protectCreator(CampaignSummary) },
-  { path: "/creator/upcoming-gig/:id", element: protectCreator(UpcomingGig) },
-  { path: "/browse-businesses", element: protectCreator(BrowseBusinesses) },
+  // { path: "/campaigns", element: protectCreator(Campaigns) },
+  // { path: "/campaign/live-update/:id", element: protectCreator(CampaignLiveUpdate) },
+  // { path: "/campaign/:id/summary", element: protectCreator(CampaignSummary) },
+  // { path: "/creator/upcoming-gig/:id", element: protectCreator(UpcomingGig) },
+   { path: "/browse-businesses", element: protectCreator(BrowseBusinesses) },
   // { path: "/messages", element: protectCreator(Messages) }, // Commented out
   // { path: "/messages/:id", element: protectCreator(Messages) }, // Commented out
   { path: "/notifications", element: protectCreator(Notifications) },
