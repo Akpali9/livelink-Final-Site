@@ -37,17 +37,21 @@ import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
-import { AdminDashboard } from "../app/components/AdminDashboard";
+
+// ── Admin imports ─────────────────────────────────────────────────────────────
+// AdminDashboard is a DEFAULT export — do NOT use { } destructuring
+import AdminDashboard from "../app/components/AdminDashboard";
 import { AdminApplicationQueue } from "../app/components/AdminApplicationQueue";
 import { AdminBusinessQueue } from "../app/components/AdminBusinessQueue";
 import { AdminLayout } from "../app/components/AdminLayout";
+import { AdminCampaigns } from "../app/components/AdminCampaigns";
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { ForgotPassword } from "./screens/forgot-password";
 import { ResetPassword } from "./screens/reset-password";
 import { Terms } from "./screens/terms";
 import { Privacy } from "./screens/privacy";
 import { ConfirmEmail } from "./screens/confirm-email";
-import { AdminCampaigns } from "../app/components/AdminCampaigns";
-
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Helper functions for protected routes
@@ -69,11 +73,13 @@ const protectBoth = (Component: React.ComponentType) => (
   </ProtectedRoute>
 );
 
+// ── Fixed: protectAdmin wraps a Component type, not a JSX element ─────────────
 const protectAdmin = (Component: React.ComponentType) => (
   <ProtectedRoute userType="admin">
     <Component />
   </ProtectedRoute>
 );
+// ─────────────────────────────────────────────────────────────────────────────
 
 const routes: RouteObject[] = [
   {
@@ -96,7 +102,7 @@ const routes: RouteObject[] = [
       { path: "confirm-email", element: <ConfirmEmail /> },
       { path: "terms", element: <Terms /> },
       { path: "privacy", element: <Privacy /> },
-      
+
       // Protected Creator Routes
       { path: "dashboard", element: protectCreator(Dashboard) },
       { path: "campaigns", element: protectCreator(Campaigns) },
@@ -110,7 +116,7 @@ const routes: RouteObject[] = [
       { path: "creator/campaign/:id", element: protectCreator(CreatorCampaignDetail) },
       { path: "creator/upcoming-gig/:id", element: protectCreator(UpcomingGigDetail) },
       { path: "settings", element: protectCreator(Settings) },
-      
+
       // Protected Business Routes
       { path: "business/dashboard", element: protectBusiness(BusinessDashboard) },
       { path: "business/profile", element: protectBusiness(BusinessProfile) },
@@ -119,7 +125,7 @@ const routes: RouteObject[] = [
       { path: "business/campaign/:campaignId/creator/:creatorId", element: protectBusiness(BusinessCampaignDetail) },
       { path: "business/settings", element: protectBusiness(BusinessSettings) },
       { path: "business/submission-success", element: protectBusiness(BusinessSubmissionSuccess) },
-      
+
       // Protected routes for both user types
       { path: "messages", element: protectBoth(MessagesInbox) },
       { path: "messages/:id", element: protectBoth(MessageThread) },
@@ -129,20 +135,21 @@ const routes: RouteObject[] = [
       { path: "campaign/confirmed", element: protectBoth(CampaignAcceptedBusiness) },
       { path: "campaign/declined", element: protectBoth(CampaignDeclined) },
       { path: "gig-accepted", element: protectBoth(GigAccepted) },
-      
-      // Admin Routes with AdminLayout
+
+      // ── Admin Routes ────────────────────────────────────────────────────────
+      // FIX: pass AdminLayout as a Component reference, not as <AdminLayout />
       {
         path: "admin",
-        element: protectAdmin(<AdminLayout />),
+        element: protectAdmin(AdminLayout),
         children: [
           { index: true, element: <AdminDashboard /> },
           { path: "dashboard", element: <AdminDashboard /> },
           { path: "creators", element: <AdminApplicationQueue /> },
           { path: "businesses", element: <AdminBusinessQueue /> },
           { path: "campaigns", element: <AdminCampaigns /> },
-           // Add if you have this component
         ],
       },
+      // ────────────────────────────────────────────────────────────────────────
     ],
   },
 ];
