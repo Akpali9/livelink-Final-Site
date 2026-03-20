@@ -15,7 +15,7 @@ import { Messages } from "./screens/messages"; // Commented out - file doesn't e
 import { Notifications } from "./screens/notifications";
 // import { CampaignLiveUpdate } from "./screens/campaign-live-update";
 // import { CampaignSummary } from "./screens/campaign-summary";
-// import { UpcomingGig } from "./screens/upcoming-gig";
+import { UpcomingGigDetail } from "./screens/upcoming-gig-detail";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { LoginPortal } from "./screens/login-portal";
 import { BecomeCreator } from "./screens/become-creator";
@@ -64,8 +64,8 @@ export const routes: RouteObject[] = [
   { path: "/business/create-campaign", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/business/campaign/edit/:id", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/browse-creators", element: protectBusiness(BrowseCreators) },
-  // { path: "/business/messages", element: protectBusiness(Messages) }, // Commented out
-  // { path: "/business/messages/:id", element: protectBusiness(Messages) }, // Commented out
+  { path: "/business/messages", element: protectBusiness(Messages) }, // Commented out
+  { path: "/business/messages/:id", element: protectBusiness(Messages) }, // Commented out
   
   // Admin routes
   { path: "/admin/dashboard", element: protectAdmin(AdminDashboard) },
