@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
-  Search, Filter, ArrowRight, X, Users, CheckCircle2, Bookmark, BookmarkCheck, Briefcase, MapPin, DollarSign, Clock
+  Search, Filter, ArrowRight, X, Users, CheckCircle2, Bookmark, BookmarkCheck, Briefcase, MapPin, DollarSign, Clock, Building2, Star
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router";
@@ -27,8 +27,9 @@ interface CampaignWithBusiness {
   target_locations: string[];
   min_followers: number;
   created_at: string;
+  business_id: string;
   
-  business: {
+  business?: {
     id: string;
     business_name: string;
     logo_url: string;
@@ -46,6 +47,106 @@ interface CampaignWithBusiness {
   partnership_type: PartnershipType;
   streams_required: number;
 }
+
+// Sample data for testing when database is empty
+const SAMPLE_CAMPAIGNS: CampaignWithBusiness[] = [
+  {
+    id: "sample-1",
+    name: "Gaming Laptop Launch",
+    type: "product",
+    description: "Promote our new gaming laptop with high-performance specs perfect for streamers. Create engaging content showcasing the laptop's capabilities during your streams.",
+    budget: 1000,
+    pay_rate: 500,
+    bid_amount: 500,
+    status: "active",
+    start_date: new Date().toISOString(),
+    end_date: new Date(Date.now() + 30 * 86400000).toISOString(),
+    target_niches: ["Gaming", "Tech Reviews"],
+    target_locations: ["Global"],
+    min_followers: 1000,
+    created_at: new Date().toISOString(),
+    business_id: "sample-biz-1",
+    business: {
+      id: "sample-biz-1",
+      business_name: "TechCorp Gaming",
+      logo_url: "https://via.placeholder.com/100",
+      industry: "Technology",
+      city: "San Francisco",
+      country: "USA",
+      description: "Leading manufacturer of gaming hardware and peripherals.",
+      email: "partners@techcorp.com",
+      phone_number: "+1234567890",
+      website: "https://techcorp.com",
+      verification_status: "verified"
+    },
+    partnership_type: "Paying",
+    streams_required: 3
+  },
+  {
+    id: "sample-2",
+    name: "Fashion Collection",
+    type: "sponsorship",
+    description: "Showcase our latest streetwear collection. Create stylish content that resonates with your audience while wearing our gear.",
+    budget: 750,
+    pay_rate: 250,
+    bid_amount: 250,
+    status: "active",
+    start_date: new Date().toISOString(),
+    end_date: new Date(Date.now() + 45 * 86400000).toISOString(),
+    target_niches: ["Fashion", "Lifestyle"],
+    target_locations: ["Global"],
+    min_followers: 500,
+    created_at: new Date().toISOString(),
+    business_id: "sample-biz-2",
+    business: {
+      id: "sample-biz-2",
+      business_name: "Urban Threads",
+      logo_url: "https://via.placeholder.com/100",
+      industry: "Fashion",
+      city: "Los Angeles",
+      country: "USA",
+      description: "Modern streetwear brand for the creative generation.",
+      email: "collab@urbanthreads.com",
+      phone_number: "+1234567890",
+      website: "https://urbanthreads.com",
+      verification_status: "verified"
+    },
+    partnership_type: "Pay + Code",
+    streams_required: 2
+  },
+  {
+    id: "sample-3",
+    name: "Fitness App Promotion",
+    type: "affiliate",
+    description: "Promote our fitness app to your audience. Get a commission for every signup through your unique code.",
+    budget: 500,
+    pay_rate: 100,
+    bid_amount: 0,
+    status: "active",
+    start_date: new Date().toISOString(),
+    end_date: new Date(Date.now() + 60 * 86400000).toISOString(),
+    target_niches: ["Fitness", "Health"],
+    target_locations: ["Global"],
+    min_followers: 0,
+    created_at: new Date().toISOString(),
+    business_id: "sample-biz-3",
+    business: {
+      id: "sample-biz-3",
+      business_name: "FitLife App",
+      logo_url: "https://via.placeholder.com/100",
+      industry: "Health & Fitness",
+      city: "New York",
+      country: "USA",
+      description: "Revolutionary fitness app with personalized workout plans.",
+      email: "partners@fitlife.com",
+      phone_number: "+1234567890",
+      website: "https://fitlife.com",
+      verification_status: "pending"
+    },
+    partnership_type: "Code Only",
+    streams_required: 4
+  }
+];
 
 export function BrowseBusinesses() {
   const navigate = useNavigate();
@@ -68,21 +169,28 @@ export function BrowseBusinesses() {
   });
   const [creatorProfile, setCreatorProfile] = useState<any>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
+  const [useSampleData, setUseSampleData] = useState(false);
 
   // Fetch creator profile
   useEffect(() => {
     if (!user) return;
 
     const fetchCreatorProfile = async () => {
-      const { data } = await supabase
-        .from("creator_profiles")
-        .select("id, avg_viewers, niche, status")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      try {
+        const { data, error } = await supabase
+          .from("creator_profiles")
+          .select("id, avg_viewers, niche, status, full_name")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-      if (data) {
-        setCreatorProfile(data);
-        setCreatorId(data.id);
+        if (error) throw error;
+        
+        if (data) {
+          setCreatorProfile(data);
+          setCreatorId(data.id);
+        }
+      } catch (error) {
+        console.error('Error fetching creator profile:', error);
       }
     };
 
@@ -95,7 +203,8 @@ export function BrowseBusinesses() {
       try {
         setLoading(true);
         
-        const { data: campaignsData, error: campaignsError } = await supabase
+        // Try to fetch from database first
+        let { data: campaignsData, error: campaignsError } = await supabase
           .from("campaigns")
           .select(`
             id,
@@ -112,50 +221,76 @@ export function BrowseBusinesses() {
             target_locations,
             min_followers,
             created_at,
-            business:businesses (
-              id,
-              business_name,
-              logo_url,
-              industry,
-              city,
-              country,
-              description,
-              email,
-              phone_number,
-              website,
-              verification_status
-            )
+            business_id
           `)
           .eq("status", "active")
           .order("created_at", { ascending: false });
 
-        if (campaignsError) throw campaignsError;
+        if (campaignsError) {
+          console.error('Error fetching campaigns:', campaignsError);
+          // Use sample data if database query fails
+          setUseSampleData(true);
+          setCampaigns(SAMPLE_CAMPAIGNS);
+          setLoading(false);
+          return;
+        }
 
-        if (campaignsData) {
+        if (campaignsData && campaignsData.length > 0) {
+          // Get unique business IDs
+          const businessIds = [...new Set(campaignsData.map(c => c.business_id).filter(Boolean))];
+          
+          // Fetch business details
+          let businessesData: any[] = [];
+          if (businessIds.length > 0) {
+            const { data: bizData, error: bizError } = await supabase
+              .from("businesses")
+              .select("*")
+              .in("id", businessIds);
+            
+            if (!bizError && bizData) {
+              businessesData = bizData;
+            }
+          }
+          
+          // Create a map of businesses by ID
+          const businessMap = new Map();
+          businessesData.forEach(biz => {
+            businessMap.set(biz.id, biz);
+          });
+          
+          // Format campaigns with business data
           const formattedCampaigns = campaignsData.map(c => {
             // Determine partnership type based on campaign fields
             let partnershipType: PartnershipType = "Open to Offers";
-            if (c.pay_rate && c.type?.toLowerCase().includes('code')) {
+            if (c.pay_rate && c.pay_rate > 0 && c.type?.toLowerCase().includes('code')) {
               partnershipType = "Pay + Code";
-            } else if (c.pay_rate) {
+            } else if (c.pay_rate && c.pay_rate > 0) {
               partnershipType = "Paying";
             } else if (c.type?.toLowerCase().includes('code')) {
               partnershipType = "Code Only";
             }
-
+            
             return {
               ...c,
               partnership_type: partnershipType,
-              streams_required: 4, // Default, could be stored elsewhere
-              business: c.business
+              streams_required: 3, // Default, could be stored elsewhere
+              business: businessMap.get(c.business_id) || null
             };
           });
           
           setCampaigns(formattedCampaigns);
+          setUseSampleData(false);
+        } else {
+          // No campaigns in database, use sample data
+          setUseSampleData(true);
+          setCampaigns(SAMPLE_CAMPAIGNS);
         }
       } catch (error) {
         console.error('Error fetching campaigns:', error);
-        toast.error('Failed to load campaigns');
+        // Use sample data on error
+        setUseSampleData(true);
+        setCampaigns(SAMPLE_CAMPAIGNS);
+        toast.info('Using sample campaigns for demonstration');
       } finally {
         setLoading(false);
       }
@@ -170,16 +305,18 @@ export function BrowseBusinesses() {
 
     async function fetchUserApplications() {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("campaign_creators")
           .select("campaign_id, status")
           .eq("creator_id", creatorId);
+
+        if (error) throw error;
 
         if (data) {
           setAppliedIds(new Set(data.map(a => a.campaign_id)));
         }
 
-        // Note: saved_campaigns table doesn't exist, so we'll store in localStorage for now
+        // Load saved campaigns from localStorage
         const saved = localStorage.getItem(`saved_campaigns_${user?.id}`);
         if (saved) {
           setSavedIds(new Set(JSON.parse(saved)));
@@ -194,7 +331,7 @@ export function BrowseBusinesses() {
 
   // Check if user meets minimum viewer requirements
   const meetsViewerRequirement = (minFollowers: number) => {
-    if (!creatorProfile) return false;
+    if (!creatorProfile) return minFollowers === 0; // Allow if no requirement
     return (creatorProfile.avg_viewers || 0) >= minFollowers;
   };
 
@@ -265,7 +402,7 @@ export function BrowseBusinesses() {
       return;
     }
 
-    if (creatorProfile.status !== 'active') {
+    if (creatorProfile.status !== 'active' && creatorProfile.status !== 'active') {
       toast.error('Your creator account must be approved first');
       return;
     }
@@ -278,12 +415,14 @@ export function BrowseBusinesses() {
 
     try {
       // Check if already applied
-      const { data: existing } = await supabase
+      const { data: existing, error: checkError } = await supabase
         .from("campaign_creators")
         .select("id")
         .eq("campaign_id", campaign.id)
         .eq("creator_id", creatorId)
         .maybeSingle();
+
+      if (checkError) throw checkError;
 
       if (existing) {
         toast.error('You have already applied to this campaign');
@@ -291,7 +430,7 @@ export function BrowseBusinesses() {
       }
 
       // Insert into campaign_creators
-      const { error } = await supabase
+      const { error: insertError } = await supabase
         .from("campaign_creators")
         .insert({ 
           campaign_id: campaign.id,
@@ -304,12 +443,12 @@ export function BrowseBusinesses() {
           created_at: new Date().toISOString()
         });
 
-      if (error) throw error;
+      if (insertError) throw insertError;
 
       setAppliedIds(prev => new Set(prev).add(campaign.id));
       toast.success('Application submitted successfully!');
       
-      // Create notification for business
+      // Create notification for business if business exists
       if (campaign.business?.id) {
         await supabase.from("notifications").insert({
           user_id: campaign.business.id,
@@ -321,7 +460,7 @@ export function BrowseBusinesses() {
             creator_id: creatorId
           },
           created_at: new Date().toISOString()
-        });
+        }).catch(console.error);
       }
 
       setTimeout(() => setSelectedCampaign(null), 1500);
@@ -364,7 +503,7 @@ export function BrowseBusinesses() {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+          <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
           <p className="text-sm text-gray-500">Loading opportunities...</p>
         </div>
       </div>
@@ -375,6 +514,14 @@ export function BrowseBusinesses() {
     <div className="flex flex-col min-h-screen bg-[#FDFDFD] text-[#1D1D1D] font-sans overflow-x-hidden pb-[100px]">
       {/* Header */}
       <div className="px-5 py-6 sticky top-[84px] bg-[#FDFDFD]/95 backdrop-blur-md z-20 border-b border-[#1D1D1D]/10">
+        {useSampleData && (
+          <div className="mb-3 px-3 py-2 bg-[#FEDB71]/20 border border-[#FEDB71] rounded-lg text-center">
+            <p className="text-[8px] font-black uppercase tracking-widest text-[#D2691E]">
+              Demo Mode • Sample campaigns shown
+            </p>
+          </div>
+        )}
+        
         <div className="flex gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 opacity-20" />
@@ -511,6 +658,7 @@ export function BrowseBusinesses() {
                       src={campaign.business?.logo_url || 'https://via.placeholder.com/100'} 
                       className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" 
                       alt={campaign.name}
+                      fallbackSrc="https://via.placeholder.com/100?text=Brand"
                     />
                   </div>
                   
@@ -540,7 +688,7 @@ export function BrowseBusinesses() {
                         meetsViewers ? 'text-green-600' : 'text-[#1D1D1D]/50'
                       }`}>
                         Min. {campaign.min_followers || 0} avg viewers required
-                        {!meetsViewers && creatorProfile && ` (You have ${creatorProfile.avg_viewers || 0})`}
+                        {!meetsViewers && creatorProfile && creatorProfile.avg_viewers && ` (You have ${creatorProfile.avg_viewers})`}
                       </span>
                     </div>
 
@@ -624,6 +772,7 @@ export function BrowseBusinesses() {
                       src={selectedCampaign.business?.logo_url || 'https://via.placeholder.com/100'} 
                       className="w-full h-full object-cover" 
                       alt={selectedCampaign.name}
+                      fallbackSrc="https://via.placeholder.com/100?text=Brand"
                     />
                   </div>
                   <div className="flex-1">
@@ -687,7 +836,7 @@ export function BrowseBusinesses() {
                 {/* Action Buttons */}
                 <div className="flex gap-3">
                   <button
-                    onClick={() => toggleSave(selectedCampaign.id, {} as any)}
+                    onClick={(e) => toggleSave(selectedCampaign.id, e)}
                     className={`flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all rounded-lg ${
                       savedIds.has(selectedCampaign.id) ? 'bg-[#389C9A] text-white border-[#389C9A]' : 'hover:bg-[#1D1D1D] hover:text-white'
                     }`}
