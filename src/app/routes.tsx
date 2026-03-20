@@ -1,5 +1,3 @@
-// routes.tsx - Complete corrected routes
-
 import { RouteObject } from "react-router";
 import { CreatorDashboard } from "./screens/creator-dashboard";
 import { CreatorProfile } from "./screens/creator-profile";
