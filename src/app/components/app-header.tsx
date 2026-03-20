@@ -306,7 +306,7 @@ export function AppHeader({
   const showActions = !isHome && !isMessages && isAuthenticated;
 
   return (
-    <header className="fixed top-0 left-0 right-0 bg-white border-t-2 border-[#1D1D1D] py-2 px-4 max-w-[480px] mx-auto z-50">
+    <header className="fixed top-0 left-0 right-0 bg-white border-b-2 border-[#1D1D1D] py-2 px-4 max-w-[480px] mx-auto z-50">
       <div className="max-w-[480px] mx-auto flex justify-between items-center">
 
         {/* Left side */}
