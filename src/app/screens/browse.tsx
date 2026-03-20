@@ -136,10 +136,10 @@ export function BrowseCreators() {
   }, [activeCategory, selectedPlatforms, selectedCountry, search]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-white">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
      
       {/* Search & Filters */}
-      <div className="px-6 py-6 sticky top-[84px] bg-white z-20 border-b border-[#1D1D1D]">
+      <div className="px-6 py-6 sticky top-[4px] bg-white z-20 border-b border-[#1D1D1D]">
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest mb-6 opacity-40 italic">
           <ChevronLeft className="w-4 h-4 text-[#1D1D1D]" /> Back
         </button>
