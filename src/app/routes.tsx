@@ -1,8 +1,8 @@
 // routes.tsx
 import { RouteObject } from "react-router-dom";
-import { Dashboard } from "./screens/dashboard"; // Changed from CreatorDashboard to Dashboard
-import { CreatorProfile } from "./screens/creator-profile";
-import { CreatorSettings } from "./screens/creator-settings";
+import { Dashboard } from "./screens/dashboard";
+import { Profile } from "./screens/profile"; // Changed from CreatorProfile to Profile
+import { Settings } from "./screens/settings"; // Changed from CreatorSettings to Settings
 import { Campaigns } from "./screens/campaigns"; // Creator campaigns
 import { BusinessDashboard } from "./screens/business-dashboard";
 import { BusinessProfile } from "./screens/business-profile";
@@ -18,7 +18,6 @@ import { CampaignLiveUpdate } from "./screens/campaign-live-update";
 import { CampaignSummary } from "./screens/campaign-summary";
 import { UpcomingGig } from "./screens/upcoming-gig";
 import { AdminDashboard } from "./screens/admin-dashboard";
-import { Settings } from "./screens/settings";
 import { LoginPortal } from "./screens/login-portal";
 import { BecomeCreator } from "./screens/become-creator";
 import { BecomeBusiness } from "./screens/become-business";
@@ -44,9 +43,9 @@ export const routes: RouteObject[] = [
   { path: "/become-business", element: <BecomeBusiness /> },
   
   // Creator routes
-  { path: "/dashboard", element: protectCreator(Dashboard) }, // Using Dashboard component
-  { path: "/profile/:id", element: protectCreator(CreatorProfile) },
-  { path: "/settings", element: protectCreator(CreatorSettings) },
+  { path: "/dashboard", element: protectCreator(Dashboard) },
+  { path: "/profile/:id", element: protectCreator(Profile) }, // Changed to Profile
+  { path: "/settings", element: protectCreator(Settings) }, // Changed to Settings
   { path: "/campaigns", element: protectCreator(Campaigns) },
   { path: "/campaign/live-update/:id", element: protectCreator(CampaignLiveUpdate) },
   { path: "/campaign/:id/summary", element: protectCreator(CampaignSummary) },
