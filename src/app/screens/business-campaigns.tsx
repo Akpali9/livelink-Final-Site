@@ -21,11 +21,11 @@ import {
   Megaphone
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { ImageWithFallback } from "../../components/ImageWithFallback";
-import { BottomNav } from "../../components/bottom-nav";
-import { AppHeader } from "../../components/app-header";
-import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../lib/contexts/AuthContext";
+import { ImageWithFallback } from "../components/ImageWithFallback";
+import { BottomNav } from "../components/bottom-nav";
+import { AppHeader } from "../components/app-header";
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface Campaign {
