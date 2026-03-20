@@ -525,13 +525,13 @@ export function BusinessDashboard() {
           </Link>
         </div>
 
-        {/* Campaign Status Row */}
+        {/* Campaign Status Row - FIXED: Using business campaign routes */}
         <div className="px-6 pb-12">
           <div className="grid grid-cols-3 gap-3">
             {[
-              { icon: Megaphone, count: stats.activeCampaigns, label: "Live", path: "/campaigns?status=active", color: "text-[#389C9A]" },
-              { icon: Clock, count: stats.pendingCampaigns, label: "Pending", path: "/campaigns?status=pending", color: "text-[#FEDB71]" },
-              { icon: CheckCircle2, count: stats.completedCampaigns, label: "Completed", path: "/campaigns?status=completed", color: "text-green-500" },
+              { icon: Megaphone, count: stats.activeCampaigns, label: "Live", path: "/business/campaigns?status=active", color: "text-[#389C9A]" },
+              { icon: Clock, count: stats.pendingCampaigns, label: "Pending", path: "/business/campaigns?status=pending", color: "text-[#FEDB71]" },
+              { icon: CheckCircle2, count: stats.completedCampaigns, label: "Completed", path: "/business/campaigns?status=completed", color: "text-green-500" },
             ].map((card, i) => (
               <button
                 key={i}
@@ -597,7 +597,7 @@ export function BusinessDashboard() {
                 <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-400 mb-4">No campaigns in this category</p>
                 <button
-                  onClick={() => navigate("/campaign/type")}
+                  onClick={() => navigate("/business/create-campaign")}
                   className="text-[#389C9A] font-black uppercase text-sm hover:underline"
                 >
                   Create your first campaign →
@@ -614,7 +614,7 @@ export function BusinessDashboard() {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
                       transition={{ duration: 0.3 }}
-                      onClick={() => navigate(`/business/campaign/${campaign.id}`)}
+                      onClick={() => navigate(`/business/campaign/overview/${campaign.id}`)}
                       className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col gap-4 cursor-pointer hover:bg-[#1D1D1D] hover:text-white transition-colors group rounded-xl"
                     >
                       <div className="flex justify-between items-start">
@@ -765,11 +765,11 @@ export function BusinessDashboard() {
           </div>
         )}
 
-        {/* Quick Actions */}
+        {/* Quick Actions - FIXED: Using correct business routes */}
         <div className="px-6 pb-24">
           <div className="grid grid-cols-3 gap-3">
             <button
-              onClick={() => navigate("/campaign/type")}
+              onClick={() => navigate("/business/create-campaign")}
               className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
             >
               <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
@@ -789,7 +789,7 @@ export function BusinessDashboard() {
             </button>
 
             <button
-              onClick={() => navigate(`/profile/${businessId || "me"}`)}
+              onClick={() => navigate(`/business/profile`)}
               className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
             >
               <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
