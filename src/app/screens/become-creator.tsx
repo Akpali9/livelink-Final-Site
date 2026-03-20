@@ -360,7 +360,7 @@ export function BecomeCreator() {
 
       {/* ── Progress bar ── */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-[#1D1D1D]/10 px-5 py-3">
-        <div className="max-w-lg mx-auto">
+        <div className="max-w[480px] mx-auto">
           <div className="flex items-center justify-between mb-2">
             {STEPS.map((label, i) => {
               const s = i + 1;
@@ -406,7 +406,7 @@ export function BecomeCreator() {
       </div>
 
       {/* ── Form body ── */}
-      <div className="px-5 pt-8 max-w-lg mx-auto">
+      <div className="px-5 pt-8 max-w[480px] mx-auto">
         <AnimatePresence mode="wait">
 
           {/* STEP 1 — Personal */}
@@ -902,7 +902,7 @@ export function BecomeCreator() {
 
       {/* ── Fixed footer nav ── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t-2 border-[#1D1D1D] px-5 py-4 z-50">
-        <div className="max-w-lg mx-auto flex gap-3">
+        <div className="max-w[480px] mx-auto flex gap-3">
           {step > 1 && (
             <button
               type="button"
