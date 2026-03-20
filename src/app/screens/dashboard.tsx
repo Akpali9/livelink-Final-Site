@@ -1,922 +1,739 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Link, useNavigate } from "react-router";
-import {
-  ArrowUpRight,
-  Inbox,
-  Clock,
-  CheckCircle2,
-  Check,
-  X,
-  ChevronDown,
-  ChevronUp,
-  Wallet,
-  User,
-  List,
-  Monitor,
-  RefreshCw,
-  Star,
-  Award,
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router";
+import { 
+  ArrowLeft, 
+  ArrowRight, 
+  MessageSquare, 
+  Bell, 
+  User, 
+  Plus, 
+  Minus,
+  Info,
+  Calendar,
+  Tag,
   Users,
+  Clock,
+  Percent,
+  DollarSign,
+  Hash,
   AlertCircle,
+  CheckCircle2,
+  HelpCircle,
+  Sparkles
 } from "lucide-react";
-
 import { motion, AnimatePresence } from "motion/react";
-import { toast, Toaster } from "sonner";
-import { useAuth } from "../lib/contexts/AuthContext";
 import { supabase } from "../lib/supabase";
-import { ImageWithFallback } from "../components/ImageWithFallback";
-import { BottomNav } from "../components/bottom-nav";
-import { AppHeader } from "../components/app-header";
-import { DeclineOfferModal } from "../components/decline-offer-modal";
+import { useAuth } from "../lib/contexts/AuthContext";
+import { toast } from "sonner";
 
-// ─────────────────────────────────────────────
-// INTERFACES  (aligned with schema)
-// ─────────────────────────────────────────────
+type PromoGoal = "sales" | "acquisition" | "downloads" | "signups" | "leads" | "awareness" | "other";
+type OfferDuration = "3" | "7" | "14" | "30" | "60" | "indefinite";
+type StreamDeadline = "1" | "2" | "3" | "4" | "6" | "8" | "12";
+type DiscountType = "percentage" | "fixed_amount" | "bogo" | "free_shipping";
 
-/**
- * "Incoming requests" = campaign_creators rows with status 'pending'/'PENDING'
- * that belong to campaigns the business sent to this creator.
- * ✅ No "offers" table in schema — removed entirely.
- */
-interface IncomingRequest {
-  id: string;              // campaign_creators.id
-  campaign_id: string;
-  business_id: string;
-  business: string;        // businesses.business_name
-  logo: string;            // businesses.logo_url
-  name: string;            // campaigns.name
-  type: string;            // campaigns.type
-  streams: number;         // campaign_creators.streams_target
-  price: number;           // campaigns.pay_rate ?? bid_amount ?? budget
-  status: "pending" | "active" | "completed" | "declined";
-  created_at: string;
+interface FormErrors {
+  promoGoal?: string;
+  offerDuration?: string;
+  streamDeadline?: string;
+  creatorCount?: string;
+  promoCode?: string;
+  discountValue?: string;
+  expiryDate?: string;
 }
 
-/**
- * "Applications" = campaign_creators rows the creator inserted themselves (pending).
- * ✅ No "campaign_applications" table in schema — removed.
- */
-interface Application {
-  id: string;
-  campaign_id: string;
-  business_id: string;
-  business: string;
-  logo: string;
-  type: string;
-  amount: number | null;
-  status: string;
-  appliedAt: string;
-}
-
-interface LiveCampaign {
-  id: string;              // campaign_creators.id
-  campaign_id: string;
-  business_id: string;
-  business: string;
-  name: string;
-  logo: string;
-  sessionEarnings: number;
-  streamTime: string;
-  progress: number;
-  remainingMins: number;
-  streams_completed: number;
-  streams_target: number;
-}
-
-interface DashboardStats {
-  totalEarned: number;
-  pendingEarnings: number;
-  paidOut: number;
-  requestedCount: number;
-  activeCount: number;
-  completedCount: number;
-  averageRating: number;
-  avgViewers: number;       // ✅ avg_viewers from creator_profiles (no total_followers in schema)
-}
-
-// ─────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────
-
-export function Dashboard() {
+export function CampaignSetupPromoOnly() {
   const navigate = useNavigate();
-  const earningsRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [requestsExpanded, setRequestsExpanded] = useState(false);
-  const [applicationsExpanded, setApplicationsExpanded] = useState(false);
-  const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<IncomingRequest | null>(null);
-  const [showPendingBanner, setShowPendingBanner] = useState(false);
+  // Form state
+  const [promoGoal, setPromoGoal] = useState<PromoGoal | "">("");
+  const [offerDuration, setOfferDuration] = useState<OfferDuration | "">("");
+  const [streamDeadline, setStreamDeadline] = useState<StreamDeadline | "">("");
+  const [creatorCount, setCreatorCount] = useState(1);
+  const [promoCode, setPromoCode] = useState("");
+  const [discountType, setDiscountType] = useState<DiscountType>("percentage");
+  const [discountValue, setDiscountValue] = useState("");
+  const [usageLimit, setUsageLimit] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [budget, setBudget] = useState(0);
+  const [estimatedReach, setEstimatedReach] = useState(0);
 
-  const [stats, setStats] = useState<DashboardStats>({
-    totalEarned: 0,
-    pendingEarnings: 0,
-    paidOut: 0,
-    requestedCount: 0,
-    activeCount: 0,
-    completedCount: 0,
-    averageRating: 0,
-    avgViewers: 0,
-  });
-
-  const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
-  const [liveCampaign, setLiveCampaign] = useState<LiveCampaign | null>(null);
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [creatorProfile, setCreatorProfile] = useState<any>(null);
-  const [creatorId, setCreatorId] = useState<string | null>(null);
-
-  // ─── CREATOR PROFILE ──────────────────────────────────────────────────────
+  // UI state
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [showPreview, setShowPreview] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [businessProfile, setBusinessProfile] = useState<any>(null);
 
   useEffect(() => {
-    if (user) fetchCreatorProfile();
+    if (user) {
+      fetchUserData();
+      fetchBusinessProfile();
+    }
   }, [user]);
 
-  const fetchCreatorProfile = async () => {
+  const fetchUserData = async () => {
     if (!user) return;
 
-    // ✅ correct columns: full_name, avg_viewers, rating (no total_followers in schema)
+    // Get unread notifications
+    const { count: notifCount } = await supabase
+      .from("notifications")
+      .select("*", { count: 'exact', head: true })
+      .eq("user_id", user.id)
+      .eq("is_read", false);
+
+    setUnreadNotifications(notifCount || 0);
+
+    // Get unread messages
+    const { count: msgCount } = await supabase
+      .from("messages")
+      .select("*", { count: 'exact', head: true })
+      .eq("recipient_id", user.id)
+      .eq("is_read", false);
+
+    setUnreadMessages(msgCount || 0);
+  };
+
+  const fetchBusinessProfile = async () => {
+    if (!user) return;
+
     const { data } = await supabase
-      .from("creator_profiles")
-      .select("id, full_name, avatar_url, bio, avg_viewers, rating, status, email")
+      .from("businesses")
+      .select("*")
       .eq("user_id", user.id)
       .single();
 
-    if (data) {
-      setCreatorProfile(data);
-      setCreatorId(data.id);
-      
-      // ✅ Check if profile is pending
-      if (data.status === "pending_review") {
-        setShowPendingBanner(true);
-      }
-      
-      setStats(prev => ({
-        ...prev,
-        averageRating: data.rating   || 0,
-        avgViewers:    data.avg_viewers || 0,
-      }));
-    }
+    setBusinessProfile(data);
   };
 
-  // ─── REALTIME + INITIAL FETCH ─────────────────────────────────────────────
-
+  // Calculate estimated budget based on selections
   useEffect(() => {
-    if (!user || !creatorId) return;
+    if (creatorCount && discountType) {
+      // Platform fee per creator
+      const platformFee = 5 * creatorCount;
+      
+      // Estimated budget based on discount value (simplified)
+      const estimatedDiscountImpact = discountValue ? parseFloat(discountValue) * creatorCount * 10 : 0;
+      
+      setBudget(platformFee + estimatedDiscountImpact);
+      
+      // Estimated reach (simplified - based on creator count)
+      setEstimatedReach(creatorCount * 5000);
+    }
+  }, [creatorCount, discountType, discountValue]);
 
-    // Realtime: campaign_creators (pending requests, active changes)
-    const campaignCreatorsSubscription = supabase
-      .channel("creator_campaign_creators")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "campaign_creators",
-          // ✅ filter by creator_id which exists on campaign_creators
-          filter: `creator_id=eq.${creatorId}`,
-        },
-        () => {
-          fetchIncomingRequests();
-          refreshLiveCampaign();
-          fetchDashboardStats();
-        }
-      )
-      .subscribe();
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
 
-    fetchDashboardStats();
-    fetchIncomingRequests();
-    refreshLiveCampaign();
-    fetchApplications();
+    if (!promoGoal) {
+      newErrors.promoGoal = "Please select a campaign goal";
+    }
 
-    return () => {
-      campaignCreatorsSubscription.unsubscribe();
-    };
-  }, [user, creatorId]);
+    if (!offerDuration) {
+      newErrors.offerDuration = "Please select offer duration";
+    }
 
-  // ─── STATS ────────────────────────────────────────────────────────────────
+    if (!streamDeadline) {
+      newErrors.streamDeadline = "Please select stream deadline";
+    }
 
-  const fetchDashboardStats = async () => {
-    if (!creatorId) return;
+    if (creatorCount < 1) {
+      newErrors.creatorCount = "At least 1 creator required";
+    }
+
+    if (!promoCode.trim()) {
+      newErrors.promoCode = "Promo code is required";
+    } else if (promoCode.length < 4) {
+      newErrors.promoCode = "Promo code must be at least 4 characters";
+    }
+
+    if (!discountValue) {
+      newErrors.discountValue = "Discount value is required";
+    } else if (discountType === "percentage" && (parseFloat(discountValue) < 1 || parseFloat(discountValue) > 100)) {
+      newErrors.discountValue = "Percentage must be between 1 and 100";
+    } else if (discountType === "fixed_amount" && parseFloat(discountValue) < 1) {
+      newErrors.discountValue = "Amount must be greater than 0";
+    }
+
+    if (expiryDate && new Date(expiryDate) < new Date()) {
+      newErrors.expiryDate = "Expiry date must be in the future";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleContinue = async () => {
+    if (!validateForm()) {
+      toast.error("Please fix the errors before continuing");
+      return;
+    }
+
+    if (!businessProfile || businessProfile.application_status !== 'approved') {
+      toast.error("Your business must be approved before creating campaigns");
+      navigate("/business/profile");
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
-      setLoading(true);
+      // 1. Create the campaign
+      const { data: campaignData, error: campaignError } = await supabase
+        .from("campaigns")
+        .insert([
+          {
+            business_id: businessProfile.id,
+            name: `${discountType === 'percentage' ? discountValue + '% OFF' : '₦' + discountValue + ' OFF'} Promo Campaign`,
+            type: "promo-only",
+            description: instructions || "Promo code campaign",
+            status: "draft",
+            budget: budget,
+            streams_required: parseInt(streamDeadline) || 4,
+            target_audience: promoGoal,
+            start_date: new Date().toISOString(),
+            end_date: expiryDate || null,
+            created_at: new Date().toISOString()
+          },
+        ])
+        .select()
+        .single();
 
-      // ✅ Earnings from campaign_creators (total_earnings, paid_out columns in schema)
-      const { data: earningsRows } = await supabase
-        .from("campaign_creators")
-        .select("total_earnings, paid_out")
-        .eq("creator_id", creatorId);
+      if (campaignError) throw campaignError;
 
-      if (earningsRows) {
-        const totalEarned   = earningsRows.reduce((s, r) => s + (r.total_earnings || 0), 0);
-        const paidOut       = earningsRows.reduce((s, r) => s + (r.paid_out || 0), 0);
-        const pendingEarnings = totalEarned - paidOut;
+      // 2. Create promo code details
+      const { error: promoError } = await supabase
+        .from("promo_codes")
+        .insert([
+          {
+            campaign_id: campaignData.id,
+            business_id: businessProfile.id,
+            code: promoCode.toUpperCase(),
+            discount_type: discountType,
+            discount_value: parseFloat(discountValue),
+            usage_limit: usageLimit === "Unlimited" ? null : parseInt(usageLimit),
+            expires_at: expiryDate || null,
+            instructions: instructions,
+            goal: promoGoal,
+            offer_duration: offerDuration,
+            created_at: new Date().toISOString()
+          },
+        ]);
 
-        setStats(prev => ({ ...prev, totalEarned, paidOut, pendingEarnings }));
+      if (promoError) throw promoError;
+
+      // 3. Create campaign creators entries
+      const creatorEntries = [];
+      for (let i = 0; i < creatorCount; i++) {
+        creatorEntries.push({
+          campaign_id: campaignData.id,
+          status: "pending",
+          streams_target: parseInt(streamDeadline) || 4,
+          streams_completed: 0,
+          created_at: new Date().toISOString()
+        });
       }
 
-      // ✅ Counts from campaign_creators — case-insensitive status match
-      const { data: allRows } = await supabase
+      const { error: creatorsError } = await supabase
         .from("campaign_creators")
-        .select("status")
-        .eq("creator_id", creatorId);
+        .insert(creatorEntries);
 
-      if (allRows) {
-        const normalize = (s: string) => s?.toLowerCase();
-        setStats(prev => ({
-          ...prev,
-          requestedCount: allRows.filter(r => normalize(r.status) === "pending").length,
-          activeCount:    allRows.filter(r => normalize(r.status) === "active").length,
-          completedCount: allRows.filter(r => normalize(r.status) === "completed").length,
-        }));
-      }
-    } catch (error) {
-      console.error("Error fetching stats:", error);
-      toast.error("Failed to load dashboard data");
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (creatorsError) throw creatorsError;
 
-  // ─── INCOMING REQUESTS ────────────────────────────────────────────────────
+      toast.success("Campaign created successfully!");
 
-  /**
-   * ✅ Reads from campaign_creators (status=pending) joined with campaigns + businesses.
-   *    No "offers" table used.
-   */
-  const fetchIncomingRequests = async () => {
-    if (!creatorId) return;
-
-    const { data, error } = await supabase
-      .from("campaign_creators")
-      .select(`
-        id,
-        status,
-        streams_target,
-        created_at,
-        campaigns (
-          id,
-          name,
-          type,
-          pay_rate,
-          bid_amount,
-          budget,
-          businesses (
-            id,
-            business_name,
-            logo_url
-          )
-        )
-      `)
-      .eq("creator_id", creatorId)
-      .in("status", ["pending", "PENDING"])
-      .order("created_at", { ascending: false });
-
-    if (error) { console.error(error); return; }
-
-    const formatted: IncomingRequest[] = (data || [])
-      .filter((r: any) => r.campaigns !== null)
-      .map((r: any) => ({
-        id:          r.id,
-        campaign_id: r.campaigns.id,
-        business_id: r.campaigns.businesses?.id || "",
-        business:    r.campaigns.businesses?.business_name || "Unknown Business",
-        logo:        r.campaigns.businesses?.logo_url || "https://via.placeholder.com/100",
-        name:        r.campaigns.name,
-        type:        r.campaigns.type,
-        streams:     r.streams_target || 4,
-        // ✅ Use pay_rate → bid_amount → budget as price fallback
-        price:       r.campaigns.pay_rate ?? r.campaigns.bid_amount ?? r.campaigns.budget ?? 0,
-        status:      r.status.toLowerCase() as IncomingRequest["status"],
-        created_at:  r.created_at,
-      }));
-
-    setIncomingRequests(formatted);
-  };
-
-  // ─── LIVE CAMPAIGN ────────────────────────────────────────────────────────
-
-  const refreshLiveCampaign = async () => {
-    if (!creatorId) return;
-
-    const { data } = await supabase
-      .from("campaign_creators")
-      .select(`
-        id,
-        streams_completed,
-        streams_target,
-        total_earnings,
-        status,
-        campaigns (
-          id,
-          name,
-          pay_rate,
-          bid_amount,
-          businesses (
-            id,
-            business_name,
-            logo_url
-          )
-        )
-      `)
-      .eq("creator_id", creatorId)
-      .in("status", ["active", "ACTIVE"])
-      .maybeSingle();
-
-    if (data && data.campaigns) {
-      const camp = data.campaigns as any;
-      const biz  = camp.businesses as any;
-      const progress = data.streams_target > 0
-        ? (data.streams_completed / data.streams_target) * 100
-        : 0;
-
-      setLiveCampaign({
-        id:                data.id,
-        campaign_id:       camp.id,
-        business_id:       biz?.id || "",
-        business:          biz?.business_name || "Unknown",
-        name:              camp.name,
-        logo:              biz?.logo_url || "https://via.placeholder.com/100",
-        sessionEarnings:   data.total_earnings || 0,
-        streamTime:        formatStreamTime(data.streams_completed),
-        progress,
-        remainingMins:     (data.streams_target - data.streams_completed) * 45,
-        streams_completed: data.streams_completed,
-        streams_target:    data.streams_target,
+      // Navigate to next step with campaign ID
+      navigate("/campaign/confirm", { 
+        state: { 
+          campaignId: campaignData.id,
+          type: "promo-only"
+        } 
       });
-    } else {
-      setLiveCampaign(null);
+
+    } catch (error: any) {
+      console.error("Error creating campaign:", error);
+      toast.error(error.message || "Failed to create campaign");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // ─── APPLICATIONS ─────────────────────────────────────────────────────────
-
-  /**
-   * ✅ "Applications" = campaign_creators rows this creator created themselves
-   *    (pending/declined), showing which campaigns they applied to.
-   *    No "campaign_applications" table in schema.
-   */
-  const fetchApplications = async () => {
-    if (!creatorId) return;
-
-    const { data } = await supabase
-      .from("campaign_creators")
-      .select(`
-        id,
-        status,
-        total_earnings,
-        created_at,
-        campaigns (
-          id,
-          name,
-          type,
-          pay_rate,
-          bid_amount,
-          businesses (
-            id,
-            business_name,
-            logo_url
-          )
-        )
-      `)
-      .eq("creator_id", creatorId)
-      .not("status", "in", '("active","ACTIVE")')  // show non-live ones as applications
-      .order("created_at", { ascending: false });
-
-    if (data) {
-      const formatted: Application[] = (data as any[])
-        .filter(r => r.campaigns !== null)
-        .map(r => ({
-          id:          r.id,
-          campaign_id: r.campaigns.id,
-          business_id: r.campaigns.businesses?.id || "",
-          business:    r.campaigns.businesses?.business_name || "Unknown",
-          logo:        r.campaigns.businesses?.logo_url || "https://via.placeholder.com/100",
-          type:        r.campaigns.type,
-          amount:      r.campaigns.pay_rate ?? r.campaigns.bid_amount ?? null,
-          status:      r.status,
-          appliedAt:   formatDate(r.created_at),
-        }));
-      setApplications(formatted);
+  const incrementCreators = () => {
+    if (creatorCount < 50) {
+      setCreatorCount(prev => prev + 1);
     }
   };
 
-  // ─── ACCEPT / DECLINE ─────────────────────────────────────────────────────
-
-  const handleAcceptOffer = async (req: IncomingRequest) => {
-    if (!creatorId) return;
-
-    try {
-      // ✅ Update campaign_creators row status to ACTIVE
-      const { error } = await supabase
-        .from("campaign_creators")
-        .update({
-          status:      "ACTIVE",
-          accepted_at: new Date().toISOString(),
-        })
-        .eq("id", req.id);
-
-      if (error) throw error;
-
-      toast.success("Offer accepted! 🎉");
-      setIncomingRequests(prev => prev.filter(r => r.id !== req.id));
-      setStats(prev => ({
-        ...prev,
-        requestedCount: prev.requestedCount - 1,
-        activeCount:    prev.activeCount + 1,
-      }));
-
-      navigate(`/gig-accepted/${req.campaign_id}`);
-    } catch (error) {
-      console.error("Accept error:", error);
-      toast.error("Failed to accept offer");
+  const decrementCreators = () => {
+    if (creatorCount > 1) {
+      setCreatorCount(prev => prev - 1);
     }
   };
 
-  const handleDeclineClick = (req: IncomingRequest) => {
-    setSelectedRequest(req);
-    setIsDeclineModalOpen(true);
-  };
-
-  const handleConfirmDecline = async (reason: string) => {
-    if (!selectedRequest) return;
-
-    try {
-      // ✅ Update campaign_creators row status to DECLINED
-      const { error } = await supabase
-        .from("campaign_creators")
-        .update({ status: "DECLINED" })
-        .eq("id", selectedRequest.id);
-
-      if (error) throw error;
-
-      setIsDeclineModalOpen(false);
-      toast.success("Offer declined");
-      setIncomingRequests(prev => prev.filter(r => r.id !== selectedRequest.id));
-      setStats(prev => ({ ...prev, requestedCount: prev.requestedCount - 1 }));
-      setSelectedRequest(null);
-    } catch {
-      toast.error("Failed to decline offer");
+  const getDiscountTypeLabel = (type: DiscountType) => {
+    switch(type) {
+      case "percentage": return "Percentage Off";
+      case "fixed_amount": return "Fixed Amount Off";
+      case "bogo": return "Buy One Get One";
+      case "free_shipping": return "Free Shipping";
+      default: return type;
     }
   };
-
-  // ─── REFRESH ALL ──────────────────────────────────────────────────────────
-
-  const refreshData = async () => {
-    setRefreshing(true);
-    await Promise.all([
-      fetchDashboardStats(),
-      fetchIncomingRequests(),
-      refreshLiveCampaign(),
-      fetchApplications(),
-      fetchCreatorProfile(),
-    ]);
-    setRefreshing(false);
-    toast.success("Dashboard updated");
-  };
-
-  // ─── HELPERS ──────────────────────────────────────────────────────────────
-
-  const formatStreamTime = (completed: number): string => {
-    const totalMins = completed * 45;
-    const hours = Math.floor(totalMins / 60);
-    const mins  = totalMins % 60;
-    return `${hours}h ${mins}m`;
-  };
-
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    const diffDays = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7)  return `${diffDays} days ago`;
-    return date.toLocaleDateString();
-  };
-
-  const earningsRatio = stats.totalEarned > 0
-    ? (stats.paidOut / stats.totalEarned) * 100
-    : 0;
-
-  // ─── LOADING ──────────────────────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-white">
-       <AppHeader showLogo subtitle="Creator Hub" userType="creator" />
-        <div className="flex items-center justify-center h-[80vh]">
-           
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
-            <p className="text-sm text-gray-500">Loading your dashboard...</p>
-          </div>
-        </div>
-        <BottomNav />
-      </div>
-    );
-  }
-
-  // ─── RENDER ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px]">
-      
-      <Toaster position="top-center" richColors />
-
-      <main className="max-w-[480px] mx-auto w-full">
-        <AppHeader showLogo subtitle="Creator Hub" userType="creator" showHome={false} />
-
-        {/* Welcome */}
-        <div className="px-6 pt-6 pb-2 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-black uppercase tracking-tighter italic">Welcome back,</h1>
-            {/* ✅ full_name not username */}
-            <p className="text-sm text-gray-500">{creatorProfile?.full_name || "Creator"}!</p>
+    <div className="min-h-screen bg-white pb-24 max-w-md mx-auto">
+      {/* TOP NAVIGATION BAR */}
+      <header className="fixed top-0 left-0 right-0 bg-white border-b border-[#1D1D1D]/10 z-50 px-4 py-3 max-w-md mx-auto">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => navigate(-1)} 
+              className="p-1 -ml-1 hover:bg-[#1D1D1D]/5 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-[#1D1D1D]" />
+            </button>
+            <h1 className="text-base font-black uppercase tracking-tighter italic text-[#1D1D1D]">
+              PROMO ONLY CAMPAIGN
+            </h1>
           </div>
-          <button
-            onClick={refreshData}
-            disabled={refreshing}
-            className="p-3 border-2 border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white transition-colors disabled:opacity-50 rounded-xl"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-
-        {/* ===== PENDING APPROVAL BANNER - ADDED HERE ===== */}
-        {showPendingBanner && (
-          <div className="mx-6 mt-2 mb-2 p-5 bg-[#FEDB71]/20 border-2 border-[#FEDB71] rounded-xl">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 bg-[#FEDB71] rounded-xl flex items-center justify-center shrink-0">
-                <Clock className="w-5 h-5 text-[#1D1D1D]" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-black uppercase tracking-tight mb-1">Application Under Review</h3>
-                <p className="text-xs text-gray-600 mb-2">
-                  Your creator application is being reviewed by our team. You'll be notified at{' '}
-                  <span className="font-bold underline">{creatorProfile?.email || 'your email'}</span> once approved.
-                </p>
-                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                  <span className="w-2 h-2 bg-[#FEDB71] rounded-full animate-pulse" />
-                  <span>Estimated review time: 24-48 hours</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Quick Stats */}
-        <div className="px-6 pb-4 grid grid-cols-3 gap-2">
-          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
-            <Star className="w-4 h-4 text-[#FEDB71] mx-auto mb-1" />
-            <p className="text-sm font-black">{stats.averageRating || "—"}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Rating</p>
-          </div>
-          {/* ✅ avg_viewers instead of totalFollowers (no followers col in schema) */}
-          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
-            <Users className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
-            <p className="text-sm font-black">{stats.avgViewers.toLocaleString()}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Avg Viewers</p>
-          </div>
-          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
-            <Award className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
-            <p className="text-sm font-black">{stats.completedCount}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Completed</p>
-          </div>
-        </div>
-
-        {/* Earnings Card */}
-        <div className="p-6" ref={earningsRef}>
-          <div className="bg-[#1D1D1D] p-8 text-white relative overflow-hidden border-2 border-[#1D1D1D] rounded-xl">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
-
-            <div className="flex items-center justify-between mb-2 relative z-10">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">Total Earnings</span>
-              <button className="p-1 hover:bg-white/10 rounded-lg transition-colors">
-                <ArrowUpRight className="w-4 h-4 text-white/40" />
-              </button>
-            </div>
-
-            <h2 className="text-4xl font-black tracking-tighter leading-none mb-8 text-center italic relative z-10">
-              ₦{stats.totalEarned.toFixed(2)}
-            </h2>
-
-            <div className="h-[1px] bg-white/10 mb-8 relative z-10" />
-
-            <div className="grid grid-cols-2 gap-8 mb-8 relative z-10">
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Pending</span>
-                <span className="text-xl font-black text-[#FEDB71]">₦{stats.pendingEarnings.toFixed(2)}</span>
-              </div>
-              <div className="flex flex-col gap-1 text-right">
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Paid Out</span>
-                <span className="text-xl font-black text-[#389C9A]">₦{stats.paidOut.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div className="space-y-2 relative z-10">
-              <div className="h-1 bg-white/10 w-full rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#389C9A] rounded-full transition-all duration-1000"
-                  style={{ width: `${earningsRatio}%` }}
-                />
-              </div>
-              <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">
-                {Math.round(earningsRatio)}% of earnings paid out
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Primary CTA */}
-        <div className="px-6 pb-6">
-          <Link
-            to="/browse-businesses"
-            className="w-full bg-[#1D1D1D] text-white py-8 px-8 text-xl font-black uppercase italic tracking-tighter flex items-center justify-between hover:bg-[#389C9A] transition-all rounded-xl"
-          >
-            Browse Opportunities
-            <ArrowUpRight className="w-6 h-6 text-[#FEDB71]" />
-          </Link>
-        </div>
-
-        {/* Campaign Status Row */}
-        <div className="px-6 pb-12">
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { icon: Inbox,       count: stats.requestedCount, label: "Requests",  path: "/browse-businesses",                    color: "text-[#389C9A]" },
-              { icon: Clock,       count: stats.activeCount,    label: "Active",    path: "/campaigns?status=active",   color: "text-[#FEDB71]" },
-              { icon: CheckCircle2,count: stats.completedCount, label: "Completed", path: "/campaigns?status=completed",color: "text-green-500" },
-            ].map((card, i) => (
-              <button
-                key={i}
-                onClick={() => navigate(card.path)}
-                className="bg-white border-2 border-[#1D1D1D] p-4 flex flex-col items-center gap-2 hover:bg-[#1D1D1D] hover:text-white transition-all cursor-pointer rounded-xl group"
-              >
-                <card.icon className={`w-5 h-5 ${card.color} group-hover:text-white`} />
-                <span className="text-xl font-black italic">{card.count}</span>
-                <span className="text-[7px] font-black uppercase tracking-widest text-center leading-tight opacity-40 group-hover:opacity-100">
-                  {card.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Incoming Requests */}
-        {incomingRequests.length > 0 && (
-          <div className="px-6 pb-12">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">Incoming Requests</h3>
-              <span className="bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black uppercase px-3 py-1 tracking-widest italic rounded-full">
-                {incomingRequests.length} new
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <AnimatePresence mode="popLayout">
-                {(requestsExpanded ? incomingRequests : incomingRequests.slice(0, 2)).map(req => (
-                  <motion.div
-                    layout
-                    key={req.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ duration: 0.3 }}
-                    className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col gap-6 rounded-xl hover:shadow-lg transition-shadow"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 border-2 border-[#1D1D1D]/10 rounded-xl overflow-hidden">
-                          <ImageWithFallback src={req.logo} className="w-full h-full object-cover grayscale" />
-                        </div>
-                        <div>
-                          <h4 className="font-black text-lg uppercase tracking-tight leading-none mb-1">{req.business}</h4>
-                          <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest">{req.type}</p>
-                        </div>
-                      </div>
-                      <p className="text-2xl font-black italic leading-none text-[#389C9A]">₦{req.price}</p>
-                    </div>
-
-                    <p className="text-[9px] font-medium text-[#1D1D1D]/60 italic">
-                      {req.name} — {req.streams} streams required
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        onClick={() => handleAcceptOffer(req)}
-                        className="bg-[#1D1D1D] text-white py-4 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#389C9A] transition-all rounded-xl"
-                      >
-                        <Check className="w-4 h-4" /> Accept
-                      </button>
-                      <button
-                        onClick={() => handleDeclineClick(req)}
-                        className="border-2 py-4 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all rounded-xl"
-                      >
-                        <X className="w-4 h-4" /> Reject
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              {incomingRequests.length > 2 && (
-                <button
-                  onClick={() => setRequestsExpanded(!requestsExpanded)}
-                  className="w-full py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 text-[#1D1D1D]/40 hover:text-[#1D1D1D] transition-colors"
-                >
-                  {requestsExpanded ? (
-                    <>Show less <ChevronUp className="w-4 h-4" /></>
-                  ) : (
-                    <>Show {incomingRequests.length - 2} more requests <ChevronDown className="w-4 h-4" /></>
-                  )}
-                </button>
+          
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => navigate("/messages")}
+              className="relative p-1.5 hover:bg-[#1D1D1D]/5 rounded-lg transition-colors"
+            >
+              <MessageSquare className="w-4.5 h-4.5 text-[#1D1D1D]" />
+              {unreadMessages > 0 && (
+                <div className="absolute top-1 right-1 w-2 h-2 bg-[#389C9A] border-2 border-white rounded-full" />
               )}
+            </button>
+            
+            <button 
+              onClick={() => navigate("/notifications")}
+              className="relative p-1.5 hover:bg-[#1D1D1D]/5 rounded-lg transition-colors"
+            >
+              <Bell className="w-4.5 h-4.5 text-[#1D1D1D]" />
+              {unreadNotifications > 0 && (
+                <div className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] bg-[#FEDB71] text-[#1D1D1D] text-[7px] font-black flex items-center justify-center border border-[#1D1D1D]">
+                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                </div>
+              )}
+            </button>
+            
+            <button 
+              onClick={() => navigate("/business/profile")}
+              className="w-8 h-8 border border-[#1D1D1D] flex items-center justify-center bg-white hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg"
+            >
+              <User className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* PROGRESS SECTION */}
+      <div className="mt-14 px-4 py-4">
+        <div className="flex items-start gap-3">
+          <button 
+            onClick={() => navigate(-1)}
+            className="w-11 h-11 border-2 border-[#1D1D1D] flex items-center justify-center flex-shrink-0 hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg"
+          >
+            <ArrowLeft className="w-4.5 h-4.5" />
+          </button>
+          
+          <div className="flex-1 pt-2">
+            <div className="flex gap-1.5 mb-2">
+              <div className="h-1.5 flex-1 bg-[#1D1D1D] rounded-full" />
+              <div className="h-1.5 flex-1 bg-[#1D1D1D] rounded-full" />
+              <div className="h-1.5 flex-1 bg-[#1D1D1D] rounded-full" />
+              <div className="h-1.5 flex-1 bg-[#1D1D1D]/20 rounded-full" />
+              <div className="h-1.5 flex-1 bg-[#1D1D1D]/20 rounded-full" />
             </div>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/40 text-center italic">
+              STEP 3 OF 5: PROMO CODE SETUP
+            </p>
           </div>
-        )}
+        </div>
+      </div>
 
-        {/* Live Now */}
-        <div className="px-6 pb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">Live Now</h3>
-            {liveCampaign && (
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase text-[#1D1D1D]">
-                <span className="w-1.5 h-1.5 bg-[#389C9A] rounded-full animate-pulse" />
-                Active
-              </div>
-            )}
-          </div>
+      {/* Divider */}
+      <div className="w-full h-px bg-[#1D1D1D]/10 mb-6" />
 
-          {liveCampaign ? (
-            <div className="bg-[#1D1D1D] p-6 flex flex-col gap-6 relative overflow-hidden border-2 border-[#1D1D1D] rounded-xl">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
+      {/* PAGE HEADING */}
+      <div className="px-4 mb-6">
+        <h2 className="text-2xl font-black uppercase tracking-tighter italic text-[#1D1D1D] mb-2">
+          SET UP YOUR PROMO CODE
+        </h2>
+        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#1D1D1D]/50 italic leading-tight">
+          CREATE A DISCOUNT CODE FOR CREATORS TO SHARE WITH THEIR AUDIENCE
+        </p>
+      </div>
 
-              <div className="flex items-center gap-4 relative z-10">
-                <div className="w-14 h-14 border-2 border-white/20 rounded-xl overflow-hidden">
-                  <ImageWithFallback src={liveCampaign.logo} className="w-full h-full object-cover grayscale" />
-                </div>
-                <div className="flex-1 text-white">
-                  <h4 className="font-black text-lg uppercase tracking-tight leading-none mb-1">{liveCampaign.business}</h4>
-                  <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">{liveCampaign.name}</p>
-                </div>
-                <div className="text-right text-white">
-                  {/* ✅ sessionEarnings from total_earnings column */}
-                  <p className="text-xl font-black italic leading-none mb-1 text-[#FEDB71]">₦{liveCampaign.sessionEarnings}</p>
-                  <p className="text-[9px] font-black text-[#389C9A] uppercase tracking-widest italic">{liveCampaign.streamTime}</p>
-                </div>
-              </div>
+      {/* Divider */}
+      <div className="w-full h-px bg-[#1D1D1D]/10 mb-6" />
 
-              <div className="space-y-2 relative z-10">
-                <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-white/40">
-                  <span>Progress</span>
-                  <span>{liveCampaign.streams_completed}/{liveCampaign.streams_target}</span>
-                </div>
-                <div className="h-1.5 bg-white/10 w-full rounded-full overflow-hidden">
-                  <div className="h-full bg-[#389C9A] rounded-full" style={{ width: `${liveCampaign.progress}%` }} />
-                </div>
-                <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">
-                  {liveCampaign.remainingMins} mins to next payment
-                </p>
-              </div>
-
-              <div className="pt-4 border-t border-white/10 flex justify-end relative z-10">
-                <Link
-                  to={`/campaign/live-update/${liveCampaign.campaign_id}`}
-                  className="text-[9px] font-black uppercase tracking-widest text-white flex items-center gap-2 group hover:text-[#FEDB71] transition-all"
+      {/* FORM */}
+      <div className="px-4 space-y-6 pb-8">
+        {/* Goal Selection */}
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest italic">
+            <Tag className="w-4 h-4 text-[#389C9A]" />
+            CAMPAIGN GOAL <span className="text-red-500">*</span>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { value: "sales", label: "Sales", icon: DollarSign },
+              { value: "acquisition", label: "Acquisition", icon: Users },
+              { value: "downloads", label: "Downloads", icon: ArrowDown },
+              { value: "signups", label: "Signups", icon: UserPlus },
+              { value: "leads", label: "Leads", icon: Hash },
+              { value: "awareness", label: "Awareness", icon: Sparkles },
+            ].map((goal) => {
+              const Icon = goal.icon;
+              return (
+                <button
+                  key={goal.value}
+                  onClick={() => setPromoGoal(goal.value as PromoGoal)}
+                  className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all ${
+                    promoGoal === goal.value
+                      ? "bg-[#389C9A] border-[#389C9A] text-white"
+                      : "bg-white border-[#1D1D1D]/10 hover:border-[#389C9A] hover:shadow-md"
+                  }`}
                 >
-                  Update Campaign <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
-              <Monitor className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p className="text-xs text-[#1D1D1D]/40 mb-4">No active campaign right now</p>
-              <Link to="/browse-businesses" className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] underline italic">
-                Find Opportunities →
-              </Link>
-            </div>
+                  <Icon className={`w-5 h-5 ${promoGoal === goal.value ? "text-white" : "text-[#389C9A]"}`} />
+                  <span className="text-[9px] font-black uppercase tracking-widest italic">
+                    {goal.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {errors.promoGoal && (
+            <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.promoGoal}</p>
           )}
         </div>
 
-        {/* My Applications */}
-        {applications.length > 0 && (
-          <div className="px-6 pb-12">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">My Applications</h3>
-              <span className="text-[9px] font-black uppercase text-[#1D1D1D]/40">{applications.length} total</span>
+        {/* Promo Code Details */}
+        <div className="space-y-4 p-5 bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 rounded-xl">
+          <h3 className="text-[10px] font-black uppercase tracking-widest italic flex items-center gap-2">
+            <Tag className="w-4 h-4 text-[#389C9A]" />
+            Promo Code Details
+          </h3>
+
+          {/* Promo Code Input */}
+          <div>
+            <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+              PROMO CODE <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={promoCode}
+              onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+              placeholder="e.g. SUMMER20"
+              className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm font-black uppercase tracking-wider rounded-lg"
+              maxLength={20}
+            />
+            {errors.promoCode && (
+              <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.promoCode}</p>
+            )}
+          </div>
+
+          {/* Discount Type and Value */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+                DISCOUNT TYPE <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={discountType}
+                onChange={(e) => setDiscountType(e.target.value as DiscountType)}
+                className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm font-black uppercase tracking-wider rounded-lg"
+              >
+                <option value="percentage">Percentage Off</option>
+                <option value="fixed_amount">Fixed Amount Off</option>
+                <option value="bogo">Buy One Get One</option>
+                <option value="free_shipping">Free Shipping</option>
+              </select>
             </div>
 
-            <div className="flex flex-col gap-3">
-              {(applicationsExpanded ? applications : applications.slice(0, 3)).map(app => (
-                <div
-                  key={app.id}
-                  onClick={() => navigate(`/campaign/${app.campaign_id}`)}
-                  className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 border-2 border-[#1D1D1D]/10 rounded-lg overflow-hidden">
-                      <ImageWithFallback src={app.logo} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-xs uppercase tracking-tight mb-1">{app.business}</h4>
-                      <span className="text-[7px] font-black uppercase tracking-widest bg-[#1D1D1D]/5 px-2 py-0.5 rounded-full">
-                        {app.type}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {app.amount != null && (
-                      <p className="text-sm font-black italic mb-1 text-[#389C9A]">₦{app.amount}</p>
-                    )}
-                    {/* ✅ status values from schema: pending/PENDING/ACTIVE/active/COMPLETED/completed/DECLINED/declined */}
-                    <div className={`text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                      app.status.toLowerCase() === "pending"   ? "bg-[#FEDB71] text-[#1D1D1D]" :
-                      app.status.toLowerCase() === "active"    ? "bg-[#389C9A] text-white" :
-                      app.status.toLowerCase() === "completed" ? "bg-green-500 text-white" :
-                      app.status.toLowerCase() === "declined"  ? "bg-red-100 text-red-600" :
-                      "bg-gray-200 text-gray-500"
-                    }`}>
-                      {app.status}
-                    </div>
-                    <p className="text-[6px] font-medium text-[#1D1D1D]/20 uppercase tracking-widest mt-1">
-                      {app.appliedAt}
-                    </p>
-                  </div>
-                </div>
-              ))}
-
-              {applications.length > 3 && (
-                <button
-                  onClick={() => setApplicationsExpanded(!applicationsExpanded)}
-                  className="w-full py-3 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 text-[#1D1D1D]/30 hover:text-[#1D1D1D] transition-colors"
-                >
-                  {applicationsExpanded ? (
-                    <>Show less <ChevronUp className="w-3 h-3" /></>
-                  ) : (
-                    <>Show {applications.length - 3} more <ChevronDown className="w-3 h-3" /></>
-                  )}
-                </button>
+            <div>
+              <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+                VALUE <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                {discountType === "percentage" && (
+                  <Percent className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#389C9A]" />
+                )}
+                {discountType === "fixed_amount" && (
+                  <DollarSign className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#389C9A]" />
+                )}
+                <input
+                  type="number"
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                  placeholder={discountType === "percentage" ? "20" : "10"}
+                  className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm font-black rounded-lg"
+                  min={discountType === "percentage" ? 1 : 0.01}
+                  max={discountType === "percentage" ? 100 : undefined}
+                  step={discountType === "percentage" ? 1 : 0.01}
+                />
+              </div>
+              {errors.discountValue && (
+                <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.discountValue}</p>
               )}
             </div>
           </div>
-        )}
 
-        {/* Quick Actions */}
-        <div className="px-6 pb-24">
-          <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => navigate("/campaigns")}
-              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
+          {/* Usage Limit */}
+          <div>
+            <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+              USAGE LIMIT
+            </label>
+            <select
+              value={usageLimit}
+              onChange={(e) => setUsageLimit(e.target.value)}
+              className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm font-black uppercase tracking-wider rounded-lg"
             >
-              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
-                <List className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">My Campaigns</span>
-            </button>
+              <option value="Unlimited">Unlimited</option>
+              <option value="10">10 uses</option>
+              <option value="25">25 uses</option>
+              <option value="50">50 uses</option>
+              <option value="100">100 uses</option>
+              <option value="500">500 uses</option>
+            </select>
+          </div>
 
-            <button
-              onClick={() => earningsRef.current?.scrollIntoView({ behavior: "smooth" })}
-              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
-            >
-              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
-                <Wallet className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">Earnings</span>
-            </button>
-
-            <button
-              onClick={() => navigate(`/profile/${creatorId || "me"}`)}
-              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl"
-            >
-              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
-                <User className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">My Profile</span>
-            </button>
+          {/* Expiry Date */}
+          <div>
+            <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+              EXPIRY DATE
+            </label>
+            <div className="relative">
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#389C9A]" />
+              <input
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full pl-12 p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm font-black rounded-lg"
+              />
+            </div>
+            {errors.expiryDate && (
+              <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.expiryDate}</p>
+            )}
           </div>
         </div>
-      </main>
 
-      <BottomNav />
+        {/* Duration Settings */}
+        <div className="space-y-4 p-5 bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 rounded-xl">
+          <h3 className="text-[10px] font-black uppercase tracking-widest italic flex items-center gap-2">
+            <Clock className="w-4 h-4 text-[#389C9A]" />
+            Duration Settings
+          </h3>
 
-      <DeclineOfferModal
-        isOpen={isDeclineModalOpen}
-        onClose={() => setIsDeclineModalOpen(false)}
-        onConfirm={handleConfirmDecline}
-        offerDetails={selectedRequest ? {
-          partnerName:  selectedRequest.business,
-          offerName:    selectedRequest.name,
-          campaignType: selectedRequest.type,
-          amount:       `₦${selectedRequest.price}`,
-          logo:         selectedRequest.logo,
-          partnerType:  "Business",
-        } : {
-          partnerName: "", offerName: "", campaignType: "",
-          amount: "", logo: "", partnerType: "",
-        }}
-      />
+          {/* Offer Duration */}
+          <div>
+            <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+              OFFER DURATION (DAYS) <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={offerDuration}
+              onChange={(e) => setOfferDuration(e.target.value as OfferDuration)}
+              className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm font-black uppercase tracking-wider rounded-lg"
+            >
+              <option value="">Select duration</option>
+              <option value="3">3 days</option>
+              <option value="7">7 days</option>
+              <option value="14">14 days</option>
+              <option value="30">30 days</option>
+              <option value="60">60 days</option>
+              <option value="indefinite">Indefinite</option>
+            </select>
+            {errors.offerDuration && (
+              <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.offerDuration}</p>
+            )}
+          </div>
+
+          {/* Stream Deadline */}
+          <div>
+            <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+              STREAM DEADLINE (WEEKS) <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={streamDeadline}
+              onChange={(e) => setStreamDeadline(e.target.value as StreamDeadline)}
+              className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm font-black uppercase tracking-wider rounded-lg"
+            >
+              <option value="">Select deadline</option>
+              <option value="1">1 week</option>
+              <option value="2">2 weeks</option>
+              <option value="3">3 weeks</option>
+              <option value="4">4 weeks</option>
+              <option value="6">6 weeks</option>
+              <option value="8">8 weeks</option>
+              <option value="12">12 weeks</option>
+            </select>
+            {errors.streamDeadline && (
+              <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.streamDeadline}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Creators */}
+        <div className="space-y-4 p-5 bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 rounded-xl">
+          <h3 className="text-[10px] font-black uppercase tracking-widest italic flex items-center gap-2">
+            <Users className="w-4 h-4 text-[#389C9A]" />
+            Creators
+          </h3>
+
+          {/* Creator Count */}
+          <div>
+            <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+              NUMBER OF CREATORS <span className="text-red-500">*</span>
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={decrementCreators}
+                disabled={creatorCount <= 1}
+                className="w-12 h-12 border-2 border-[#1D1D1D]/10 hover:border-[#389C9A] disabled:opacity-30 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-colors"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <div className="flex-1 text-center">
+                <span className="text-2xl font-black">{creatorCount}</span>
+                <p className="text-[8px] font-black uppercase tracking-widest opacity-40">
+                  {creatorCount === 1 ? 'CREATOR' : 'CREATORS'}
+                </p>
+              </div>
+              <button
+                onClick={incrementCreators}
+                disabled={creatorCount >= 50}
+                className="w-12 h-12 border-2 border-[#1D1D1D]/10 hover:border-[#389C9A] disabled:opacity-30 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            {errors.creatorCount && (
+              <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.creatorCount}</p>
+            )}
+          </div>
+
+          {/* Instructions */}
+          <div>
+            <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
+              SPECIAL INSTRUCTIONS FOR CREATORS
+            </label>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Any specific requirements or notes for creators..."
+              rows={4}
+              className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-lg resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Budget Preview */}
+        <div className="p-5 bg-gradient-to-r from-[#1D1D1D] to-gray-800 text-white rounded-xl">
+          <h3 className="text-[10px] font-black uppercase tracking-widest italic mb-3 flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-[#FEDB71]" />
+            Estimated Budget
+          </h3>
+          
+          <div className="space-y-2 mb-4">
+            <div className="flex justify-between text-sm">
+              <span className="opacity-60">Platform Fee ({creatorCount} creators)</span>
+              <span className="font-black">₦{5 * creatorCount}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="opacity-60">Estimated Discount Impact</span>
+              <span className="font-black">₦{budget - (5 * creatorCount)}</span>
+            </div>
+            <div className="border-t border-white/10 my-2 pt-2">
+              <div className="flex justify-between text-lg font-black">
+                <span>Total Estimate</span>
+                <span className="text-[#FEDB71]">₦{budget}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-[8px] font-black uppercase tracking-widest opacity-40">
+            <Info className="w-3 h-3" />
+            <span>Estimated reach: {estimatedReach.toLocaleString()} viewers</span>
+          </div>
+        </div>
+
+        {/* Preview Button */}
+        <button
+          onClick={() => setShowPreview(!showPreview)}
+          className="w-full py-3 border-2 border-[#1D1D1D]/10 hover:border-[#389C9A] rounded-xl text-[10px] font-black uppercase tracking-widest italic transition-colors"
+        >
+          {showPreview ? 'Hide Preview' : 'Preview Campaign'}
+        </button>
+
+        {/* Preview Panel */}
+        <AnimatePresence>
+          {showPreview && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="p-5 bg-white border-2 border-[#389C9A] rounded-xl">
+                <h4 className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-3">CAMPAIGN PREVIEW</h4>
+                
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="opacity-60">Promo Code:</span>
+                    <span className="font-black">{promoCode || 'SUMMER20'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-60">Discount:</span>
+                    <span className="font-black">
+                      {discountValue}{discountType === 'percentage' ? '% OFF' : ' OFF'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-60">Creators:</span>
+                    <span className="font-black">{creatorCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="opacity-60">Duration:</span>
+                    <span className="font-black">{offerDuration || '7'} days</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-[#1D1D1D]/10">
+                  <p className="text-[10px] italic text-center opacity-60">
+                    Creators will share this code with their audience to drive conversions
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* CONTINUE BUTTON */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#1D1D1D]/10 p-4 max-w-md mx-auto">
+        <motion.button
+          onClick={handleContinue}
+          disabled={isLoading}
+          className={`w-full py-4 px-5 flex items-center justify-between rounded-xl transition-all ${
+            isLoading
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-[#1D1D1D] text-white hover:bg-[#389C9A]"
+          }`}
+          whileTap={{ scale: isLoading ? 1 : 0.98 }}
+        >
+          <span className="text-sm font-black uppercase tracking-widest italic">
+            {isLoading ? "CREATING CAMPAIGN..." : "CONTINUE TO CONFIRMATION"}
+          </span>
+          {!isLoading && <ArrowRight className="w-5 h-5" />}
+        </motion.button>
+      </div>
     </div>
   );
 }
