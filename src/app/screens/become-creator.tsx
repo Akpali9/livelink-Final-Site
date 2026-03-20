@@ -286,7 +286,7 @@ const { data: profileData, error: profileError } = await supabase
   // ── Success screen ──
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-6 text-[#1D1D1D]">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -321,7 +321,7 @@ const { data: profileData, error: profileError } = await supabase
   const errorClass = "text-red-500 text-[9px] font-bold uppercase tracking-wide mt-1";
 
   return (
-    <div className="min-h-screen bg-white text-[#1D1D1D] pb-28">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
 
       {/* ── Top banner ── */}
       <div className="px-5 pt-12 pb-6 border-b-2 border-[#1D1D1D]">
