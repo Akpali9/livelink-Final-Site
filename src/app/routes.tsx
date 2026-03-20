@@ -14,7 +14,7 @@ import { BrowseCreators } from "./screens/browse";
 // import { Messages } from "./screens/messages"; // Commented out - file doesn't exist
 import { Notifications } from "./screens/notifications";
 // import { CampaignLiveUpdate } from "./screens/campaign-live-update";
-import { CampaignSummary } from "./screens/campaign-summary";
+// import { CampaignSummary } from "./screens/campaign-summary";
 import { UpcomingGig } from "./screens/upcoming-gig";
 import { AdminDashboard } from "./screens/admin-dashboard";
 import { LoginPortal } from "./screens/login-portal";
