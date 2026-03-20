@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   XCircle,
   TrendingUp,
+  Mail,
+  CreditCard,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase } from "../lib/supabase";
@@ -32,11 +34,27 @@ import { BottomNav } from "../components/bottom-nav";
 // ─────────────────────────────────────────────
 
 type NotificationType =
-  | "earnings" | "message" | "confirmed" | "action" | "warning"
-  | "match" | "announcement" | "offer" | "payment" | "campaign"
-  | "system" | "new_offer" | "business_approved" | "business_rejected"
-  | "creator_approved" | "creator_rejected" | "campaign_approved"
-  | "campaign_rejected" | "payout" | "welcome";
+  | "earnings" 
+  | "message" 
+  | "confirmed" 
+  | "action" 
+  | "warning"
+  | "match" 
+  | "announcement" 
+  | "offer" 
+  | "payment" 
+  | "campaign"
+  | "system" 
+  | "new_offer" 
+  | "business_approved" 
+  | "business_rejected"
+  | "creator_approved" 
+  | "creator_rejected" 
+  | "campaign_approved"
+  | "campaign_rejected" 
+  | "payout" 
+  | "welcome"
+  | "campaign_invite";
 
 interface Notification {
   id: string;
@@ -63,8 +81,10 @@ const getGrouping = (dateString: string): Notification["grouping"] => {
 };
 
 const GROUP_LABELS = {
-  TODAY: "Today", YESTERDAY: "Yesterday",
-  THIS_WEEK: "This Week", EARLIER: "Earlier",
+  TODAY: "Today", 
+  YESTERDAY: "Yesterday",
+  THIS_WEEK: "This Week", 
+  EARLIER: "Earlier",
 };
 
 const GROUP_ORDER: Notification["grouping"][] = ["TODAY", "YESTERDAY", "THIS_WEEK", "EARLIER"];
@@ -75,38 +95,60 @@ const GROUP_ORDER: Notification["grouping"][] = ["TODAY", "YESTERDAY", "THIS_WEE
 
 function NotifIcon({ type }: { type: NotificationType }) {
   const cls = "w-5 h-5";
-  if (type === "earnings" || type === "payment" || type === "payout")
-    return <DollarSign className={`${cls} text-[#389C9A]`} />;
-  if (type === "message")
-    return <MessageSquare className={`${cls} text-blue-500`} />;
-  if (type === "confirmed" || type === "business_approved" || type === "creator_approved" || type === "campaign_approved")
-    return <CheckCircle2 className={`${cls} text-green-500`} />;
-  if (type === "business_rejected" || type === "creator_rejected" || type === "campaign_rejected" || type === "warning")
-    return <XCircle className={`${cls} text-red-500`} />;
-  if (type === "action" || type === "offer" || type === "new_offer")
-    return <Zap className={`${cls} text-[#FEDB71]`} />;
-  if (type === "campaign")
-    return <Megaphone className={`${cls} text-orange-500`} />;
-  if (type === "match")
-    return <Target className={`${cls} text-purple-500`} />;
-  if (type === "welcome")
-    return <ShieldCheck className={`${cls} text-[#389C9A]`} />;
-  if (type === "announcement")
-    return <Bell className={`${cls} text-[#1D1D1D]`} />;
-  return <Info className={`${cls} text-gray-400`} />;
+  
+  const iconMap: Record<string, React.ReactNode> = {
+    earnings: <DollarSign className={`${cls} text-green-600`} />,
+    payment: <CreditCard className={`${cls} text-green-600`} />,
+    payout: <DollarSign className={`${cls} text-green-600`} />,
+    message: <MessageSquare className={`${cls} text-blue-500`} />,
+    confirmed: <CheckCircle2 className={`${cls} text-green-500`} />,
+    business_approved: <CheckCircle2 className={`${cls} text-green-500`} />,
+    creator_approved: <CheckCircle2 className={`${cls} text-green-500`} />,
+    campaign_approved: <CheckCircle2 className={`${cls} text-green-500`} />,
+    business_rejected: <XCircle className={`${cls} text-red-500`} />,
+    creator_rejected: <XCircle className={`${cls} text-red-500`} />,
+    campaign_rejected: <XCircle className={`${cls} text-red-500`} />,
+    warning: <AlertTriangle className={`${cls} text-orange-500`} />,
+    action: <Zap className={`${cls} text-yellow-600`} />,
+    offer: <Zap className={`${cls} text-yellow-600`} />,
+    new_offer: <Zap className={`${cls} text-yellow-600`} />,
+    campaign: <Megaphone className={`${cls} text-purple-500`} />,
+    campaign_invite: <Mail className={`${cls} text-purple-500`} />,
+    match: <Target className={`${cls} text-indigo-500`} />,
+    welcome: <ShieldCheck className={`${cls} text-teal-500`} />,
+    announcement: <Bell className={`${cls} text-gray-600`} />,
+    system: <Info className={`${cls} text-gray-400`} />,
+  };
+  
+  return iconMap[type] || <Bell className={`${cls} text-gray-400`} />;
 }
 
 function notifBg(type: NotificationType): string {
-  if (type === "earnings" || type === "payment" || type === "payout") return "bg-[#389C9A]/10";
-  if (type === "message")   return "bg-blue-500/10";
-  if (type === "confirmed" || type === "business_approved" || type === "creator_approved" || type === "campaign_approved")
-    return "bg-green-500/10";
-  if (type === "business_rejected" || type === "creator_rejected" || type === "campaign_rejected" || type === "warning")
-    return "bg-red-500/10";
-  if (type === "action" || type === "offer" || type === "new_offer") return "bg-[#FEDB71]/20";
-  if (type === "campaign")  return "bg-orange-500/10";
-  if (type === "match")     return "bg-purple-500/10";
-  return "bg-gray-100";
+  const bgMap: Record<string, string> = {
+    earnings: "bg-green-100",
+    payment: "bg-green-100",
+    payout: "bg-green-100",
+    message: "bg-blue-100",
+    confirmed: "bg-green-100",
+    business_approved: "bg-green-100",
+    creator_approved: "bg-green-100",
+    campaign_approved: "bg-green-100",
+    business_rejected: "bg-red-100",
+    creator_rejected: "bg-red-100",
+    campaign_rejected: "bg-red-100",
+    warning: "bg-orange-100",
+    action: "bg-yellow-100",
+    offer: "bg-yellow-100",
+    new_offer: "bg-yellow-100",
+    campaign: "bg-purple-100",
+    campaign_invite: "bg-purple-100",
+    match: "bg-indigo-100",
+    welcome: "bg-teal-100",
+    announcement: "bg-gray-100",
+    system: "bg-gray-100",
+  };
+  
+  return bgMap[type] || "bg-gray-100";
 }
 
 // ─────────────────────────────────────────────
@@ -125,120 +167,271 @@ export function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading]             = useState(true);
   const [selectedType, setSelectedType]   = useState("all");
+  const [isDeleting, setIsDeleting]       = useState<string | null>(null);
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
+  // ── Fetch Notifications ─────────────────────────────────────────────────
+
+  const fetchNotifications = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      
+      const formattedData = (data || []).map(n => ({ 
+        ...n, 
+        grouping: getGrouping(n.created_at),
+        data: n.data || {}
+      }));
+      
+      setNotifications(formattedData);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      toast.error("Failed to load notifications");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Create Test Notification (for debugging) ───────────────────────────
+
+  const createTestNotification = async () => {
+    if (!user) return;
+    
+    const testNotifications = [
+      {
+        user_id: user.id,
+        type: "new_offer",
+        title: "New Campaign Offer!",
+        message: "TechCorp wants you to promote their new gaming laptop. $500 per post.",
+        data: { campaign_id: "test-123", amount: 500 },
+        created_at: new Date().toISOString()
+      },
+      {
+        user_id: user.id,
+        type: "message",
+        title: "New Message",
+        message: "Sarah from GamingCo sent you a message about your recent campaign.",
+        data: { conversation_id: "conv-123" },
+        created_at: new Date(Date.now() - 3600000).toISOString()
+      },
+      {
+        user_id: user.id,
+        type: "campaign_approved",
+        title: "Campaign Approved!",
+        message: "Your campaign 'Summer Gaming Stream' has been approved and is now live.",
+        data: { campaign_id: "camp-456" },
+        created_at: new Date(Date.now() - 86400000).toISOString()
+      },
+      {
+        user_id: user.id,
+        type: "payment",
+        title: "Payment Received",
+        message: "You received $750 from Nike Campaign #1234.",
+        data: { amount: 750, campaign_id: "nike-123" },
+        created_at: new Date(Date.now() - 172800000).toISOString()
+      }
+    ];
+    
+    for (const notif of testNotifications) {
+      const { error } = await supabase.from("notifications").insert(notif);
+      if (error) console.error("Error creating test notification:", error);
+    }
+    
+    await fetchNotifications();
+    toast.success("Test notifications created!");
+  };
 
   useEffect(() => {
-    if (!user) return;
+    if (user) {
+      fetchNotifications();
+      
+      // Setup real-time subscription
+      const subscription = supabase
+        .channel(`notifications-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            const newNotif = {
+              ...payload.new,
+              grouping: getGrouping(payload.new.created_at),
+              data: payload.new.data || {}
+            } as Notification;
+            
+            setNotifications(prev => [newNotif, ...prev]);
+            
+            // Show toast for new notification
+            if (!newNotif.is_read) {
+              toast.info(newNotif.title, {
+                description: newNotif.message,
+                duration: 5000,
+                action: {
+                  label: "View",
+                  onClick: () => handleClick(newNotif)
+                }
+              });
+            }
+          }
+        )
+        .subscribe();
 
-    const fetch = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("notifications")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        setNotifications((data || []).map(n => ({ ...n, grouping: getGrouping(n.created_at) })));
-      } catch {
-        toast.error("Failed to load notifications");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetch();
-
-    const channel = supabase.channel("notifications_page")
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "notifications",
-        filter: `user_id=eq.${user.id}`
-      }, (payload) => {
-        const n = { ...payload.new, grouping: getGrouping(payload.new.created_at) } as Notification;
-        setNotifications(prev => [n, ...prev]);
-        toast.info(n.title, { description: n.message, duration: 5000 });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
   }, [user]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   const markAllRead = async () => {
-    if (!user) return;
-    await supabase.from("notifications").update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-    toast.success("All marked as read");
+    if (!user || notifications.filter(n => !n.is_read).length === 0) return;
+    
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false);
+      
+      if (error) throw error;
+      
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      toast.success("All notifications marked as read");
+    } catch (error) {
+      toast.error("Failed to mark as read");
+    }
   };
 
   const clearAll = async () => {
-    if (!user || !confirm("Clear all notifications?")) return;
-    await supabase.from("notifications").delete().eq("user_id", user.id);
-    setNotifications([]);
-    toast.success("Notifications cleared");
+    if (!user) return;
+    
+    const confirmed = window.confirm("Are you sure you want to clear all notifications? This action cannot be undone.");
+    if (!confirmed) return;
+    
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("user_id", user.id);
+      
+      if (error) throw error;
+      
+      setNotifications([]);
+      toast.success("All notifications cleared");
+    } catch (error) {
+      toast.error("Failed to clear notifications");
+    }
   };
 
   const markAsRead = async (id: string) => {
-    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", id);
+      
+      if (error) throw error;
+      
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    } catch (error) {
+      console.error("Error marking as read:", error);
+    }
   };
 
   const deleteNotif = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await supabase.from("notifications").delete().eq("id", id);
-    setNotifications(prev => prev.filter(n => n.id !== id));
-    toast.success("Deleted");
+    setIsDeleting(id);
+    
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("id", id);
+      
+      if (error) throw error;
+      
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      toast.success("Notification deleted");
+    } catch (error) {
+      toast.error("Failed to delete notification");
+    } finally {
+      setIsDeleting(null);
+    }
   };
 
   // ── Navigation on click ───────────────────────────────────────────────────
 
   const handleClick = (n: Notification) => {
-    markAsRead(n.id);
-    const d = n.data || {};
+    if (!n.is_read) {
+      markAsRead(n.id);
+    }
+    
+    const data = n.data || {};
 
     if (isBiz) {
       // Business navigation
-      if (d.campaign_id)  return navigate(`/business/campaign/overview/${d.campaign_id}`);
-      if (n.type === "message" && d.conversation_id) return navigate(`/messages/${d.conversation_id}?role=business`);
-      if (n.type === "message")  return navigate(`/messages?role=business`);
-      if (n.type === "campaign" || n.type === "campaign_approved" || n.type === "campaign_rejected")
-        return navigate(`/business/campaigns`);
-      if (n.type === "payment" || n.type === "payout") return navigate(`/business/dashboard`);
-      return navigate(`/business/dashboard`);
+      if (data.campaign_id) {
+        navigate(`/business/campaign/overview/${data.campaign_id}`);
+      } else if (n.type === "message" && data.conversation_id) {
+        navigate(`/messages/${data.conversation_id}?role=business`);
+      } else if (n.type === "message") {
+        navigate(`/messages?role=business`);
+      } else if (n.type === "campaign" || n.type === "campaign_approved" || n.type === "campaign_rejected") {
+        navigate(`/business/campaigns`);
+      } else if (n.type === "payment" || n.type === "payout" || n.type === "earnings") {
+        navigate(`/business/dashboard`);
+      } else if (n.type === "new_offer" || n.type === "offer") {
+        navigate(`/business/campaigns`);
+      } else {
+        navigate(`/business/dashboard`);
+      }
     } else {
       // Creator navigation
-      if (d.campaign_id)  return navigate(`/creator/campaign/${d.campaign_id}`);
-      if (d.conversation_id) return navigate(`/messages/${d.conversation_id}?role=creator`);
-      if (n.type === "message")  return navigate(`/messages?role=creator`);
-      if (n.type === "earnings" || n.type === "payment" || n.type === "payout")
-        return navigate(`/dashboard`);
-      if (n.type === "campaign" || n.type === "offer" || n.type === "new_offer")
-        return navigate(`/campaigns`);
-      return navigate(`/dashboard`);
+      if (data.campaign_id) {
+        navigate(`/creator/campaign/${data.campaign_id}`);
+      } else if (data.conversation_id) {
+        navigate(`/messages/${data.conversation_id}?role=creator`);
+      } else if (n.type === "message") {
+        navigate(`/messages?role=creator`);
+      } else if (n.type === "earnings" || n.type === "payment" || n.type === "payout") {
+        navigate(`/dashboard`);
+      } else if (n.type === "campaign" || n.type === "offer" || n.type === "new_offer") {
+        navigate(`/campaigns`);
+      } else {
+        navigate(`/dashboard`);
+      }
     }
   };
 
   // ── Filter tabs ───────────────────────────────────────────────────────────
 
-  // Business sees different tabs than creator
   const bizTabs = [
-    { value: "all",               label: "All",       icon: Bell },
-    { value: "campaign",          label: "Campaigns", icon: Megaphone },
-    { value: "new_offer",         label: "Offers",    icon: Zap },
-    { value: "message",           label: "Messages",  icon: MessageSquare },
-    { value: "payment",           label: "Payments",  icon: DollarSign },
-    { value: "system",            label: "System",    icon: Info },
+    { value: "all", label: "All", icon: Bell, types: ["all"] },
+    { value: "campaign", label: "Campaigns", icon: Megaphone, types: ["campaign", "campaign_approved", "campaign_rejected", "campaign_invite"] },
+    { value: "offer", label: "Offers", icon: Zap, types: ["offer", "new_offer", "action"] },
+    { value: "message", label: "Messages", icon: MessageSquare, types: ["message"] },
+    { value: "payment", label: "Payments", icon: DollarSign, types: ["payment", "earnings", "payout"] },
+    { value: "system", label: "System", icon: Info, types: ["system", "announcement", "welcome"] },
   ];
 
   const creatorTabs = [
-    { value: "all",     label: "All",       icon: Bell },
-    { value: "offer",   label: "Offers",    icon: Zap },
-    { value: "message", label: "Messages",  icon: MessageSquare },
-    { value: "payment", label: "Payments",  icon: DollarSign },
-    { value: "campaign",label: "Campaigns", icon: Briefcase },
-    { value: "system",  label: "System",    icon: Info },
+    { value: "all", label: "All", icon: Bell, types: ["all"] },
+    { value: "offer", label: "Offers", icon: Zap, types: ["offer", "new_offer", "action"] },
+    { value: "message", label: "Messages", icon: MessageSquare, types: ["message"] },
+    { value: "payment", label: "Payments", icon: DollarSign, types: ["payment", "earnings", "payout"] },
+    { value: "campaign", label: "Campaigns", icon: Briefcase, types: ["campaign", "campaign_approved", "campaign_rejected", "campaign_invite"] },
+    { value: "system", label: "System", icon: Info, types: ["system", "announcement", "welcome"] },
   ];
 
   const tabs = isBiz ? bizTabs : creatorTabs;
@@ -246,18 +439,8 @@ export function Notifications() {
   const filtered = selectedType === "all"
     ? notifications
     : notifications.filter(n => {
-        // Group related types under one tab
-        if (selectedType === "campaign")
-          return ["campaign", "campaign_approved", "campaign_rejected"].includes(n.type);
-        if (selectedType === "offer")
-          return ["offer", "new_offer", "action"].includes(n.type);
-        if (selectedType === "new_offer")
-          return ["new_offer", "offer", "action"].includes(n.type);
-        if (selectedType === "payment")
-          return ["payment", "earnings", "payout"].includes(n.type);
-        if (selectedType === "message")
-          return n.type === "message";
-        return n.type === selectedType;
+        const tab = tabs.find(t => t.value === selectedType);
+        return tab && tab.types.includes(n.type);
       });
 
   const grouped = filtered.reduce((acc, n) => {
@@ -297,6 +480,12 @@ export function Notifications() {
               {unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}
             </span>
             <div className="flex gap-3">
+              {notifications.length === 0 && (
+                <button onClick={createTestNotification}
+                  className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1">
+                  <Mail className="w-3 h-3" /> Add Test Notifications
+                </button>
+              )}
               {unreadCount > 0 && (
                 <button onClick={markAllRead}
                   className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1">
@@ -315,19 +504,21 @@ export function Notifications() {
           {/* Filter tabs */}
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {tabs.map(tab => {
-              const Icon  = tab.icon;
-              const count = tab.value === "all"
-                ? notifications.length
-                : notifications.filter(n => {
-                    if (tab.value === "campaign") return ["campaign","campaign_approved","campaign_rejected"].includes(n.type);
-                    if (tab.value === "offer" || tab.value === "new_offer") return ["offer","new_offer","action"].includes(n.type);
-                    if (tab.value === "payment") return ["payment","earnings","payout"].includes(n.type);
-                    return n.type === tab.value;
-                  }).length;
+              const Icon = tab.icon;
+              let count = 0;
+              
+              if (tab.value === "all") {
+                count = notifications.length;
+              } else {
+                count = notifications.filter(n => tab.types.includes(n.type)).length;
+              }
+              
               const active = selectedType === tab.value;
 
               return (
-                <button key={tab.value} onClick={() => setSelectedType(tab.value)}
+                <button 
+                  key={tab.value} 
+                  onClick={() => setSelectedType(tab.value)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-full border-2 whitespace-nowrap transition-all text-[8px] font-black uppercase tracking-widest ${
                     active
                       ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
@@ -356,7 +547,7 @@ export function Notifications() {
               if (!items?.length) return null;
               return (
                 <div key={group}>
-                  <div className="px-6 py-3 bg-gray-50">
+                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-100">
                     <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/30 italic">
                       {GROUP_LABELS[group]}
                     </p>
@@ -365,7 +556,8 @@ export function Notifications() {
                   <AnimatePresence mode="popLayout">
                     {items.map(n => (
                       <motion.div
-                        layout key={n.id}
+                        layout 
+                        key={n.id}
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, x: -20 }}
@@ -382,7 +574,7 @@ export function Notifications() {
                         {/* Content */}
                         <div className="flex-1 min-w-0 pr-6">
                           <div className="flex justify-between items-start mb-0.5">
-                            <h4 className={`text-sm font-black uppercase tracking-tight truncate ${
+                            <h4 className={`text-sm font-black uppercase tracking-tight ${
                               !n.is_read ? "text-[#1D1D1D]" : "text-[#1D1D1D]/70"
                             }`}>
                               {n.title}
@@ -394,6 +586,14 @@ export function Notifications() {
                           <p className="text-[10px] text-[#1D1D1D]/60 line-clamp-2 leading-relaxed">
                             {n.message}
                           </p>
+                          {n.data?.amount && (
+                            <div className="mt-2 flex items-center gap-1">
+                              <DollarSign className="w-3 h-3 text-green-600" />
+                              <span className="text-[9px] font-bold text-green-600">
+                                ${n.data.amount}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Unread dot */}
@@ -404,9 +604,14 @@ export function Notifications() {
                         {/* Delete — visible on hover */}
                         <button
                           onClick={e => deleteNotif(n.id, e)}
-                          className="absolute right-3 top-3 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-red-50 rounded-lg transition-all"
+                          disabled={isDeleting === n.id}
+                          className="absolute right-3 top-3 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
                         >
-                          <Trash2 className="w-3 h-3 text-red-400" />
+                          {isDeleting === n.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-red-400" />
+                          ) : (
+                            <Trash2 className="w-3 h-3 text-red-400" />
+                          )}
                         </button>
                       </motion.div>
                     ))}
@@ -422,12 +627,20 @@ export function Notifications() {
             </div>
             <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-3">All caught up!</h2>
             <p className="text-[11px] text-[#1D1D1D]/40 max-w-[250px] mb-8">
-              No {selectedType !== "all" ? selectedType : ""} notifications yet.
+              {selectedType !== "all" 
+                ? `No ${selectedType} notifications yet.` 
+                : "No notifications yet. They'll appear here when you get them."}
             </p>
-            <button onClick={() => navigate(backPath)}
-              className="px-8 py-4 border-2 border-[#1D1D1D] text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl">
-              Return to Dashboard
-            </button>
+            <div className="flex gap-3">
+              <button onClick={createTestNotification}
+                className="px-6 py-3 border-2 border-[#389C9A] text-[10px] font-black uppercase tracking-widest text-[#389C9A] hover:bg-[#389C9A] hover:text-white transition-all rounded-xl">
+                Add Test Notifications
+              </button>
+              <button onClick={() => navigate(backPath)}
+                className="px-6 py-3 border-2 border-[#1D1D1D] text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl">
+                Return to Dashboard
+              </button>
+            </div>
           </div>
         )}
       </main>
