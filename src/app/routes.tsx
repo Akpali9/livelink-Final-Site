@@ -74,3 +74,5 @@ export const routes: RouteObject[] = [
   // Catch all
   { path: "*", element: <LoginPortal /> },
 ];
+
+export const router = createBrowserRouter(routes);
