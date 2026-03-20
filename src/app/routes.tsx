@@ -1,8 +1,9 @@
-import { RouteObject } from "react-router";
-import { CreatorDashboard } from "./screens/creator-dashboard";
+// routes.tsx
+import { RouteObject } from "react-router-dom";
+import { Dashboard } from "./screens/dashboard"; // Changed from CreatorDashboard to Dashboard
 import { CreatorProfile } from "./screens/creator-profile";
 import { CreatorSettings } from "./screens/creator-settings";
-import { CreatorCampaigns } from "./screens/creator-campaigns";
+import { Campaigns } from "./screens/campaigns"; // Creator campaigns
 import { BusinessDashboard } from "./screens/business-dashboard";
 import { BusinessProfile } from "./screens/business-profile";
 import { BusinessSettings } from "./screens/business-settings";
@@ -13,7 +14,6 @@ import { BrowseBusinesses } from "./screens/browse-businesses";
 import { BrowseCreators } from "./screens/browse-creators";
 import { Messages } from "./screens/messages";
 import { Notifications } from "./screens/notifications";
-import { Campaigns } from "./screens/campaigns"; // Creator campaigns
 import { CampaignLiveUpdate } from "./screens/campaign-live-update";
 import { CampaignSummary } from "./screens/campaign-summary";
 import { UpcomingGig } from "./screens/upcoming-gig";
@@ -23,17 +23,17 @@ import { LoginPortal } from "./screens/login-portal";
 import { BecomeCreator } from "./screens/become-creator";
 import { BecomeBusiness } from "./screens/become-business";
 
-// Auth protection function
+// Auth protection functions (placeholder)
 const protectCreator = (Component: React.ComponentType) => {
-  return <Component />; // Add actual auth logic here
+  return <Component />;
 };
 
 const protectBusiness = (Component: React.ComponentType) => {
-  return <Component />; // Add actual auth logic here
+  return <Component />;
 };
 
 const protectAdmin = (Component: React.ComponentType) => {
-  return <Component />; // Add actual auth logic here
+  return <Component />;
 };
 
 export const routes: RouteObject[] = [
@@ -44,10 +44,10 @@ export const routes: RouteObject[] = [
   { path: "/become-business", element: <BecomeBusiness /> },
   
   // Creator routes
-  { path: "/dashboard", element: protectCreator(CreatorDashboard) },
+  { path: "/dashboard", element: protectCreator(Dashboard) }, // Using Dashboard component
   { path: "/profile/:id", element: protectCreator(CreatorProfile) },
   { path: "/settings", element: protectCreator(CreatorSettings) },
-  { path: "/campaigns", element: protectCreator(CreatorCampaigns) },
+  { path: "/campaigns", element: protectCreator(Campaigns) },
   { path: "/campaign/live-update/:id", element: protectCreator(CampaignLiveUpdate) },
   { path: "/campaign/:id/summary", element: protectCreator(CampaignSummary) },
   { path: "/creator/upcoming-gig/:id", element: protectCreator(UpcomingGig) },
@@ -63,7 +63,7 @@ export const routes: RouteObject[] = [
   { path: "/business/campaigns", element: protectBusiness(BusinessCampaigns) },
   { path: "/business/campaign/overview/:id", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/business/campaign/creators/:id", element: protectBusiness(BusinessCampaignCreators) },
-  { path: "/business/create-campaign", element: protectBusiness(BusinessCampaignDetail) }, // Or your create campaign component
+  { path: "/business/create-campaign", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/business/campaign/edit/:id", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/browse-creators", element: protectBusiness(BrowseCreators) },
   
