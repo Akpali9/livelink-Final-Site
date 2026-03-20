@@ -500,7 +500,7 @@ export function BrowseBusinesses() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#FDFDFD] text-[#1D1D1D] font-sans overflow-x-hidden pb-[100px]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       {/* Header */}
       <div className="px-5 py-6 sticky top-[84px] bg-[#FDFDFD]/95 backdrop-blur-md z-20 border-b border-[#1D1D1D]/10">
         {/* Real-time Status Bar */}
