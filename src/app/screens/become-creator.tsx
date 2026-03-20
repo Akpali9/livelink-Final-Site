@@ -14,12 +14,10 @@ import {
   Smartphone,
   Mail,
   Loader2,
-  MapPin,
   User,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForm, useFieldArray } from "react-hook-form";
-import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
 
@@ -82,17 +80,14 @@ export function BecomeCreator() {
   const country = watch("country");
   const frequency = watch("frequency");
 
-  // Countdown redirect after submit
+  // ✅ No email confirmation — redirect straight to dashboard
   useEffect(() => {
     if (!isSubmitted) return;
     const timer = setTimeout(() => {
-      navigate("/confirm-email", {
-        state: { email: registeredEmail, role: "creator" },
-        replace: true,
-      });
-    }, 5000);
+      navigate("/dashboard", { replace: true });
+    }, 2000);
     return () => clearTimeout(timer);
-  }, [isSubmitted, navigate, registeredEmail]);
+  }, [isSubmitted, navigate]);
 
   const uploadVerificationDocument = async (file: File, userId: string): Promise<string | null> => {
     try {
@@ -102,7 +97,9 @@ export function BecomeCreator() {
         .from("creator-verifications")
         .upload(fileName, file, { cacheControl: "3600", upsert: false });
       if (uploadError) throw uploadError;
-      const { data: { publicUrl } } = supabase.storage.from("creator-verifications").getPublicUrl(fileName);
+      const { data: { publicUrl } } = supabase.storage
+        .from("creator-verifications")
+        .getPublicUrl(fileName);
       return publicUrl;
     } catch (error) {
       console.error("Error uploading verification:", error);
@@ -177,14 +174,17 @@ export function BecomeCreator() {
         password: data.password,
         options: {
           data: { full_name: data.fullName, user_type: "creator", role: "creator" },
-          emailRedirectTo: `${window.location.origin}/auth/callback?role=creator`,
+          // ✅ REMOVED emailRedirectTo — was causing 422 Unprocessable Content
         },
       });
 
       if (signUpError) {
-        if (signUpError.message.includes("User already registered")) {
-          toast.error("An account with this email already exists.");
-          setTimeout(() => navigate("/login/creator", { state: { email: data.email } }), 3000);
+        if (
+          signUpError.message.includes("User already registered") ||
+          signUpError.message.includes("already been registered")
+        ) {
+          toast.error("An account with this email already exists. Please login instead.");
+          setTimeout(() => navigate("/login/creator", { state: { email: data.email } }), 2000);
           return;
         }
         throw signUpError;
@@ -192,11 +192,12 @@ export function BecomeCreator() {
       if (!authData.user) throw new Error("No user returned from signup");
 
       let verificationUrl = null;
-      if (selectedFile) verificationUrl = await uploadVerificationDocument(selectedFile, authData.user.id);
+      if (selectedFile) {
+        verificationUrl = await uploadVerificationDocument(selectedFile, authData.user.id);
+      }
 
-      // ✅ FIXED: was "creator_profiles", correct table is "creators"
       const { data: profileData, error: profileError } = await supabase
-        .from("creators")
+        .from("creator_profiles")
         .insert({
           user_id: authData.user.id,
           full_name: data.fullName,
@@ -236,7 +237,9 @@ export function BecomeCreator() {
             created_at: new Date().toISOString(),
           }));
         if (platformRows.length > 0) {
-          const { error: platformError } = await supabase.from("creator_platforms").insert(platformRows);
+          const { error: platformError } = await supabase
+            .from("creator_platforms")
+            .insert(platformRows);
           if (platformError) console.error("Platform insert error:", platformError);
         }
       }
@@ -249,17 +252,8 @@ export function BecomeCreator() {
         created_at: new Date().toISOString(),
       });
 
-      await supabase.from("notifications").insert({
-        user_id: "admin",
-        type: "admin_notification",
-        title: "New Creator Application",
-        message: `${data.fullName} has submitted a creator application for review.`,
-        data: { creator_name: data.fullName, user_id: authData.user.id },
-        created_at: new Date().toISOString(),
-      });
-
       setIsSubmitted(true);
-      toast.success("Application submitted successfully!");
+      toast.success("Application submitted! Redirecting...");
     } catch (error: any) {
       console.error("Error submitting application:", error);
       toast.error(error.message || "Failed to submit application");
@@ -281,38 +275,15 @@ export function BecomeCreator() {
           <div className="w-20 h-20 bg-[#1D1D1D] rounded-2xl flex items-center justify-center mx-auto mb-8 border-4 border-[#FEDB71]">
             <CheckCircle2 className="w-10 h-10 text-[#389C9A]" />
           </div>
-          <h1 className="text-3xl font-black uppercase tracking-tighter italic mb-3">Application Submitted!</h1>
-          <p className="text-sm text-[#1D1D1D]/50 italic mb-8">
+          <h1 className="text-3xl font-black uppercase tracking-tighter italic mb-3">
+            Application Submitted!
+          </h1>
+          <p className="text-sm text-[#1D1D1D]/50 italic mb-6">
             Our team will review your application and reach out via email.
           </p>
-          <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-xl p-6 mb-8 text-left">
-            <p className="text-[9px] font-black uppercase tracking-widest mb-4 opacity-40">What happens next</p>
-            {[
-              "Verify your email address",
-              "Team reviews within 48 hours",
-              `You'll hear back at ${registeredEmail}`,
-            ].map((step, i) => (
-              <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
-                <span className="w-5 h-5 rounded-full bg-[#389C9A] text-white text-[9px] font-black flex items-center justify-center shrink-0 mt-0.5">
-                  {i + 1}
-                </span>
-                <span className="text-xs text-[#1D1D1D]/70">{step}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => navigate("/confirm-email", { state: { email: registeredEmail, role: "creator" } })}
-              className="w-full bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
-            >
-              Verify Email Now
-            </button>
-            <Link
-              to="/"
-              className="w-full border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors text-center"
-            >
-              Return to Homepage
-            </Link>
+          <div className="flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#389C9A]">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Redirecting to your dashboard...
           </div>
         </motion.div>
       </div>
@@ -321,17 +292,12 @@ export function BecomeCreator() {
 
   // ── Field helpers ──
   const inputClass = (hasError?: boolean) =>
-    `w-full bg-[#F8F8F8] border-2 ${hasError ? "border-red-400" : "border-[#E8E8E8]"} focus:border-[#1D1D1D] rounded-xl px-4 py-3.5 text-sm font-semibold outline-none transition-colors placeholder:opacity-40 placeholder:font-normal`;
+    `w-full bg-[#F8F8F8] border-2 ${
+      hasError ? "border-red-400" : "border-[#E8E8E8]"
+    } focus:border-[#1D1D1D] rounded-xl px-4 py-3.5 text-sm font-semibold outline-none transition-colors placeholder:opacity-40 placeholder:font-normal`;
 
   const labelClass = "block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/50 mb-1.5";
   const errorClass = "text-red-500 text-[9px] font-bold uppercase tracking-wide mt-1";
-
-  const radioCardClass = (checked: boolean) =>
-    `p-4 border-2 rounded-xl cursor-pointer transition-all ${
-      checked
-        ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
-        : "bg-white border-[#E8E8E8] hover:border-[#1D1D1D]/40"
-    }`;
 
   return (
     <div className="min-h-screen bg-white text-[#1D1D1D] pb-28">
@@ -360,7 +326,7 @@ export function BecomeCreator() {
 
       {/* ── Progress bar ── */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-[#1D1D1D]/10 px-5 py-3">
-        <div className="max-w[480px] mx-auto">
+        <div className="max-w-lg mx-auto">
           <div className="flex items-center justify-between mb-2">
             {STEPS.map((label, i) => {
               const s = i + 1;
@@ -394,7 +360,6 @@ export function BecomeCreator() {
               );
             })}
           </div>
-          {/* Progress line */}
           <div className="h-0.5 bg-[#E8E8E8] rounded-full overflow-hidden">
             <motion.div
               className="h-full bg-[#389C9A] rounded-full"
@@ -406,7 +371,7 @@ export function BecomeCreator() {
       </div>
 
       {/* ── Form body ── */}
-      <div className="px-5 pt-8 max-w[480px] mx-auto">
+      <div className="px-5 pt-8 max-w-lg mx-auto">
         <AnimatePresence mode="wait">
 
           {/* STEP 1 — Personal */}
@@ -425,9 +390,7 @@ export function BecomeCreator() {
                   Kept private — used for verification only.
                 </p>
               </div>
-
               <div className="flex flex-col gap-5">
-                {/* Full name */}
                 <div>
                   <label className={labelClass}>Full Legal Name <span className="text-red-400">*</span></label>
                   <input
@@ -437,8 +400,6 @@ export function BecomeCreator() {
                   />
                   {errors.fullName && <p className={errorClass}>{errors.fullName.message}</p>}
                 </div>
-
-                {/* DOB */}
                 <div>
                   <label className={labelClass}>Date of Birth <span className="text-red-400">*</span></label>
                   <div className="relative">
@@ -455,8 +416,6 @@ export function BecomeCreator() {
                   </div>
                   {errors.dob && <p className={errorClass}>{errors.dob.message}</p>}
                 </div>
-
-                {/* Email */}
                 <div>
                   <label className={labelClass}>Email Address <span className="text-red-400">*</span></label>
                   <div className="relative">
@@ -473,8 +432,6 @@ export function BecomeCreator() {
                   </div>
                   {errors.email && <p className={errorClass}>{errors.email.message}</p>}
                 </div>
-
-                {/* Passwords */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label className={labelClass}>Password <span className="text-red-400">*</span></label>
@@ -487,11 +444,7 @@ export function BecomeCreator() {
                         })}
                         className={`${inputClass(!!errors.password)} pr-10`}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-70"
-                      >
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-70">
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
@@ -512,26 +465,17 @@ export function BecomeCreator() {
                         })}
                         className={`${inputClass(!!errors.confirmPassword)} pr-10`}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-70"
-                      >
+                      <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-70">
                         {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                     {errors.confirmPassword && <p className={errorClass}>{errors.confirmPassword.message}</p>}
                   </div>
                 </div>
-
-                {/* Phone */}
                 <div>
                   <label className={labelClass}>Phone Number <span className="text-red-400">*</span></label>
                   <div className="flex gap-2">
-                    <select
-                      {...register("phoneCountryCode")}
-                      className="bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-3 py-3.5 text-xs font-black outline-none focus:border-[#1D1D1D] shrink-0"
-                    >
+                    <select {...register("phoneCountryCode")} className="bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-3 py-3.5 text-xs font-black outline-none focus:border-[#1D1D1D] shrink-0">
                       <option value="+44">🇬🇧 +44</option>
                       <option value="+1">🇺🇸 +1</option>
                       <option value="+234">🇳🇬 +234</option>
@@ -549,8 +493,6 @@ export function BecomeCreator() {
                   </div>
                   {errors.phoneNumber && <p className={errorClass}>{errors.phoneNumber.message}</p>}
                 </div>
-
-                {/* Country + City */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Country <span className="text-red-400">*</span></label>
@@ -568,11 +510,7 @@ export function BecomeCreator() {
                   </div>
                   <div>
                     <label className={labelClass}>City <span className="text-red-400">*</span></label>
-                    <input
-                      {...register("city", { required: "City is required" })}
-                      placeholder="Your city"
-                      className={inputClass(!!errors.city)}
-                    />
+                    <input {...register("city", { required: "City is required" })} placeholder="Your city" className={inputClass(!!errors.city)} />
                     {errors.city && <p className={errorClass}>{errors.city.message}</p>}
                   </div>
                 </div>
@@ -582,70 +520,39 @@ export function BecomeCreator() {
 
           {/* STEP 2 — Streaming Presence */}
           {step === 2 && (
-            <motion.div
-              key="step2"
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.2 }}
-              className="flex flex-col gap-8"
-            >
+            <motion.div key="step2" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.2 }} className="flex flex-col gap-8">
               <div>
                 <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Your Streaming Presence</h2>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Tell us where you go live.</p>
               </div>
-
               <div className="flex flex-col gap-4">
                 {fields.map((field, index) => (
                   <div key={field.id} className="border-2 border-[#1D1D1D] rounded-2xl p-5">
                     <div className="flex items-center justify-between mb-5">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A]">
-                        Platform {index + 1}
-                      </span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A]">Platform {index + 1}</span>
                       {fields.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => remove(index)}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors"
-                        >
+                        <button type="button" onClick={() => remove(index)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors">
                           <X className="w-4 h-4" />
                         </button>
                       )}
                     </div>
-
                     <div className="flex flex-col gap-4">
                       <div>
                         <label className={labelClass}>Platform</label>
-                        <select
-                          {...register(`platforms.${index}.type`)}
-                          className="w-full bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-4 py-3.5 text-xs font-semibold outline-none focus:border-[#1D1D1D] transition-colors"
-                        >
-                          {["Twitch", "YouTube", "TikTok", "Instagram", "Facebook", "Kick"].map((p) => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
+                        <select {...register(`platforms.${index}.type`)} className="w-full bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-4 py-3.5 text-xs font-semibold outline-none focus:border-[#1D1D1D] transition-colors">
+                          {["Twitch", "YouTube", "TikTok", "Instagram", "Facebook", "Kick"].map((p) => <option key={p} value={p}>{p}</option>)}
                         </select>
                       </div>
-
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className={labelClass}>Username <span className="text-[#389C9A]">*</span></label>
-                          <input
-                            {...register(`platforms.${index}.username`, { required: "Required" })}
-                            placeholder="@yourname"
-                            className={inputClass(!!errors.platforms?.[index]?.username)}
-                          />
+                          <input {...register(`platforms.${index}.username`, { required: "Required" })} placeholder="@yourname" className={inputClass(!!errors.platforms?.[index]?.username)} />
                         </div>
                         <div>
                           <label className={labelClass}>Followers</label>
-                          <input
-                            {...register(`platforms.${index}.followers`)}
-                            placeholder="e.g. 10000"
-                            type="number"
-                            className={inputClass()}
-                          />
+                          <input {...register(`platforms.${index}.followers`)} placeholder="e.g. 10000" type="number" className={inputClass()} />
                         </div>
                       </div>
-
                       <div>
                         <label className={labelClass}>Profile URL <span className="text-[#389C9A]">*</span></label>
                         <input
@@ -656,20 +563,13 @@ export function BecomeCreator() {
                           placeholder="https://twitch.tv/yourname"
                           className={inputClass(!!errors.platforms?.[index]?.url)}
                         />
-                        {errors.platforms?.[index]?.url && (
-                          <p className={errorClass}>{errors.platforms[index].url?.message}</p>
-                        )}
+                        {errors.platforms?.[index]?.url && <p className={errorClass}>{errors.platforms[index].url?.message}</p>}
                       </div>
                     </div>
                   </div>
                 ))}
-
                 {fields.length < 5 && (
-                  <button
-                    type="button"
-                    onClick={() => append({ type: "Twitch", username: "", url: "", followers: "" })}
-                    className="w-full border-2 border-dashed border-[#1D1D1D]/20 rounded-2xl p-6 flex items-center justify-center gap-2 hover:border-[#389C9A] hover:text-[#389C9A] transition-colors text-[#1D1D1D]/40 group"
-                  >
+                  <button type="button" onClick={() => append({ type: "Twitch", username: "", url: "", followers: "" })} className="w-full border-2 border-dashed border-[#1D1D1D]/20 rounded-2xl p-6 flex items-center justify-center gap-2 hover:border-[#389C9A] hover:text-[#389C9A] transition-colors text-[#1D1D1D]/40 group">
                     <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
                     <span className="text-[10px] font-black uppercase tracking-widest italic">Add Another Platform</span>
                   </button>
@@ -680,31 +580,15 @@ export function BecomeCreator() {
 
           {/* STEP 3 — Activity */}
           {step === 3 && (
-            <motion.div
-              key="step3"
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.2 }}
-              className="flex flex-col gap-10"
-            >
+            <motion.div key="step3" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.2 }} className="flex flex-col gap-10">
               <div>
                 <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Streaming Habits</h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">
-                  Determines which campaigns you match with.
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Determines which campaigns you match with.</p>
               </div>
-
-              {/* Frequency */}
               <div>
                 <label className={`${labelClass} mb-3`}>How often do you go live? <span className="text-red-400">*</span></label>
                 <div className="flex flex-col gap-2">
-                  {[
-                    { val: "Daily", sub: "Every day" },
-                    { val: "Several times a week", sub: "3–5 times per week" },
-                    { val: "Weekly", sub: "Once a week" },
-                    { val: "A few times a month", sub: "2–3 times per month" },
-                  ].map((opt) => (
+                  {[{ val: "Daily", sub: "Every day" }, { val: "Several times a week", sub: "3–5 times per week" }, { val: "Weekly", sub: "Once a week" }, { val: "A few times a month", sub: "2–3 times per month" }].map((opt) => (
                     <label key={opt.val} className="cursor-pointer">
                       <input type="radio" {...register("frequency", { required: true })} value={opt.val} className="peer hidden" />
                       <div className="peer-checked:bg-[#1D1D1D] peer-checked:text-white peer-checked:border-[#1D1D1D] border-2 border-[#E8E8E8] rounded-xl p-4 transition-all hover:border-[#1D1D1D]/40">
@@ -716,8 +600,6 @@ export function BecomeCreator() {
                 </div>
                 {errors.frequency && <p className={errorClass}>Please select a frequency</p>}
               </div>
-
-              {/* Duration */}
               <div>
                 <label className={`${labelClass} mb-3`}>Average stream length <span className="text-red-400">*</span></label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -731,8 +613,6 @@ export function BecomeCreator() {
                   ))}
                 </div>
               </div>
-
-              {/* Days + time */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                 <div>
                   <label className={`${labelClass} mb-3`}>Days you go live</label>
@@ -740,19 +620,14 @@ export function BecomeCreator() {
                     {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
                       <label key={day} className="cursor-pointer">
                         <input type="checkbox" {...register("days")} value={day} className="peer hidden" />
-                        <div className="w-11 h-11 flex items-center justify-center border-2 border-[#E8E8E8] rounded-xl peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[10px] font-black transition-all hover:border-[#1D1D1D]/40">
-                          {day[0]}
-                        </div>
+                        <div className="w-11 h-11 flex items-center justify-center border-2 border-[#E8E8E8] rounded-xl peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[10px] font-black transition-all hover:border-[#1D1D1D]/40">{day[0]}</div>
                       </label>
                     ))}
                   </div>
                 </div>
                 <div>
                   <label className={labelClass}>Typical Time <span className="text-red-400">*</span></label>
-                  <select
-                    {...register("timeOfDay", { required: true })}
-                    className="w-full bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-4 py-3.5 text-xs font-semibold outline-none focus:border-[#1D1D1D] transition-colors"
-                  >
+                  <select {...register("timeOfDay", { required: true })} className="w-full bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-4 py-3.5 text-xs font-semibold outline-none focus:border-[#1D1D1D] transition-colors">
                     <option value="">Select time</option>
                     <option value="morning">Morning (6am–12pm)</option>
                     <option value="afternoon">Afternoon (12pm–5pm)</option>
@@ -762,29 +637,17 @@ export function BecomeCreator() {
                   </select>
                 </div>
               </div>
-
-              {/* Avg viewers */}
               <div>
                 <label className={labelClass}>Average Concurrent Viewers</label>
-                <input
-                  type="number"
-                  {...register("avgConcurrent")}
-                  placeholder="e.g. 250"
-                  min="0"
-                  className={inputClass()}
-                />
+                <input type="number" {...register("avgConcurrent")} placeholder="e.g. 250" min="0" className={inputClass()} />
               </div>
-
-              {/* Categories */}
               <div>
                 <label className={`${labelClass} mb-3`}>Content Categories</label>
                 <div className="flex flex-wrap gap-2">
                   {["Gaming", "Beauty", "Fashion", "Fitness", "Food", "Music", "Comedy", "Education", "Business", "Lifestyle", "Sports", "Tech", "Travel", "Other"].map((cat) => (
                     <label key={cat} className="cursor-pointer">
                       <input type="checkbox" {...register("categories")} value={cat} className="peer hidden" />
-                      <div className="px-3.5 py-2 border-2 border-[#E8E8E8] rounded-full peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[9px] font-black uppercase tracking-wide transition-all hover:border-[#1D1D1D]/40">
-                        {cat}
-                      </div>
+                      <div className="px-3.5 py-2 border-2 border-[#E8E8E8] rounded-full peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[9px] font-black uppercase tracking-wide transition-all hover:border-[#1D1D1D]/40">{cat}</div>
                     </label>
                   ))}
                 </div>
@@ -794,32 +657,13 @@ export function BecomeCreator() {
 
           {/* STEP 4 — Proof */}
           {step === 4 && (
-            <motion.div
-              key="step4"
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.2 }}
-              className="flex flex-col gap-8"
-            >
+            <motion.div key="step4" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.2 }} className="flex flex-col gap-8">
               <div>
                 <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Upload Verification</h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">
-                  Proof of your streaming analytics from the last 30 days.
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Proof of your streaming analytics from the last 30 days.</p>
               </div>
-
-              <input
-                type="file"
-                id="verification"
-                accept="image/*,application/pdf"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }}
-                className="hidden"
-              />
-              <label
-                htmlFor="verification"
-                className="border-2 border-dashed border-[#1D1D1D]/20 rounded-2xl p-10 flex flex-col items-center gap-5 bg-[#F8F8F8] hover:border-[#389C9A] hover:bg-[#F0FAFA] transition-all cursor-pointer group"
-              >
+              <input type="file" id="verification" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} className="hidden" />
+              <label htmlFor="verification" className="border-2 border-dashed border-[#1D1D1D]/20 rounded-2xl p-10 flex flex-col items-center gap-5 bg-[#F8F8F8] hover:border-[#389C9A] hover:bg-[#F0FAFA] transition-all cursor-pointer group">
                 <div className="w-14 h-14 border-2 border-[#1D1D1D] rounded-xl bg-white flex items-center justify-center group-hover:bg-[#1D1D1D] group-hover:text-white transition-colors">
                   <Upload className="w-6 h-6" />
                 </div>
@@ -835,35 +679,20 @@ export function BecomeCreator() {
                   </div>
                 )}
               </label>
-
               <div className="border-t-2 border-[#E8E8E8] pt-6">
                 <label className={labelClass}>Referral Code (Optional)</label>
-                <input
-                  {...register("referral")}
-                  placeholder="If referred by another creator"
-                  className={inputClass()}
-                />
+                <input {...register("referral")} placeholder="If referred by another creator" className={inputClass()} />
               </div>
             </motion.div>
           )}
 
           {/* STEP 5 — Review */}
           {step === 5 && (
-            <motion.div
-              key="step5"
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.2 }}
-              className="flex flex-col gap-8"
-            >
+            <motion.div key="step5" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.2 }} className="flex flex-col gap-8">
               <div>
                 <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Final Review</h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">
-                  Confirm your details before submitting.
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Confirm your details before submitting.</p>
               </div>
-
               <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-2xl overflow-hidden">
                 {[
                   { label: "Name", value: fullName },
@@ -871,12 +700,7 @@ export function BecomeCreator() {
                   { label: "Country", value: country },
                   { label: "Stream Frequency", value: frequency },
                 ].map(({ label, value }, i) => (
-                  <div
-                    key={label}
-                    className={`flex justify-between items-center px-5 py-4 ${
-                      i < 3 ? "border-b border-[#1D1D1D]/10" : ""
-                    }`}
-                  >
+                  <div key={label} className={`flex justify-between items-center px-5 py-4 ${i < 3 ? "border-b border-[#1D1D1D]/10" : ""}`}>
                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">{label}</span>
                     <span className="text-[10px] font-black uppercase text-right max-w-[60%] truncate">
                       {value || <span className="opacity-30">Not entered</span>}
@@ -884,8 +708,6 @@ export function BecomeCreator() {
                   </div>
                 ))}
               </div>
-
-              {/* Terms */}
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" required className="peer hidden" />
                 <div className="mt-0.5 w-5 h-5 border-2 border-[#1D1D1D] rounded-md flex items-center justify-center bg-white peer-checked:bg-[#389C9A] peer-checked:border-[#389C9A] transition-all shrink-0">
@@ -902,14 +724,9 @@ export function BecomeCreator() {
 
       {/* ── Fixed footer nav ── */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t-2 border-[#1D1D1D] px-5 py-4 z-50">
-        <div className="max-w[480px] mx-auto flex gap-3">
+        <div className="max-w-lg mx-auto flex gap-3">
           {step > 1 && (
-            <button
-              type="button"
-              onClick={prevStep}
-              disabled={isLoading}
-              className="px-5 py-4 border-2 border-[#1D1D1D] rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-colors disabled:opacity-50"
-            >
+            <button type="button" onClick={prevStep} disabled={isLoading} className="px-5 py-4 border-2 border-[#1D1D1D] rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-colors disabled:opacity-50">
               Back
             </button>
           )}
@@ -921,15 +738,8 @@ export function BecomeCreator() {
           >
             <span>
               {isLoading ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Processing...
-                </span>
-              ) : step === 5 ? (
-                "Submit Application"
-              ) : (
-                "Continue"
-              )}
+                <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Processing...</span>
+              ) : step === 5 ? "Submit Application" : "Continue"}
             </span>
             {!isLoading && step < 5 && <ArrowRight className="w-4 h-4 text-[#FEDB71]" />}
           </button>
