@@ -63,7 +63,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast, Toaster } from "sonner";
 import { supabase } from "../lib/supabase";
 import { ImageWithFallback } from "../components/ImageWithFallback";
-import { AdminMessages } from "./AdminMessages"; // <-- import your external component
 
 // ─────────────────────────────────────────────
 // TYPES (same as before)
