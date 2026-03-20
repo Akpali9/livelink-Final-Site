@@ -248,7 +248,7 @@ export function BusinessProfile() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white pb-44 text-[#1D1D1D]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <AppHeader showBack userType="business" title="Settings" />
 
       {/* Top Banner */}
