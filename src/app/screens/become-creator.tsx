@@ -436,7 +436,7 @@ export function BecomeCreator() {
       </div>
 
       {/* Form Steps */}
-      <div className="px-4 sm:px-8 mt-12 max-w-[600px] mx-auto w-full flex-1">
+      <div className="px-4 sm:px-8 mt-12 max-w-[600px] mx-auto w-full flex-1 flex flex-col ">
         <AnimatePresence mode="wait">
           {step === 1 && (
             <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-12">
