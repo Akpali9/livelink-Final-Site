@@ -235,7 +235,7 @@ export function Campaigns() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-white max-w-[480px]">
         <AppHeader showBack title="My Campaigns" userType="creator" />
         <div className="flex items-center justify-center h-[80vh]">
           <div className="flex flex-col items-center gap-4">
@@ -249,7 +249,7 @@ export function Campaigns() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px] max-w-[480px]">
       <AppHeader showBack title="My Campaigns" userType="creator" />
       
       <div className="px-6 py-6 sticky top-[84px] bg-white z-20 border-b border-[#1D1D1D]/10">
