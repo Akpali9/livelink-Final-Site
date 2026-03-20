@@ -11,7 +11,7 @@ import { BusinessCampaignDetail } from "./screens/business-campaign-detail";
 import { BusinessCampaignCreators } from "./screens/business-campaign-creators";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { BrowseCreators } from "./screens/browse";
-// import { Messages } from "./screens/messages"; // Commented out - file doesn't exist
+import { Messages } from "./screens/messages"; // Commented out - file doesn't exist
 import { Notifications } from "./screens/notifications";
 // import { CampaignLiveUpdate } from "./screens/campaign-live-update";
 // import { CampaignSummary } from "./screens/campaign-summary";
@@ -45,13 +45,13 @@ export const routes: RouteObject[] = [
   { path: "/dashboard", element: protectCreator(Dashboard) },
   { path: "/profile/:id", element: protectCreator(Profile) },
   { path: "/settings", element: protectCreator(Settings) },
-  // { path: "/campaigns", element: protectCreator(Campaigns) },
+  { path: "/campaigns", element: protectCreator(Campaigns) },
   // { path: "/campaign/live-update/:id", element: protectCreator(CampaignLiveUpdate) },
   // { path: "/campaign/:id/summary", element: protectCreator(CampaignSummary) },
   // { path: "/creator/upcoming-gig/:id", element: protectCreator(UpcomingGig) },
    { path: "/browse-businesses", element: protectCreator(BrowseBusinesses) },
-  // { path: "/messages", element: protectCreator(Messages) }, // Commented out
-  // { path: "/messages/:id", element: protectCreator(Messages) }, // Commented out
+  { path: "/messages", element: protectCreator(Messages) }, // Commented out
+  { path: "/messages/:id", element: protectCreator(Messages) }, // Commented out
   { path: "/notifications", element: protectCreator(Notifications) },
   
   // Business routes
