@@ -297,7 +297,7 @@ export function BusinessCampaigns() {
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
       <AppHeader showBack title="Campaigns" userType="business" />
       
-      <div className="px-6 py-6 sticky top-[84px] bg-white z-20 border-b border-[#1D1D1D]/10">
+      <div className="px-6 py-6 sticky top-[84px] max-w-[480px] bg-white z-20 border-b border-[#1D1D1D]/10">
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-[#F8F8F8] p-4 border-2 border-[#1D1D1D]">
