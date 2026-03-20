@@ -1,4 +1,4 @@
- import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   Users,
@@ -2148,4 +2148,4 @@ function BusinessDetailModal({ business, onClose }: any) {
 }
 
 export { AdminDashboard as AdminDashboardScreen };
-export default AdminDashboard;
+export default AdminDashboard; 
