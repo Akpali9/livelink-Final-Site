@@ -43,7 +43,7 @@ interface CreatorWithPlatforms {
   }[];
 }
 
-export function Browse() {
+export function BrowseCreator() {
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState("All");
   const [showFilters, setShowFilters] = useState(false);
