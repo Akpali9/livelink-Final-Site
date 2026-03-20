@@ -17,6 +17,7 @@ import { BecomeCreator } from "./screens/become-creator";
 import { BecomeBusiness } from "./screens/become-business";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { GigAccepted } from "./screens/gig-accepted";
+
 import { BusinessSubmissionSuccess } from "./screens/business-submission-success";
 import { Campaigns } from "./screens/campaigns";
 import { BusinessCampaignDetail } from "./screens/business-campaign-detail";
@@ -35,6 +36,7 @@ import { BusinessCampaignOverview } from "./screens/business-campaign-overview";
 import { RootLayout } from "../app/components/layout";
 import { CampaignDetails } from "./screens/campaign-details";
 import { Settings } from "./screens/settings";
+import { BusinessCampaigns } from "./screens/business-campaigns";
 import { BusinessSettings } from "./screens/business-settings";
 import { ProtectedRoute } from "../app/components/ProtectedRoute";
 import { ForgotPassword } from "./screens/forgot-password";
@@ -110,6 +112,7 @@ const routes: RouteObject[] = [
       { path: "business/campaign/:campaignId/creator/:creatorId", element: protectBusiness(BusinessCampaignDetail) },
       { path: "business/settings", element: protectBusiness(BusinessSettings) },
       { path: "business/submission-success", element: protectBusiness(BusinessSubmissionSuccess) },
+      { path: "business/campaigns", element: protectBusiness(BusinessCampaigns) },
 
       // Protected routes for both user types
       { path: "messages", element: protectBoth(MessagesInbox) },
