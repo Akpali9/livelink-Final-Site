@@ -1,4 +1,4 @@
-import { RouteObject } from "react-router";
+import {createBrowserRouter, RouteObject } from "react-router";
 import { Dashboard } from "./screens/dashboard";
 import { Profile } from "./screens/profile";
 import { Settings } from "./screens/settings";
