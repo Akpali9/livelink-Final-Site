@@ -1,32 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import {
-  Building2,
-  Mail,
-  Phone,
-  MapPin,
-  Globe,
-  Briefcase,
-  Camera,
-  Save,
-  LogOut,
-  Bell,
-  Shield,
-  Eye,
-  EyeOff,
-  ChevronRight,
-  CheckCircle,
-  AlertCircle,
-  Loader2,
-  Trash2,
-  Lock,
-  User,
-  FileText,
-  DollarSign,
-  Target,
-  Tag,
-  Info,
-  X,
+  Building2, Mail, Phone, Globe, Briefcase, Camera, Save,
+  LogOut, Bell, Eye, EyeOff, ChevronRight, CheckCircle,
+  AlertCircle, Loader2, Trash2, Lock, User, FileText,
+  Info, X, ShieldCheck, HelpCircle, MessageCircle, Scale,
+  Pause, Pencil, Linkedin, Twitter, Instagram, Youtube,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AppHeader } from "../components/app-header";
@@ -36,281 +15,250 @@ import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────
-// TYPES
+// CONSTANTS
 // ─────────────────────────────────────────────
-
-interface BusinessProfile {
-  id: string;
-  user_id: string;
-  business_name: string;
-  full_name: string;
-  job_title: string;
-  email: string;
-  phone_number: string;
-  industry: string;
-  city: string;
-  country: string;
-  postcode: string;
-  website: string;
-  description: string;
-  logo_url: string;
-  status: string;
-  application_status: string;
-}
 
 const INDUSTRIES = [
-  "Technology", "Fashion & Beauty", "Food & Beverage", "Gaming",
-  "Health & Fitness", "Entertainment", "Education", "Finance",
-  "Travel & Hospitality", "Retail", "Automotive", "Sports",
-  "Music", "Art & Design", "Media", "Real Estate", "Other",
+  "Technology","Fashion & Beauty","Food & Beverage","Gaming",
+  "Health & Fitness","Entertainment","Education","Finance",
+  "Travel & Hospitality","Retail","Automotive","Sports",
+  "Music","Art & Design","Media","Real Estate",
+  "Marketing & Advertising","Other",
 ];
 
-const COUNTRIES = [
-  "United Kingdom", "United States", "Nigeria", "Canada",
-  "Australia", "Germany", "France", "South Africa", "Other",
+const NICHES = [
+  "Gaming","Tech Reviews","Lifestyle","Fashion","Beauty",
+  "Food","Travel","Fitness","Music","Comedy",
+  "Education","Sports","Finance","Automotive","Parenting",
 ];
+
+const GENDERS = ["All Genders","Male","Female","Non-binary"];
 
 // ─────────────────────────────────────────────
-// COMPONENT
+// REUSABLE COMPONENTS
+// ─────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="text-[9px] font-black uppercase tracking-widest opacity-40 px-1 pt-2">{children}</p>;
+}
+
+function Card({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border-2 border-[#1D1D1D] rounded-xl overflow-hidden">
+      {title && (
+        <div className="px-5 py-3 border-b border-[#1D1D1D]/10 bg-[#F8F8F8]">
+          <h3 className="text-[10px] font-black uppercase tracking-widest">{title}</h3>
+        </div>
+      )}
+      <div className="px-5 py-1">{children}</div>
+    </div>
+  );
+}
+
+function Row({ children }: { children: React.ReactNode }) {
+  return <div className="py-3 border-b border-[#1D1D1D]/5 last:border-0">{children}</div>;
+}
+
+function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <Row>
+      <div className="flex items-center justify-between">
+        <p className="text-sm">{label}</p>
+        <button onClick={() => onChange(!value)}
+          className={`relative w-11 h-6 rounded-full transition-colors ${value ? "bg-[#389C9A]" : "bg-gray-200"}`}>
+          <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${value ? "translate-x-5" : "translate-x-0.5"}`} />
+        </button>
+      </div>
+    </Row>
+  );
+}
+
+function InlineEdit({
+  label, value, onSave, type = "text", multiline = false,
+}: {
+  label: string; value: string; onSave: (v: string) => void;
+  type?: string; multiline?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState(value);
+
+  return (
+    <Row>
+      <div className="flex items-start justify-between mb-1">
+        <p className="text-[8px] font-black uppercase tracking-widest opacity-40">{label}</p>
+        {!editing && (
+          <button onClick={() => { setDraft(value); setEditing(true); }}
+            className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] flex items-center gap-1 hover:underline">
+            <Pencil className="w-3 h-3" /> Edit
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="mt-2 space-y-2">
+          {multiline
+            ? <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={4} autoFocus
+                className="w-full px-3 py-2 border-2 border-[#1D1D1D] outline-none rounded-xl text-sm resize-none" />
+            : <input type={type} value={draft} onChange={e => setDraft(e.target.value)} autoFocus
+                className="w-full px-3 py-2 border-2 border-[#1D1D1D] outline-none rounded-xl text-sm" />
+          }
+          <div className="flex gap-2">
+            <button onClick={() => { onSave(draft); setEditing(false); }}
+              className="flex-1 bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-[#389C9A] transition-colors">
+              Update {label}
+            </button>
+            <button onClick={() => setEditing(false)}
+              className="px-4 border-2 border-[#1D1D1D]/10 text-[9px] font-black uppercase tracking-widest rounded-lg hover:border-[#1D1D1D] transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm font-medium mt-0.5">{value || <span className="opacity-30 italic text-xs">Not set</span>}</p>
+      )}
+    </Row>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MAIN COMPONENT
 // ─────────────────────────────────────────────
 
 export function BusinessSettings() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
-  const [loading, setLoading]           = useState(true);
-  const [saving, setSaving]             = useState(false);
+  const [loading, setLoading]             = useState(true);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [activeSection, setActiveSection] = useState<
-    "profile" | "account" | "notifications" | "security" | "danger"
-  >("profile");
+  const [profile, setProfile]             = useState<any>({});
 
-  const [profile, setProfile] = useState<Partial<BusinessProfile>>({});
-  const [originalProfile, setOriginalProfile] = useState<Partial<BusinessProfile>>({});
-  const [hasChanges, setHasChanges]     = useState(false);
+  // Email change
+  const [showEmailChange, setShowEmailChange] = useState(false);
+  const [newEmail, setNewEmail]               = useState("");
+  const [confirmEmail, setConfirmEmail]       = useState("");
+  const [emailPassword, setEmailPassword]     = useState("");
 
   // Password change
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword]           = useState("");
-  const [confirmPassword, setConfirmPassword]   = useState("");
-  const [showCurrentPw, setShowCurrentPw]       = useState(false);
-  const [showNewPw, setShowNewPw]               = useState(false);
-  const [changingPw, setChangingPw]             = useState(false);
+  const [showPwChange, setShowPwChange] = useState(false);
+  const [newPassword, setNewPassword]   = useState("");
+  const [showNewPw, setShowNewPw]       = useState(false);
+  const [changingPw, setChangingPw]     = useState(false);
 
-  // Notification prefs (stored locally / user metadata)
-  const [notifPrefs, setNotifPrefs] = useState({
-    email_offers:       true,
-    email_campaigns:    true,
-    email_payments:     true,
-    push_offers:        true,
-    push_campaigns:     true,
-    push_payments:      true,
+  // Account owner edit
+  const [showOwnerEdit, setShowOwnerEdit] = useState(false);
+  const [ownerName, setOwnerName]         = useState("");
+  const [ownerTitle, setOwnerTitle]       = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+
+  // Campaign prefs
+  const [campaignType, setCampaignType]   = useState("banner");
+  const [targetGender, setTargetGender]   = useState("All Genders");
+  const [ageMin, setAgeMin]               = useState(18);
+  const [ageMax, setAgeMax]               = useState(35);
+  const [niches, setNiches]               = useState<string[]>(["Gaming","Tech Reviews","Lifestyle"]);
+  const [showNicheEdit, setShowNicheEdit] = useState(false);
+
+  // Notifications
+  const [notifs, setNotifs] = useState({
+    creator_accepts:  true,
+    creator_declines: true,
+    stream_verified:  true,
+    new_message:      true,
+    announcements:    true,
   });
 
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch ─────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!user) return;
-    fetchProfile();
-  }, [user]);
-
-  useEffect(() => {
-    const changed = JSON.stringify(profile) !== JSON.stringify(originalProfile);
-    setHasChanges(changed);
-  }, [profile, originalProfile]);
+  useEffect(() => { if (user) fetchProfile(); }, [user]);
 
   const fetchProfile = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("businesses")
-        .select("*")
-        .eq("user_id", user!.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data) {
-        setProfile(data);
-        setOriginalProfile(data);
-      } else {
-        // Pre-fill from user metadata
-        const meta = user!.user_metadata || {};
-        const prefilled: Partial<BusinessProfile> = {
-          business_name: meta.business_name || "",
-          full_name:     meta.full_name     || "",
-          job_title:     meta.job_title     || "",
-          email:         user!.email        || "",
-          phone_number:  meta.phone         || "",
-          industry:      meta.industry      || "",
-          city:          meta.city          || "",
-          country:       meta.country       || "",
-          description:   meta.description   || "",
-          website:       meta.website       || "",
-          logo_url:      meta.logo_url      || "",
-        };
-        setProfile(prefilled);
-        setOriginalProfile(prefilled);
-      }
+      const { data } = await supabase.from("businesses").select("*").eq("user_id", user!.id).maybeSingle();
+      const meta     = user!.user_metadata || {};
+      const p        = data || {};
+      setProfile({ ...p, email: user!.email });
+      setOwnerName(p.full_name  || meta.full_name  || "");
+      setOwnerTitle(p.job_title || meta.job_title  || "");
+      if (p.target_gender)        setTargetGender(p.target_gender);
+      if (p.target_age_min)       setAgeMin(p.target_age_min);
+      if (p.target_age_max)       setAgeMax(p.target_age_max);
+      if (p.preferred_niches)     setNiches(p.preferred_niches);
+      if (p.default_campaign_type) setCampaignType(p.default_campaign_type);
     } catch (err) {
-      console.error("Error fetching business profile:", err);
       toast.error("Failed to load profile");
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  // ── Patch ─────────────────────────────────────────────────────────────────
 
-  const handleSave = async () => {
+  const patch = async (updates: any) => {
     if (!user) return;
-    setSaving(true);
     try {
-      const { data: existing } = await supabase
-        .from("businesses")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const payload = {
-        ...profile,
-        user_id:    user.id,
-        updated_at: new Date().toISOString(),
-      };
-
+      const { data: existing } = await supabase.from("businesses").select("id").eq("user_id", user.id).maybeSingle();
       if (existing) {
-        const { error } = await supabase
-          .from("businesses")
-          .update(payload)
-          .eq("user_id", user.id);
-        if (error) throw error;
+        await supabase.from("businesses").update({ ...updates, updated_at: new Date().toISOString() }).eq("user_id", user.id);
       } else {
-        const { error } = await supabase
-          .from("businesses")
-          .insert({ ...payload, created_at: new Date().toISOString() });
-        if (error) throw error;
+        await supabase.from("businesses").insert({ ...updates, user_id: user.id, created_at: new Date().toISOString() });
       }
-
-      // Sync relevant fields to user metadata
-      await supabase.auth.updateUser({
-        data: {
-          full_name:     profile.full_name,
-          business_name: profile.business_name,
-          job_title:     profile.job_title,
-          phone:         profile.phone_number,
-        },
-      });
-
-      setOriginalProfile({ ...profile });
-      setHasChanges(false);
-      toast.success("Profile saved successfully");
-    } catch (err) {
-      console.error("Save error:", err);
-      toast.error("Failed to save profile");
-    } finally {
-      setSaving(false);
-    }
+      setProfile((p: any) => ({ ...p, ...updates }));
+      toast.success("Saved");
+    } catch { toast.error("Failed to save"); }
   };
 
-  // ── Logo upload ────────────────────────────────────────────────────────────
+  // ── Logo ──────────────────────────────────────────────────────────────────
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Logo must be under 5MB");
-      return;
-    }
-
+    if (file.size > 5 * 1024 * 1024) { toast.error("Max 5MB"); return; }
     setUploadingLogo(true);
     try {
-      const ext      = file.name.split(".").pop();
-      const fileName = `business-logos/${user.id}-${Date.now()}.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(fileName, file, { upsert: true });
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(fileName);
-
-      setProfile(prev => ({ ...prev, logo_url: publicUrl }));
-
-      // Save immediately
-      await supabase.from("businesses").update({ logo_url: publicUrl }).eq("user_id", user.id);
-      toast.success("Logo updated");
-    } catch (err) {
-      console.error("Logo upload error:", err);
-      toast.error("Failed to upload logo");
-    } finally {
-      setUploadingLogo(false);
-    }
+      const ext = file.name.split(".").pop();
+      const path = `business-logos/${user.id}-${Date.now()}.${ext}`;
+      await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+      await patch({ logo_url: publicUrl });
+    } catch { toast.error("Upload failed"); }
+    finally { setUploadingLogo(false); }
   };
 
-  // ── Password change ────────────────────────────────────────────────────────
+  // ── Email ─────────────────────────────────────────────────────────────────
+
+  const handleEmailChange = async () => {
+    if (newEmail !== confirmEmail) { toast.error("Emails don't match"); return; }
+    try {
+      const { error } = await supabase.auth.updateUser({ email: newEmail });
+      if (error) throw error;
+      toast.success("Confirmation sent to your new email");
+      setShowEmailChange(false); setNewEmail(""); setConfirmEmail(""); setEmailPassword("");
+    } catch (err: any) { toast.error(err.message); }
+  };
+
+  // ── Password ──────────────────────────────────────────────────────────────
 
   const handleChangePassword = async () => {
-    if (!newPassword || !confirmPassword) {
-      toast.error("Please fill in all password fields");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast.error("New passwords don't match");
-      return;
-    }
-    if (newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
-      return;
-    }
-
+    if (newPassword.length < 8) { toast.error("Min. 8 characters"); return; }
     setChangingPw(true);
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      toast.success("Password changed successfully");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to change password");
-    } finally {
-      setChangingPw(false);
-    }
+      toast.success("Password updated");
+      setShowPwChange(false); setNewPassword("");
+    } catch (err: any) { toast.error(err.message); }
+    finally { setChangingPw(false); }
   };
 
-  // ── Logout / Delete ────────────────────────────────────────────────────────
+  // ── Owner update ──────────────────────────────────────────────────────────
 
-  const handleLogout = async () => {
-    await logout();
-    navigate("/");
-    toast.success("Logged out");
+  const handleOwnerUpdate = async () => {
+    await patch({ full_name: ownerName, job_title: ownerTitle });
+    await supabase.auth.updateUser({ data: { full_name: ownerName, job_title: ownerTitle } });
+    setShowOwnerEdit(false);
   };
-
-  const handleDeleteAccount = async () => {
-    if (!confirm("Are you sure you want to delete your account? This cannot be undone.")) return;
-    if (!confirm("This will permanently delete all your campaigns and data. Type YES to confirm.")) return;
-    toast.error("Please contact support to delete your account.");
-  };
-
-  const update = (field: keyof BusinessProfile, value: string) =>
-    setProfile(prev => ({ ...prev, [field]: value }));
-
-  // ── Nav sections ───────────────────────────────────────────────────────────
-
-  const sections = [
-    { id: "profile",       label: "Business Profile",   icon: Building2 },
-    { id: "account",       label: "Account Details",    icon: User },
-    { id: "notifications", label: "Notifications",      icon: Bell },
-    { id: "security",      label: "Security",           icon: Lock },
-    { id: "danger",        label: "Danger Zone",        icon: AlertCircle },
-  ] as const;
-
-  // ── Loading ────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -323,463 +271,459 @@ export function BusinessSettings() {
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const locationStr = [profile.city, profile.country].filter(Boolean).join(", ") || "Not set";
 
   return (
-    <div className="min-h-screen bg-[#F8F8F8] pb-24">
+    <div className="min-h-screen bg-[#F8F8F8] pb-28">
       <AppHeader showBack title="Settings" userType="business" />
 
-      <div className="max-w-[480px] mx-auto">
+      <div className="max-w-[480px] mx-auto px-4 pt-5 space-y-3">
 
-        {/* Section Nav */}
-        <div className="flex gap-2 overflow-x-auto px-4 pt-4 pb-2 no-scrollbar">
-          {sections.map(sec => {
-            const Icon = sec.icon;
-            return (
-              <button
-                key={sec.id}
-                onClick={() => setActiveSection(sec.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 text-[8px] font-black uppercase tracking-widest rounded-full whitespace-nowrap transition-colors ${
-                  activeSection === sec.id
-                    ? "bg-[#1D1D1D] text-white"
-                    : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D]/50 hover:text-[#1D1D1D]"
-                }`}
-              >
-                <Icon className="w-3 h-3" />
-                {sec.label}
+        {/* ── ACCOUNT ──────────────────────────────────────────────── */}
+        <SectionLabel>Account</SectionLabel>
+
+        {/* Email */}
+        <Card title="Email Address">
+          <Row>
+            <p className="text-sm font-medium mb-2">{profile.email || user?.email}</p>
+            {!showEmailChange ? (
+              <button onClick={() => setShowEmailChange(true)}
+                className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline">
+                Change Email
               </button>
-            );
-          })}
-        </div>
-
-        <div className="px-4 py-4 space-y-4">
-
-          {/* ── PROFILE SECTION ── */}
-          {activeSection === "profile" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-
-              {/* Logo */}
-              <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-5">
-                <h3 className="text-[10px] font-black uppercase tracking-widest mb-4">Business Logo</h3>
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div className="w-20 h-20 border-2 border-[#1D1D1D] rounded-xl overflow-hidden bg-[#F8F8F8] flex items-center justify-center">
-                      {profile.logo_url ? (
-                        <img src={profile.logo_url} alt="logo" className="w-full h-full object-cover" />
-                      ) : (
-                        <Building2 className="w-8 h-8 text-gray-300" />
-                      )}
-                    </div>
-                    <button
-                      onClick={() => logoInputRef.current?.click()}
-                      disabled={uploadingLogo}
-                      className="absolute -bottom-2 -right-2 w-7 h-7 bg-[#1D1D1D] text-white rounded-full flex items-center justify-center border-2 border-white hover:bg-[#389C9A] transition-colors"
-                    >
-                      {uploadingLogo ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
-                    </button>
-                    <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase">{profile.business_name || "Your Business"}</p>
-                    <p className="text-[8px] text-gray-400 mt-0.5">JPG, PNG or WebP · Max 5MB</p>
-                    <button
-                      onClick={() => logoInputRef.current?.click()}
-                      className="mt-2 text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                    >
-                      Change Logo
-                    </button>
-                  </div>
+            ) : (
+              <div className="space-y-3 mt-2">
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">New Email Address</label>
+                  <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                    placeholder="newemail@example.com"
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Confirm New Email</label>
+                  <input type="email" value={confirmEmail} onChange={e => setConfirmEmail(e.target.value)}
+                    placeholder="Repeat new email"
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Current Password</label>
+                  <input type="password" value={emailPassword} onChange={e => setEmailPassword(e.target.value)}
+                    placeholder="Verify your password"
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+                </div>
+                <div className="flex gap-2 pb-2">
+                  <button onClick={handleEmailChange}
+                    className="flex-1 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors">
+                    Update Email
+                  </button>
+                  <button onClick={() => setShowEmailChange(false)}
+                    className="px-4 border-2 border-[#1D1D1D]/10 text-[9px] font-black uppercase tracking-widest rounded-xl">
+                    Cancel
+                  </button>
                 </div>
               </div>
+            )}
+          </Row>
+        </Card>
 
-              {/* Business Info */}
-              <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-5 space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-widest">Business Information</h3>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Business Name *</label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={profile.business_name || ""}
-                      onChange={e => update("business_name", e.target.value)}
-                      placeholder="Your business name"
-                      className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Industry</label>
-                  <select
-                    value={profile.industry || ""}
-                    onChange={e => update("industry", e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors bg-white"
-                  >
-                    <option value="">Select industry</option>
-                    {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Website</label>
-                  <div className="relative">
-                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="url"
-                      value={profile.website || ""}
-                      onChange={e => update("website", e.target.value)}
-                      placeholder="https://yourbusiness.com"
-                      className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">About Your Business</label>
-                  <textarea
-                    value={profile.description || ""}
-                    onChange={e => update("description", e.target.value)}
-                    placeholder="Describe your business, what you do, and what you're looking for in creators..."
-                    rows={4}
-                    className="w-full px-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors resize-none"
-                  />
-                  <p className="text-[8px] text-gray-400 mt-1">{(profile.description || "").length}/500 characters</p>
-                </div>
+        {/* Password */}
+        <Card title="Password">
+          <Row>
+            {!showPwChange ? (
+              <div className="flex items-center justify-between">
+                <p className="text-sm tracking-widest text-gray-400">••••••••</p>
+                <button onClick={() => setShowPwChange(true)}
+                  className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline">Change</button>
               </div>
-
-              {/* Location */}
-              <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-5 space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-widest">Location</h3>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">City</label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="text"
-                        value={profile.city || ""}
-                        onChange={e => update("city", e.target.value)}
-                        placeholder="City"
-                        className="w-full pl-10 pr-3 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Postcode</label>
-                    <input
-                      type="text"
-                      value={profile.postcode || ""}
-                      onChange={e => update("postcode", e.target.value)}
-                      placeholder="Postcode"
-                      className="w-full px-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                    />
-                  </div>
-                </div>
-
+            ) : (
+              <div className="space-y-3">
                 <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Country</label>
-                  <select
-                    value={profile.country || ""}
-                    onChange={e => update("country", e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors bg-white"
-                  >
-                    <option value="">Select country</option>
-                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ── ACCOUNT SECTION ── */}
-          {activeSection === "account" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-
-              {/* Contact Person */}
-              <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-5 space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-widest">Contact Person</h3>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Full Name *</label>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">New Password</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={profile.full_name || ""}
-                      onChange={e => update("full_name", e.target.value)}
-                      placeholder="Your full name"
-                      className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Job Title</label>
-                  <div className="relative">
-                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={profile.job_title || ""}
-                      onChange={e => update("job_title", e.target.value)}
-                      placeholder="e.g. Marketing Manager"
-                      className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Email Address</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="email"
-                      value={profile.email || user?.email || ""}
-                      disabled
-                      className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 outline-none rounded-xl text-sm bg-[#F8F8F8] text-gray-400 cursor-not-allowed"
-                    />
-                  </div>
-                  <p className="text-[8px] text-gray-400 mt-1">Email cannot be changed here. Contact support.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Phone Number</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="tel"
-                      value={profile.phone_number || ""}
-                      onChange={e => update("phone_number", e.target.value)}
-                      placeholder="+44 7700 900000"
-                      className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Account Status */}
-              <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-5">
-                <h3 className="text-[10px] font-black uppercase tracking-widest mb-4">Account Status</h3>
-                <div className="space-y-3">
-                  {[
-                    {
-                      label: "Application Status",
-                      value: profile.application_status || "pending",
-                      color: profile.application_status === "approved"
-                        ? "bg-green-100 text-green-700"
-                        : profile.application_status === "rejected"
-                        ? "bg-red-100 text-red-700"
-                        : "bg-yellow-100 text-yellow-700",
-                    },
-                    {
-                      label: "Account Status",
-                      value: profile.status || "pending",
-                      color: profile.status === "active"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-yellow-100 text-yellow-700",
-                    },
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-center justify-between py-2 border-b border-[#1D1D1D]/5 last:border-0">
-                      <span className="text-[9px] font-black uppercase tracking-widest opacity-50">{item.label}</span>
-                      <span className={`text-[8px] font-black px-3 py-1 rounded-full capitalize ${item.color}`}>
-                        {item.value.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Logout */}
-              <button
-                onClick={handleLogout}
-                className="w-full bg-white border-2 border-[#1D1D1D] rounded-xl p-4 flex items-center justify-between hover:bg-[#1D1D1D] hover:text-white transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <LogOut className="w-4 h-4 text-red-500 group-hover:text-white" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-red-500 group-hover:text-white">Sign Out</span>
-                </div>
-                <ChevronRight className="w-4 h-4 opacity-40" />
-              </button>
-            </motion.div>
-          )}
-
-          {/* ── NOTIFICATIONS SECTION ── */}
-          {activeSection === "notifications" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-              {[
-                {
-                  group: "Email Notifications",
-                  items: [
-                    { key: "email_offers",    label: "New creator applications",  desc: "When creators apply to your campaigns" },
-                    { key: "email_campaigns", label: "Campaign updates",          desc: "Status changes for your campaigns" },
-                    { key: "email_payments",  label: "Payment receipts",          desc: "Payment confirmations and invoices" },
-                  ],
-                },
-                {
-                  group: "Push Notifications",
-                  items: [
-                    { key: "push_offers",    label: "Creator activity",  desc: "Live updates from creators" },
-                    { key: "push_campaigns", label: "Campaign alerts",   desc: "Real-time campaign notifications" },
-                    { key: "push_payments",  label: "Payment alerts",    desc: "Instant payment notifications" },
-                  ],
-                },
-              ].map((section) => (
-                <div key={section.group} className="bg-white border-2 border-[#1D1D1D] rounded-xl p-5">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest mb-4">{section.group}</h3>
-                  <div className="space-y-4">
-                    {section.items.map(item => (
-                      <label key={item.key} className="flex items-center justify-between cursor-pointer">
-                        <div className="flex-1 pr-4">
-                          <p className="text-xs font-black uppercase tracking-tight">{item.label}</p>
-                          <p className="text-[8px] text-gray-400 mt-0.5">{item.desc}</p>
-                        </div>
-                        <div
-                          onClick={() => setNotifPrefs(prev => ({ ...prev, [item.key]: !prev[item.key as keyof typeof prev] }))}
-                          className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
-                            notifPrefs[item.key as keyof typeof notifPrefs] ? "bg-[#389C9A]" : "bg-gray-200"
-                          }`}
-                        >
-                          <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                            notifPrefs[item.key as keyof typeof notifPrefs] ? "translate-x-5" : "translate-x-0.5"
-                          }`} />
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </motion.div>
-          )}
-
-          {/* ── SECURITY SECTION ── */}
-          {activeSection === "security" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-              <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-5 space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-widest">Change Password</h3>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">New Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type={showNewPw ? "text" : "password"}
-                      value={newPassword}
-                      onChange={e => setNewPassword(e.target.value)}
+                    <input type={showNewPw ? "text" : "password"} value={newPassword} onChange={e => setNewPassword(e.target.value)}
                       placeholder="Min. 8 characters"
-                      className="w-full pl-10 pr-10 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                    />
+                      className="w-full px-3 py-2.5 pr-10 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
                     <button type="button" onClick={() => setShowNewPw(!showNewPw)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                       {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-50 mb-1.5">Confirm New Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type={showCurrentPw ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={e => setConfirmPassword(e.target.value)}
-                      placeholder="Repeat new password"
-                      className="w-full pl-10 pr-10 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm transition-colors"
-                    />
-                    <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                      {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {confirmPassword && newPassword !== confirmPassword && (
-                    <p className="text-[8px] text-red-500 mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> Passwords don't match
-                    </p>
-                  )}
-                </div>
-
-                <button
-                  onClick={handleChangePassword}
-                  disabled={changingPw || !newPassword || !confirmPassword || newPassword !== confirmPassword}
-                  className="w-full bg-[#1D1D1D] text-white py-3 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {changingPw ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                  Update Password
-                </button>
-              </div>
-
-              {/* Security tips */}
-              <div className="bg-[#389C9A]/5 border border-[#389C9A]/20 rounded-xl p-4 flex gap-3">
-                <Info className="w-4 h-4 text-[#389C9A] shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-[#389C9A]">Security Tips</p>
-                  <p className="text-[8px] text-gray-600 leading-relaxed">
-                    Use a strong password with uppercase, lowercase, numbers and symbols. Never share your password with anyone.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ── DANGER ZONE ── */}
-          {activeSection === "danger" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-red-600">Danger Zone</h3>
-                </div>
-                <p className="text-[9px] text-red-600/70 mb-6 leading-relaxed">
-                  These actions are irreversible. Please be absolutely sure before proceeding.
-                </p>
-
-                <div className="space-y-3">
-                  <div className="bg-white border border-red-200 rounded-xl p-4">
-                    <p className="text-xs font-black uppercase mb-1">Delete Account</p>
-                    <p className="text-[8px] text-gray-500 mb-3">
-                      Permanently delete your business account, all campaigns, and associated data.
-                    </p>
-                    <button
-                      onClick={handleDeleteAccount}
-                      className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-lg hover:bg-red-600 transition-colors"
-                    >
-                      <Trash2 className="w-3 h-3" /> Delete Account
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ── SAVE BUTTON ── */}
-          {(activeSection === "profile" || activeSection === "account") && (
-            <AnimatePresence>
-              {hasChanges && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  className="fixed bottom-20 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[440px] z-40"
-                >
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="w-full bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors shadow-2xl flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {saving
-                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-                      : <><Save className="w-4 h-4" /> Save Changes</>}
+                <div className="flex gap-2 pb-2">
+                  <button onClick={handleChangePassword} disabled={changingPw || newPassword.length < 8}
+                    className="flex-1 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors disabled:opacity-40">
+                    {changingPw ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Update Password"}
                   </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          )}
+                  <button onClick={() => setShowPwChange(false)}
+                    className="px-4 border-2 border-[#1D1D1D]/10 text-[9px] font-black uppercase tracking-widest rounded-xl">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </Row>
+        </Card>
 
+        {/* Phone */}
+        <Card title="Phone Number">
+          <Row>
+            <p className="text-sm font-medium mb-1">{profile.phone_number || "Not set"}</p>
+            <p className="text-[8px] text-gray-400 leading-relaxed">
+              To change your phone number contact our team at{" "}
+              <a href="mailto:support@livelink.com" className="text-[#389C9A] underline">support@livelink.com</a>
+              {" "}— this requires identity verification.
+            </p>
+          </Row>
+        </Card>
+
+        {/* Account Owner */}
+        <Card title="Account Owner">
+          <Row>
+            {!showOwnerEdit ? (
+              <>
+                <p className="font-black text-sm">{ownerName || "Not set"}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{ownerTitle || "No title set"}</p>
+                <button onClick={() => setShowOwnerEdit(true)}
+                  className="mt-2 text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1">
+                  <Pencil className="w-3 h-3" /> Edit Details
+                </button>
+              </>
+            ) : (
+              <div className="space-y-3 mt-1">
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Full Name</label>
+                  <input value={ownerName} onChange={e => setOwnerName(e.target.value)}
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Job Title / Role</label>
+                  <input value={ownerTitle} onChange={e => setOwnerTitle(e.target.value)} placeholder="e.g. Marketing Director"
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Current Password</label>
+                  <input type="password" value={ownerPassword} onChange={e => setOwnerPassword(e.target.value)} placeholder="Verify identity"
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+                </div>
+                <div className="flex gap-2 pb-2">
+                  <button onClick={handleOwnerUpdate}
+                    className="flex-1 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors">
+                    Update Details
+                  </button>
+                  <button onClick={() => setShowOwnerEdit(false)}
+                    className="px-4 border-2 border-[#1D1D1D]/10 text-[9px] font-black uppercase tracking-widest rounded-xl">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </Row>
+        </Card>
+
+        {/* ── BUSINESS PROFILE ─────────────────────────────────────── */}
+        <SectionLabel>Business Profile</SectionLabel>
+
+        <Card title="Business Name">
+          <InlineEdit label="Business Name" value={profile.business_name || ""}
+            onSave={v => patch({ business_name: v })} />
+        </Card>
+
+        <Card title="Business Logo">
+          <Row>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 border-2 border-[#1D1D1D]/10 rounded-xl overflow-hidden bg-[#F8F8F8] flex items-center justify-center shrink-0">
+                {profile.logo_url
+                  ? <img src={profile.logo_url} alt="logo" className="w-full h-full object-cover" />
+                  : <Building2 className="w-6 h-6 text-gray-300" />}
+              </div>
+              <div>
+                <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                <button onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo}
+                  className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1">
+                  {uploadingLogo ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
+                  {uploadingLogo ? "Uploading..." : "Change"}
+                </button>
+                <p className="text-[7px] text-gray-400 mt-1">JPG, PNG · Max 5MB</p>
+              </div>
+            </div>
+          </Row>
+        </Card>
+
+        <Card title="Business Description">
+          <InlineEdit label="Description" value={profile.description || ""}
+            onSave={v => patch({ description: v })} multiline />
+        </Card>
+
+        <Card title="Industry">
+          <Row>
+            <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2">Industry</p>
+            <select value={profile.industry || ""} onChange={e => patch({ industry: e.target.value })}
+              className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm bg-white">
+              <option value="">Select industry</option>
+              {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
+            </select>
+          </Row>
+        </Card>
+
+        <Card title="Website">
+          <InlineEdit label="Website" value={profile.website || ""}
+            onSave={v => patch({ website: v })} type="url" />
+        </Card>
+
+        <Card title="Location">
+          <Row>
+            <p className="text-sm font-medium mb-3">{locationStr}</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">City</label>
+                <input value={profile.city || ""} onChange={e => setProfile((p: any) => ({ ...p, city: e.target.value }))}
+                  placeholder="City"
+                  className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+              </div>
+              <div>
+                <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Country</label>
+                <input value={profile.country || ""} onChange={e => setProfile((p: any) => ({ ...p, country: e.target.value }))}
+                  placeholder="Country"
+                  className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+              </div>
+            </div>
+            <button onClick={() => patch({ city: profile.city, country: profile.country })}
+              className="w-full bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors">
+              Save Location
+            </button>
+          </Row>
+        </Card>
+
+        <Card title="Social Media">
+          {[
+            { key: "linkedin",  icon: Linkedin,  label: "LinkedIn",  placeholder: "@yourcompany" },
+            { key: "twitter",   icon: Twitter,   label: "Twitter",   placeholder: "@yourhandle" },
+            { key: "instagram", icon: Instagram, label: "Instagram", placeholder: "@yourhandle" },
+            { key: "youtube",   icon: Youtube,   label: "YouTube",   placeholder: "Channel URL" },
+          ].map(({ key, icon: Icon, label, placeholder }) => (
+            <Row key={key}>
+              <div className="flex items-center gap-3">
+                <Icon className="w-4 h-4 text-gray-400 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40">{label}</p>
+                  <input value={(profile as any)[key] || ""} onChange={e => setProfile((p: any) => ({ ...p, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    onBlur={() => patch({ [key]: (profile as any)[key] })}
+                    className="w-full text-sm border-none outline-none bg-transparent mt-0.5" />
+                </div>
+              </div>
+            </Row>
+          ))}
+        </Card>
+
+        {/* ── CAMPAIGN PREFERENCES ─────────────────────────────────── */}
+        <SectionLabel>Campaign Preferences</SectionLabel>
+
+        <div className="bg-[#F0F0F0] border border-[#1D1D1D]/10 rounded-xl px-4 py-3">
+          <p className="text-[8px] text-gray-500">These preferences help us match your campaigns with the right creators.</p>
         </div>
-      </div>
 
+        <Card title="Target Audience Age">
+          <Row>
+            <p className="text-sm font-medium mb-3">{ageMin} – {ageMax}</p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Min Age</label>
+                <input type="number" min={13} max={65} value={ageMin} onChange={e => setAgeMin(Number(e.target.value))}
+                  className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+              </div>
+              <div>
+                <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Max Age</label>
+                <input type="number" min={13} max={65} value={ageMax} onChange={e => setAgeMax(Number(e.target.value))}
+                  className="w-full px-3 py-2 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+              </div>
+            </div>
+            <button onClick={() => patch({ target_age_min: ageMin, target_age_max: ageMax })}
+              className="w-full bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors">
+              Save Age Range
+            </button>
+          </Row>
+        </Card>
+
+        <Card title="Target Gender">
+          <Row>
+            <div className="flex flex-wrap gap-2">
+              {GENDERS.map(g => (
+                <button key={g} onClick={() => { setTargetGender(g); patch({ target_gender: g }); }}
+                  className={`px-4 py-2 text-[9px] font-black uppercase tracking-widest rounded-full transition-colors ${
+                    targetGender === g ? "bg-[#1D1D1D] text-white" : "bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
+                  }`}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          </Row>
+        </Card>
+
+        <Card title="Preferred Creator Niches">
+          <Row>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {niches.map(n => (
+                <span key={n} className="flex items-center gap-1 bg-[#389C9A]/10 text-[#389C9A] px-3 py-1 rounded-full text-[9px] font-black">
+                  {n}
+                  <button onClick={() => { const u = niches.filter(x => x !== n); setNiches(u); patch({ preferred_niches: u }); }}>
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <button onClick={() => setShowNicheEdit(!showNicheEdit)}
+              className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1">
+              <Pencil className="w-3 h-3" /> Edit
+            </button>
+            {showNicheEdit && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {NICHES.filter(n => !niches.includes(n)).map(n => (
+                  <button key={n} onClick={() => { const u = [...niches, n]; setNiches(u); patch({ preferred_niches: u }); }}
+                    className="px-3 py-1.5 text-[8px] font-black uppercase tracking-widest rounded-full bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 hover:border-[#389C9A] hover:text-[#389C9A] transition-colors">
+                    + {n}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Row>
+        </Card>
+
+        <Card title="Default Campaign Type">
+          <Row>
+            <p className="text-[8px] text-gray-400 mb-3">Pre-select your preferred campaign type when creating a new campaign.</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { val: "banner",       label: "Banner" },
+                { val: "promo",        label: "Promo Code" },
+                { val: "banner_promo", label: "Banner + Code" },
+              ].map(opt => (
+                <button key={opt.val} onClick={() => { setCampaignType(opt.val); patch({ default_campaign_type: opt.val }); }}
+                  className={`px-4 py-2 text-[9px] font-black uppercase tracking-widest rounded-full transition-colors ${
+                    campaignType === opt.val ? "bg-[#1D1D1D] text-white" : "bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </Row>
+        </Card>
+
+        {/* ── NOTIFICATIONS ────────────────────────────────────────── */}
+        <SectionLabel>Notifications</SectionLabel>
+
+        <Card title="Notification Preferences">
+          <ToggleRow label="Creator accepts my campaign"         value={notifs.creator_accepts}  onChange={v => setNotifs(p => ({ ...p, creator_accepts: v }))} />
+          <ToggleRow label="Creator declines my campaign"        value={notifs.creator_declines} onChange={v => setNotifs(p => ({ ...p, creator_declines: v }))} />
+          <ToggleRow label="Stream verified and payout released" value={notifs.stream_verified}  onChange={v => setNotifs(p => ({ ...p, stream_verified: v }))} />
+          <ToggleRow label="New message from a creator"          value={notifs.new_message}      onChange={v => setNotifs(p => ({ ...p, new_message: v }))} />
+          <ToggleRow label="Platform announcements"              value={notifs.announcements}    onChange={v => setNotifs(p => ({ ...p, announcements: v }))} />
+        </Card>
+
+        {/* ── COMPLIANCE & LEGAL ──────────────────────────────────── */}
+        <SectionLabel>Compliance & Legal</SectionLabel>
+
+        <Card title="Compliance & Legal">
+          {[
+            { label: "Advertiser Policy", note: "Last agreed on Jan 15, 2026" },
+            { label: "Terms of Service",  note: "Last agreed on Jan 15, 2026" },
+          ].map((item, i) => (
+            <Row key={i}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-black">{item.label}</p>
+                  <p className="text-[8px] text-gray-400">{item.note}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-300" />
+              </div>
+            </Row>
+          ))}
+          <Row>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-black">Verification Status</p>
+                <span className={`inline-block mt-1 text-[8px] font-black px-2 py-0.5 rounded-full ${
+                  profile.verification_status === "verified"
+                    ? "bg-green-100 text-green-700"
+                    : "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {(profile.verification_status || "PENDING").toUpperCase()}
+                </span>
+                {profile.verification_status === "verified" && (
+                  <p className="text-[8px] text-gray-400 mt-1">Your business identity has been verified by the LiveLink team.</p>
+                )}
+              </div>
+              <ShieldCheck className={`w-5 h-5 ${profile.verification_status === "verified" ? "text-green-500" : "text-gray-300"}`} />
+            </div>
+          </Row>
+        </Card>
+
+        {/* ── ACCOUNT STATUS ──────────────────────────────────────── */}
+        <SectionLabel>Account Status</SectionLabel>
+
+        <Card title="Pause Your Account">
+          <Row>
+            <p className="text-[8px] text-gray-500 leading-relaxed mb-4">
+              Pausing hides your business profile and all active campaign listings. Ongoing campaigns with accepted creators are not affected.
+            </p>
+            <button onClick={() => { if (confirm("Pause your account?")) patch({ status: "paused" }); }}
+              className="w-full border-2 border-[#1D1D1D] py-3 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors flex items-center justify-center gap-2">
+              <Pause className="w-4 h-4" /> Pause My Account
+            </button>
+          </Row>
+        </Card>
+
+        <div className="bg-red-50 border-2 border-red-200 rounded-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-red-200 bg-red-100">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-red-700">Delete Account</h3>
+          </div>
+          <div className="px-5 py-4">
+            <p className="text-[8px] text-red-600/70 mb-4 leading-relaxed">
+              Permanently deletes your business account and all data. Any active campaigns will be terminated and held funds refunded. This cannot be undone.
+            </p>
+            <button onClick={() => toast.error("Contact support@livelink.com to request deletion.")}
+              className="w-full border-2 border-red-500 text-red-500 py-3 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center gap-2">
+              <Trash2 className="w-4 h-4" /> Request Account Deletion
+            </button>
+          </div>
+        </div>
+
+        {/* ── SUPPORT ──────────────────────────────────────────────── */}
+        <SectionLabel>Support</SectionLabel>
+
+        <Card title="Support">
+          {[
+            { label: "Help Centre",      icon: HelpCircle,    action: () => {} },
+            { label: "Contact Support",  icon: MessageCircle, action: () => window.open("mailto:support@livelink.com") },
+            { label: "Terms of Service", icon: FileText,      action: () => navigate("/terms") },
+            { label: "Privacy Policy",   icon: Scale,         action: () => navigate("/privacy") },
+          ].map((item, i) => (
+            <Row key={i}>
+              <button onClick={item.action}
+                className="w-full flex items-center justify-between hover:text-[#389C9A] transition-colors">
+                <div className="flex items-center gap-3">
+                  <item.icon className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm">{item.label}</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-300" />
+              </button>
+            </Row>
+          ))}
+        </Card>
+
+        {/* Footer */}
+        <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-5 text-center space-y-1 mb-4">
+          <p className="text-[8px] text-gray-400">LiveLink v1.0.0</p>
+          <p className="text-[8px] text-gray-500">
+            Logged in as <span className="font-black">{profile.business_name || user?.email}</span>
+          </p>
+          <button onClick={async () => { await logout(); navigate("/"); }}
+            className="text-[8px] font-black uppercase tracking-widest text-red-500 hover:underline">
+            Not you? Log out
+          </button>
+        </div>
+
+      </div>
       <BottomNav />
     </div>
   );
