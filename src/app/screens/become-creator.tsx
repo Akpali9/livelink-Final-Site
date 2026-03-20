@@ -196,29 +196,50 @@ export function BecomeCreator() {
         verificationUrl = await uploadVerificationDocument(selectedFile, authData.user.id);
       }
 
-      const { data: profileData, error: profileError } = await supabase
-        .from("creator_profiles")
-        .insert({
-          user_id: authData.user.id,
-          full_name: data.fullName,
-          username: data.email.split("@")[0],
-          email: data.email.toLowerCase().trim(),
-          phone_number: data.phoneNumber,
-          country: data.country,
-          city: data.city,
-          location: `${data.city}, ${data.country}`,
-          niche: data.categories || [],
-          avg_viewers: parseInt(data.avgConcurrent) || 0,
-          total_streams: 0,
-          rating: 0,
-          status: "pending_review",
-          verification_document_url: verificationUrl,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-
+const { data: profileData, error: profileError } = await supabase
+  .from("creator_profiles")
+  .insert({
+    // Identity
+    user_id:                   authData.user.id,
+    full_name:                 data.fullName,
+    username:                  data.email.split("@")[0],
+    email:                     data.email.toLowerCase().trim(),
+    phone_number:              data.phoneNumber,
+    phone_country_code:        data.phoneCountryCode,
+    // Location
+    country:                   data.country,
+    city:                      data.city,
+    location:                  `${data.city}, ${data.country}`,
+    // Streaming habits — exact column names from your schema
+    frequency:                 data.frequency,
+    duration:                  data.duration,
+    days:                      data.days || [],
+    time_of_day:               data.timeOfDay,
+    avg_concurrent:            parseInt(data.avgConcurrent) || 0,
+    // Content
+    categories:                data.categories || [],
+    niche:                     data.categories || [],
+    // Verification
+    verification_document_url: verificationUrl,
+    verification_status:       "pending",
+    referral_code:             data.referral || null,
+    // Defaults matching your schema
+    status:                    "active",
+    platforms:                 [],
+    avg_viewers:               0,
+    avg_peak:                  0,
+    avg_weekly:                0,
+    total_streams:             0,
+    total_earned:              0,
+    pending_earnings:          0,
+    paid_out:                  0,
+    rating:                    0,
+    bio:                       "",
+    created_at:                new Date().toISOString(),
+    updated_at:                new Date().toISOString(),
+  })
+  .select("id")
+  .single();
       if (profileError) {
         console.error("Profile creation error:", profileError);
         toast.error("Failed to create creator profile");
