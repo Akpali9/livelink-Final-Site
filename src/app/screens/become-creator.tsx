@@ -1,31 +1,21 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, Link } from "react-router";
 import {
   ChevronLeft,
-  ChevronRight,
   Plus,
   X,
   Eye,
   EyeOff,
   Upload,
   CheckCircle2,
-  Instagram,
-  Youtube,
-  Facebook,
-  MessageSquare,
   ArrowRight,
   Info,
   Calendar,
   Smartphone,
   Mail,
   Loader2,
-  Clock,
   MapPin,
   User,
-  Globe,
-  Video,
-  Award,
-  Users
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -39,6 +29,7 @@ type CreatorFormData = {
   email: string;
   password: string;
   confirmPassword: string;
+  phoneCountryCode: string;
   phoneNumber: string;
   country: string;
   city: string;
@@ -48,12 +39,11 @@ type CreatorFormData = {
   days: string[];
   timeOfDay: string;
   avgConcurrent: string;
-  avgPeak: string;
-  avgWeekly: string;
   categories: string[];
-  audienceBio: string;
   referral: string;
 };
+
+const STEPS = ["Personal", "Presence", "Activity", "Proof", "Review"];
 
 export function BecomeCreator() {
   const navigate = useNavigate();
@@ -64,7 +54,6 @@ export function BecomeCreator() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [countdown, setCountdown] = useState(5);
   const [registeredEmail, setRegisteredEmail] = useState("");
 
   const {
@@ -79,6 +68,7 @@ export function BecomeCreator() {
       platforms: [{ type: "Twitch", username: "", url: "", followers: "" }],
       days: [],
       categories: [],
+      phoneCountryCode: "+234",
     },
     mode: "onChange",
   });
@@ -92,44 +82,27 @@ export function BecomeCreator() {
   const country = watch("country");
   const frequency = watch("frequency");
 
- useEffect(() => {
-  if (!isSubmitted) return;
-  const timer = setInterval(() => {
-    setCountdown((prev) => {
-      if (prev <= 1) {
-        clearInterval(timer);
-        navigate("/confirm-email", { 
-          state: { 
-            email: registeredEmail,
-            role: "creator"
-          },
-          replace: true,
-        });
-      }
-      return prev - 1;
-    });
-  }, 1000);
-  return () => clearInterval(timer);
-}, [isSubmitted, navigate, registeredEmail]);
+  // Countdown redirect after submit
+  useEffect(() => {
+    if (!isSubmitted) return;
+    const timer = setTimeout(() => {
+      navigate("/confirm-email", {
+        state: { email: registeredEmail, role: "creator" },
+        replace: true,
+      });
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [isSubmitted, navigate, registeredEmail]);
 
   const uploadVerificationDocument = async (file: File, userId: string): Promise<string | null> => {
     try {
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.split(".").pop();
       const fileName = `${userId}/verification-${Date.now()}.${fileExt}`;
-      
       const { error: uploadError } = await supabase.storage
-        .from('creator-verifications')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
+        .from("creator-verifications")
+        .upload(fileName, file, { cacheControl: "3600", upsert: false });
       if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('creator-verifications')
-        .getPublicUrl(fileName);
-
+      const { data: { publicUrl } } = supabase.storage.from("creator-verifications").getPublicUrl(fileName);
       return publicUrl;
     } catch (error) {
       console.error("Error uploading verification:", error);
@@ -137,7 +110,7 @@ export function BecomeCreator() {
     }
   };
 
-  const getPasswordStrength = (): { label: string; color: string; score: number } | null => {
+  const getPasswordStrength = () => {
     if (!password) return null;
     let score = 0;
     if (password.length >= 8) score++;
@@ -161,7 +134,7 @@ export function BecomeCreator() {
     return age;
   };
 
-  const isUnder18 = (): boolean => calculateAge() < 18;
+  const isUnder18 = () => calculateAge() < 18;
 
   const validateStep = async (stepNumber: number): Promise<boolean> => {
     switch (stepNumber) {
@@ -181,14 +154,8 @@ export function BecomeCreator() {
 
   const nextStep = async () => {
     const valid = await validateStep(step);
-    if (!valid) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-    if (step === 1 && isUnder18()) {
-      toast.error("You must be 18 or older to become a creator");
-      return;
-    }
+    if (!valid) { toast.error("Please fill in all required fields"); return; }
+    if (step === 1 && isUnder18()) { toast.error("You must be 18 or older to become a creator"); return; }
     setStep((s) => Math.min(s + 1, 5));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -201,55 +168,39 @@ export function BecomeCreator() {
   const onSubmit = async (data: CreatorFormData) => {
     setIsLoading(true);
     setRegisteredEmail(data.email);
-
     try {
-      if (isUnder18()) {
-        toast.error("You must be 18 or older to become a creator");
-        return;
-      }
-      if (data.password !== data.confirmPassword) {
-        toast.error("Passwords do not match");
-        return;
-      }
+      if (isUnder18()) { toast.error("You must be 18 or older"); return; }
+      if (data.password !== data.confirmPassword) { toast.error("Passwords do not match"); return; }
 
-      // Create auth user
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: data.email.toLowerCase().trim(),
         password: data.password,
         options: {
-          data: {
-            full_name: data.fullName,
-            user_type: "creator",
-            role: "creator"
-          },
+          data: { full_name: data.fullName, user_type: "creator", role: "creator" },
           emailRedirectTo: `${window.location.origin}/auth/callback?role=creator`,
         },
       });
 
       if (signUpError) {
         if (signUpError.message.includes("User already registered")) {
-          toast.error("An account with this email already exists. Please login instead.");
+          toast.error("An account with this email already exists.");
           setTimeout(() => navigate("/login/creator", { state: { email: data.email } }), 3000);
           return;
         }
         throw signUpError;
       }
-
       if (!authData.user) throw new Error("No user returned from signup");
 
-      // Upload verification document
       let verificationUrl = null;
-      if (selectedFile) {
-        verificationUrl = await uploadVerificationDocument(selectedFile, authData.user.id);
-      }
+      if (selectedFile) verificationUrl = await uploadVerificationDocument(selectedFile, authData.user.id);
 
-      // Create creator profile
+      // ✅ FIXED: was "creator_profiles", correct table is "creators"
       const { data: profileData, error: profileError } = await supabase
-        .from("creator_profiles")
+        .from("creators")
         .insert({
           user_id: authData.user.id,
           full_name: data.fullName,
-          username: data.email.split('@')[0],
+          username: data.email.split("@")[0],
           email: data.email.toLowerCase().trim(),
           phone_number: data.phoneNumber,
           country: data.country,
@@ -262,7 +213,7 @@ export function BecomeCreator() {
           status: "pending_review",
           verification_document_url: verificationUrl,
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .select("id")
         .single();
@@ -273,7 +224,6 @@ export function BecomeCreator() {
         return;
       }
 
-      // Add platforms
       if (profileData?.id && data.platforms?.length > 0) {
         const platformRows = data.platforms
           .filter((p) => p.username && p.url)
@@ -283,42 +233,33 @@ export function BecomeCreator() {
             username: p.username,
             profile_url: p.url,
             followers_count: p.followers ? parseInt(p.followers) : 0,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
           }));
-
         if (platformRows.length > 0) {
-          const { error: platformError } = await supabase
-            .from("creator_platforms")
-            .insert(platformRows);
-
-          if (platformError) {
-            console.error("Platform insert error:", platformError);
-          }
+          const { error: platformError } = await supabase.from("creator_platforms").insert(platformRows);
+          if (platformError) console.error("Platform insert error:", platformError);
         }
       }
 
-      // Send welcome notification
       await supabase.from("notifications").insert({
         user_id: authData.user.id,
         type: "welcome",
         title: "Welcome to LiveLink! 🎉",
         message: "Your creator application has been submitted and is under review.",
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       });
 
-      // Send admin notification
       await supabase.from("notifications").insert({
         user_id: "admin",
         type: "admin_notification",
         title: "New Creator Application",
         message: `${data.fullName} has submitted a creator application for review.`,
         data: { creator_name: data.fullName, user_id: authData.user.id },
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       });
 
       setIsSubmitted(true);
       toast.success("Application submitted successfully!");
-
     } catch (error: any) {
       console.error("Error submitting application:", error);
       toast.error(error.message || "Failed to submit application");
@@ -327,430 +268,656 @@ export function BecomeCreator() {
     }
   };
 
+  // ── Success screen ──
   if (isSubmitted) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center px-6 text-[#1D1D1D]">
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="text-center max-w-md w-full"
+        >
+          <div className="w-20 h-20 bg-[#1D1D1D] rounded-2xl flex items-center justify-center mx-auto mb-8 border-4 border-[#FEDB71]">
+            <CheckCircle2 className="w-10 h-10 text-[#389C9A]" />
+          </div>
+          <h1 className="text-3xl font-black uppercase tracking-tighter italic mb-3">Application Submitted!</h1>
+          <p className="text-sm text-[#1D1D1D]/50 italic mb-8">
+            Our team will review your application and reach out via email.
+          </p>
+          <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-xl p-6 mb-8 text-left">
+            <p className="text-[9px] font-black uppercase tracking-widest mb-4 opacity-40">What happens next</p>
+            {[
+              "Verify your email address",
+              "Team reviews within 48 hours",
+              `You'll hear back at ${registeredEmail}`,
+            ].map((step, i) => (
+              <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
+                <span className="w-5 h-5 rounded-full bg-[#389C9A] text-white text-[9px] font-black flex items-center justify-center shrink-0 mt-0.5">
+                  {i + 1}
+                </span>
+                <span className="text-xs text-[#1D1D1D]/70">{step}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => navigate("/confirm-email", { state: { email: registeredEmail, role: "creator" } })}
+              className="w-full bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
+            >
+              Verify Email Now
+            </button>
+            <Link
+              to="/"
+              className="w-full border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors text-center"
+            >
+              Return to Homepage
+            </Link>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ── Field helpers ──
+  const inputClass = (hasError?: boolean) =>
+    `w-full bg-[#F8F8F8] border-2 ${hasError ? "border-red-400" : "border-[#E8E8E8]"} focus:border-[#1D1D1D] rounded-xl px-4 py-3.5 text-sm font-semibold outline-none transition-colors placeholder:opacity-40 placeholder:font-normal`;
+
+  const labelClass = "block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/50 mb-1.5";
+  const errorClass = "text-red-500 text-[9px] font-bold uppercase tracking-wide mt-1";
+
+  const radioCardClass = (checked: boolean) =>
+    `p-4 border-2 rounded-xl cursor-pointer transition-all ${
+      checked
+        ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
+        : "bg-white border-[#E8E8E8] hover:border-[#1D1D1D]/40"
+    }`;
+
   return (
-    <div className="flex flex-col min-h-screen bg-white items-center justify-center px-4 sm:px-8 text-[#1D1D1D]">
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="text-center max-w-md w-full"
-      >
-        <div className="w-24 h-24 bg-[#1D1D1D] border-2 border-[#FEDB71] flex items-center justify-center mx-auto mb-8">
-          <CheckCircle2 className="w-12 h-12 text-[#389C9A]" />
-        </div>
+    <div className="min-h-screen bg-white text-[#1D1D1D] pb-28">
 
-        <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tighter italic mb-4">
-          Application Submitted!
-        </h1>
-
-        <p className="text-[#1D1D1D]/60 mb-8 italic text-sm">
-          Thank you for applying to become a creator on LiveLink. Our team will review your application.
-        </p>
-
-        <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-6 mb-8 text-left">
-          <p className="text-[10px] font-black uppercase tracking-widest mb-3 opacity-40 italic">What happens next:</p>
-          <ul className="space-y-3">
-            <li className="flex items-start gap-3 text-sm">
-              <span className="text-[#389C9A] font-black">1.</span>
-              <span className="text-xs">Verify your email address</span>
-            </li>
-            <li className="flex items-start gap-3 text-sm">
-              <span className="text-[#389C9A] font-black">2.</span>
-              <span className="text-xs">Our team reviews your application (usually within 48 hours)</span>
-            </li>
-            <li className="flex items-start gap-3 text-sm">
-              <span className="text-[#389C9A] font-black">3.</span>
-              <span className="text-xs">You'll receive an email at <span className="font-bold">{registeredEmail}</span> once approved</span>
-            </li>
-          </ul>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {/* 👇 NEW BUTTON - Go to Email Confirmation */}
-          <button
-            onClick={() => navigate("/confirm-email", { 
-              state: { 
-                email: registeredEmail,
-                role: "creator" 
-              } 
-            })}
-            className="w-full bg-[#1D1D1D] text-white px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
-          >
-            Verify Email Now
-          </button>
-          
-          <Link to="/" className="w-full border-2 border-[#1D1D1D] text-[#1D1D1D] px-8 py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl text-center">
-            Return to Homepage
-          </Link>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-  return (
-    <div className="flex flex-col min-h-screen bg-white pb-32 text-[#1D1D1D]">
-      <div className="px-4 sm:px-8 pt-12 pb-8 border-b-2 border-[#1D1D1D]">
+      {/* ── Top banner ── */}
+      <div className="px-5 pt-12 pb-6 border-b-2 border-[#1D1D1D]">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest mb-6 opacity-40 hover:opacity-100 transition-opacity italic"
+          className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest mb-6 opacity-40 hover:opacity-100 transition-opacity italic"
         >
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
-        <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tighter italic leading-tight mb-2">
-          Become a Creator on LiveLink
+        <h1 className="text-3xl font-black uppercase tracking-tighter italic leading-tight mb-2">
+          Become a Creator
         </h1>
-        <p className="text-[#1D1D1D]/60 text-sm font-medium mb-6 italic">
-          Join hundreds of live creators already earning through their streams.
+        <p className="text-sm text-[#1D1D1D]/50 italic mb-5">
+          Join hundreds of creators already earning through their streams.
         </p>
-        <div className="bg-[#FEDB71]/10 border-2 border-[#FEDB71] p-4 flex gap-3">
-          <Info className="w-5 h-5 flex-shrink-0 text-[#389C9A]" />
-          <p className="text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+        <div className="flex gap-3 bg-[#FEDB71]/10 border-2 border-[#FEDB71] rounded-xl p-4">
+          <Info className="w-4 h-4 text-[#389C9A] shrink-0 mt-0.5" />
+          <p className="text-[10px] font-bold uppercase tracking-wide leading-relaxed">
             All creator accounts are manually reviewed. You'll be notified via email once approved.
           </p>
         </div>
       </div>
 
-      {/* Progress Steps */}
-      <div className="px-4 sm:px-8 py-6 bg-[#F8F8F8] border-b border-[#1D1D1D]/10 sticky top-0 z-30 flex justify-between items-center overflow-x-auto whitespace-nowrap gap-4">
-        {[1, 2, 3, 4, 5].map((s) => (
-          <div key={s} className="flex items-center gap-2">
-            <div
-              className={`w-8 h-8 flex items-center justify-center text-[10px] font-black transition-all border-2 cursor-pointer ${
-                step === s
-                  ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
-                  : step > s
-                  ? "bg-[#389C9A] text-white border-[#389C9A]"
-                  : "bg-white text-[#1D1D1D]/30 border-[#1D1D1D]/10"
-              }`}
-              onClick={() => s < step && setStep(s)}
-            >
-              {step > s ? <CheckCircle2 className="w-4 h-4" /> : s}
-            </div>
-            {step === s && (
-              <span className="text-[10px] font-black uppercase tracking-widest italic hidden sm:block">
-                {["Personal", "Presence", "Activity", "Proof", "Final"][s - 1]}
-              </span>
-            )}
+      {/* ── Progress bar ── */}
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-[#1D1D1D]/10 px-5 py-3">
+        <div className="max-w-lg mx-auto">
+          <div className="flex items-center justify-between mb-2">
+            {STEPS.map((label, i) => {
+              const s = i + 1;
+              const isActive = step === s;
+              const isDone = step > s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => s < step && setStep(s)}
+                  className={`flex items-center gap-1.5 transition-all ${s < step ? "cursor-pointer" : "cursor-default"}`}
+                >
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black border-2 transition-all ${
+                      isActive
+                        ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
+                        : isDone
+                        ? "bg-[#389C9A] text-white border-[#389C9A]"
+                        : "bg-white text-[#1D1D1D]/30 border-[#E8E8E8]"
+                    }`}
+                  >
+                    {isDone ? <CheckCircle2 className="w-3.5 h-3.5" /> : s}
+                  </div>
+                  <span
+                    className={`text-[9px] font-black uppercase tracking-widest hidden sm:block ${
+                      isActive ? "opacity-100" : "opacity-30"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        ))}
+          {/* Progress line */}
+          <div className="h-0.5 bg-[#E8E8E8] rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-[#389C9A] rounded-full"
+              animate={{ width: `${((step - 1) / (STEPS.length - 1)) * 100}%` }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Form Steps */}
-      <div className="px-4 sm:px-8 mt-12 max-w-[600px] mx-auto w-full flex-1 flex flex-col ">
+      {/* ── Form body ── */}
+      <div className="px-5 pt-8 max-w-lg mx-auto">
         <AnimatePresence mode="wait">
+
+          {/* STEP 1 — Personal */}
           {step === 1 && (
-            <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-12">
-              <section>
-                <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">About You</h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">This information is kept private and used for verification only.</p>
-                <div className="flex flex-col gap-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Full Legal Name <span className="text-red-500">*</span></label>
-                    <input {...register("fullName", { required: "Full name is required" })} placeholder="As it appears on your ID" className={`w-full bg-[#F8F8F8] border p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all italic ${errors.fullName ? "border-red-500" : "border-[#1D1D1D]/10"}`} />
-                    {errors.fullName && <p className="text-red-500 text-[9px] font-black uppercase">{errors.fullName.message}</p>}
+            <motion.div
+              key="step1"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col gap-8"
+            >
+              <div>
+                <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">About You</h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">
+                  Kept private — used for verification only.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-5">
+                {/* Full name */}
+                <div>
+                  <label className={labelClass}>Full Legal Name <span className="text-red-400">*</span></label>
+                  <input
+                    {...register("fullName", { required: "Full name is required" })}
+                    placeholder="As it appears on your ID"
+                    className={inputClass(!!errors.fullName)}
+                  />
+                  {errors.fullName && <p className={errorClass}>{errors.fullName.message}</p>}
+                </div>
+
+                {/* DOB */}
+                <div>
+                  <label className={labelClass}>Date of Birth <span className="text-red-400">*</span></label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 pointer-events-none" />
+                    <input
+                      type="date"
+                      {...register("dob", {
+                        required: "Date of birth is required",
+                        validate: { under18: () => calculateAge() >= 18 || "You must be 18 or older" },
+                      })}
+                      max={new Date().toISOString().split("T")[0]}
+                      className={`${inputClass(!!errors.dob)} pl-10`}
+                    />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Date of Birth <span className="text-red-500">*</span></label>
+                  {errors.dob && <p className={errorClass}>{errors.dob.message}</p>}
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className={labelClass}>Email Address <span className="text-red-400">*</span></label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 pointer-events-none" />
+                    <input
+                      type="email"
+                      {...register("email", {
+                        required: "Email is required",
+                        pattern: { value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i, message: "Invalid email" },
+                      })}
+                      placeholder="your@email.com"
+                      className={`${inputClass(!!errors.email)} pl-10`}
+                    />
+                  </div>
+                  {errors.email && <p className={errorClass}>{errors.email.message}</p>}
+                </div>
+
+                {/* Passwords */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className={labelClass}>Password <span className="text-red-400">*</span></label>
                     <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
-                      <input type="date" {...register("dob", { required: "Date of birth is required", validate: { under18: (v) => { const age = calculateAge(); return age >= 18 || "You must be 18 or older"; } } })} max={new Date().toISOString().split("T")[0]} className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all ${errors.dob ? "border-red-500" : "border-[#1D1D1D]/10"}`} />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        {...register("password", {
+                          required: "Password is required",
+                          minLength: { value: 6, message: "At least 6 characters" },
+                        })}
+                        className={`${inputClass(!!errors.password)} pr-10`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-70"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                    {errors.dob && <p className="text-red-500 text-[9px] font-black uppercase">{errors.dob.message}</p>}
+                    {getPasswordStrength() && (
+                      <p className={`text-[9px] font-black uppercase mt-1 ${getPasswordStrength()?.color}`}>
+                        {getPasswordStrength()?.label}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Email Address <span className="text-red-500">*</span></label>
+                  <div>
+                    <label className={labelClass}>Confirm Password <span className="text-red-400">*</span></label>
                     <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
-                      <input type="email" {...register("email", { required: "Email is required", pattern: { value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i, message: "Invalid email address" } })} placeholder="This will be your login email" className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all italic ${errors.email ? "border-red-500" : "border-[#1D1D1D]/10"}`} />
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        {...register("confirmPassword", {
+                          required: "Please confirm your password",
+                          validate: (v) => v === password || "Passwords do not match",
+                        })}
+                        className={`${inputClass(!!errors.confirmPassword)} pr-10`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-70"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                    {errors.email && <p className="text-red-500 text-[9px] font-black uppercase">{errors.email.message}</p>}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Create Password <span className="text-red-500">*</span></label>
-                      <div className="relative">
-                        <input type={showPassword ? "text" : "password"} {...register("password", { required: "Password is required", minLength: { value: 6, message: "At least 6 characters" } })} className={`w-full bg-[#F8F8F8] border p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all ${errors.password ? "border-red-500" : "border-[#1D1D1D]/10"}`} />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2">{showPassword ? <EyeOff className="w-4 h-4 opacity-30" /> : <Eye className="w-4 h-4 opacity-30" />}</button>
-                      </div>
-                      {getPasswordStrength() && (
-                        <p className={`text-[9px] font-black uppercase mt-1 ${getPasswordStrength()?.color}`}>
-                          Strength: {getPasswordStrength()?.label}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Confirm Password <span className="text-red-500">*</span></label>
-                      <div className="relative">
-                        <input type={showConfirmPassword ? "text" : "password"} {...register("confirmPassword", { required: "Please confirm your password", validate: (v) => v === password || "Passwords do not match" })} className={`w-full bg-[#F8F8F8] border p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all ${errors.confirmPassword ? "border-red-500" : "border-[#1D1D1D]/10"}`} />
-                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-4 top-1/2 -translate-y-1/2">{showConfirmPassword ? <EyeOff className="w-4 h-4 opacity-30" /> : <Eye className="w-4 h-4 opacity-30" />}</button>
-                      </div>
-                      {errors.confirmPassword && <p className="text-red-500 text-[9px] font-black uppercase">{errors.confirmPassword.message}</p>}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Phone Number <span className="text-red-500">*</span></label>
-                    <div className="relative flex">
-                      <select {...register("phoneCountryCode")} className="bg-white border border-[#1D1D1D]/10 border-r-0 p-5 text-xs font-black uppercase tracking-tight outline-none">
-                        <option value="+44">+44</option>
-                        <option value="+1">+1</option>
-                        <option value="+234">+234</option>
-                      </select>
-                      <div className="relative flex-1">
-                        <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 text-[#389C9A]" />
-                        <input type="tel" {...register("phoneNumber", { required: "Phone number is required" })} placeholder="Phone number" className={`w-full bg-[#F8F8F8] border p-5 pl-12 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all ${errors.phoneNumber ? "border-red-500" : "border-[#1D1D1D]/10"}`} />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Country <span className="text-red-500">*</span></label>
-                      <select {...register("country", { required: "Country is required" })} className={`w-full bg-white border p-5 text-xs font-black uppercase tracking-tight outline-none ${errors.country ? "border-red-500" : "border-[#1D1D1D]/10"}`}>
-                        <option value="">Select Country</option>
-                        <option value="United Kingdom">United Kingdom</option>
-                        <option value="United States">United States</option>
-                        <option value="Canada">Canada</option>
-                        <option value="Nigeria">Nigeria</option>
-                      </select>
-                      {errors.country && <p className="text-red-500 text-[9px] font-black uppercase">{errors.country.message}</p>}
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">City <span className="text-red-500">*</span></label>
-                      <input {...register("city", { required: "City is required" })} className={`w-full bg-[#F8F8F8] border p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all italic ${errors.city ? "border-red-500" : "border-[#1D1D1D]/10"}`} />
-                      {errors.city && <p className="text-red-500 text-[9px] font-black uppercase">{errors.city.message}</p>}
-                    </div>
+                    {errors.confirmPassword && <p className={errorClass}>{errors.confirmPassword.message}</p>}
                   </div>
                 </div>
-              </section>
+
+                {/* Phone */}
+                <div>
+                  <label className={labelClass}>Phone Number <span className="text-red-400">*</span></label>
+                  <div className="flex gap-2">
+                    <select
+                      {...register("phoneCountryCode")}
+                      className="bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-3 py-3.5 text-xs font-black outline-none focus:border-[#1D1D1D] shrink-0"
+                    >
+                      <option value="+44">🇬🇧 +44</option>
+                      <option value="+1">🇺🇸 +1</option>
+                      <option value="+234">🇳🇬 +234</option>
+                      <option value="+1-CA">🇨🇦 +1</option>
+                    </select>
+                    <div className="relative flex-1">
+                      <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 pointer-events-none" />
+                      <input
+                        type="tel"
+                        {...register("phoneNumber", { required: "Phone number is required" })}
+                        placeholder="Phone number"
+                        className={`${inputClass(!!errors.phoneNumber)} pl-10`}
+                      />
+                    </div>
+                  </div>
+                  {errors.phoneNumber && <p className={errorClass}>{errors.phoneNumber.message}</p>}
+                </div>
+
+                {/* Country + City */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>Country <span className="text-red-400">*</span></label>
+                    <select
+                      {...register("country", { required: "Country is required" })}
+                      className={`w-full bg-[#F8F8F8] border-2 ${errors.country ? "border-red-400" : "border-[#E8E8E8]"} focus:border-[#1D1D1D] rounded-xl px-4 py-3.5 text-xs font-semibold outline-none transition-colors`}
+                    >
+                      <option value="">Select</option>
+                      <option value="United Kingdom">United Kingdom</option>
+                      <option value="United States">United States</option>
+                      <option value="Canada">Canada</option>
+                      <option value="Nigeria">Nigeria</option>
+                    </select>
+                    {errors.country && <p className={errorClass}>{errors.country.message}</p>}
+                  </div>
+                  <div>
+                    <label className={labelClass}>City <span className="text-red-400">*</span></label>
+                    <input
+                      {...register("city", { required: "City is required" })}
+                      placeholder="Your city"
+                      className={inputClass(!!errors.city)}
+                    />
+                    {errors.city && <p className={errorClass}>{errors.city.message}</p>}
+                  </div>
+                </div>
+              </div>
             </motion.div>
           )}
 
+          {/* STEP 2 — Streaming Presence */}
           {step === 2 && (
-            <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-12">
-              <section>
-                <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Your Streaming Presence</h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Tell us where you go live.</p>
-                <div className="flex flex-col gap-8">
-                  {fields.map((field, index) => (
-                    <div key={field.id} className="relative p-8 border-2 border-[#1D1D1D] bg-white">
-                      <div className="flex items-center justify-between mb-8">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#389C9A]">Platform {index + 1}</span>
-                        {fields.length > 1 && (
-                          <button type="button" onClick={() => remove(index)} className="p-2 hover:bg-red-50 text-red-500 transition-colors">
-                            <X className="w-4 h-4" />
-                          </button>
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col gap-8"
+            >
+              <div>
+                <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Your Streaming Presence</h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Tell us where you go live.</p>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                {fields.map((field, index) => (
+                  <div key={field.id} className="border-2 border-[#1D1D1D] rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-5">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A]">
+                        Platform {index + 1}
+                      </span>
+                      {fields.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => remove(index)}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-4">
+                      <div>
+                        <label className={labelClass}>Platform</label>
+                        <select
+                          {...register(`platforms.${index}.type`)}
+                          className="w-full bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-4 py-3.5 text-xs font-semibold outline-none focus:border-[#1D1D1D] transition-colors"
+                        >
+                          {["Twitch", "YouTube", "TikTok", "Instagram", "Facebook", "Kick"].map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className={labelClass}>Username <span className="text-[#389C9A]">*</span></label>
+                          <input
+                            {...register(`platforms.${index}.username`, { required: "Required" })}
+                            placeholder="@yourname"
+                            className={inputClass(!!errors.platforms?.[index]?.username)}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Followers</label>
+                          <input
+                            {...register(`platforms.${index}.followers`)}
+                            placeholder="e.g. 10000"
+                            type="number"
+                            className={inputClass()}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className={labelClass}>Profile URL <span className="text-[#389C9A]">*</span></label>
+                        <input
+                          {...register(`platforms.${index}.url`, {
+                            required: "URL required",
+                            pattern: { value: /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/, message: "Valid URL required" },
+                          })}
+                          placeholder="https://twitch.tv/yourname"
+                          className={inputClass(!!errors.platforms?.[index]?.url)}
+                        />
+                        {errors.platforms?.[index]?.url && (
+                          <p className={errorClass}>{errors.platforms[index].url?.message}</p>
                         )}
                       </div>
-                      <div className="flex flex-col gap-6">
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Platform</label>
-                          <select {...register(`platforms.${index}.type` as const)} className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none">
-                            <option value="Twitch">Twitch</option>
-                            <option value="YouTube">YouTube</option>
-                            <option value="TikTok">TikTok</option>
-                            <option value="Instagram">Instagram</option>
-                            <option value="Facebook">Facebook</option>
-                            <option value="Kick">Kick</option>
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Username <span className="text-[#389C9A]">*</span></label>
-                          <input {...register(`platforms.${index}.username` as const, { required: "Username required" })} placeholder="e.g. @creatorname" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] italic" />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Profile URL <span className="text-[#389C9A]">*</span></label>
-                          <input {...register(`platforms.${index}.url` as const, { required: "Profile URL required", pattern: { value: /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/, message: "Valid URL required" } })} placeholder="https://twitch.tv/yourname" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] italic" />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Followers (optional)</label>
-                          <input {...register(`platforms.${index}.followers` as const)} placeholder="e.g. 10000" type="number" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] italic" />
-                        </div>
-                      </div>
                     </div>
-                  ))}
-                  {fields.length < 5 && (
-                    <button type="button" onClick={() => append({ type: "Twitch", username: "", url: "", followers: "" })} className="w-full border-2 border-dashed border-[#1D1D1D]/20 p-8 flex flex-col items-center gap-2 hover:border-[#1D1D1D] transition-all text-[#1D1D1D]/40 hover:text-[#1D1D1D] group">
-                      <Plus className="w-6 h-6 text-[#389C9A] group-hover:rotate-90 transition-transform" />
-                      <span className="text-[10px] font-black uppercase tracking-widest italic">Add Another Platform</span>
-                    </button>
-                  )}
-                </div>
-              </section>
+                  </div>
+                ))}
+
+                {fields.length < 5 && (
+                  <button
+                    type="button"
+                    onClick={() => append({ type: "Twitch", username: "", url: "", followers: "" })}
+                    className="w-full border-2 border-dashed border-[#1D1D1D]/20 rounded-2xl p-6 flex items-center justify-center gap-2 hover:border-[#389C9A] hover:text-[#389C9A] transition-colors text-[#1D1D1D]/40 group"
+                  >
+                    <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
+                    <span className="text-[10px] font-black uppercase tracking-widest italic">Add Another Platform</span>
+                  </button>
+                )}
+              </div>
             </motion.div>
           )}
 
+          {/* STEP 3 — Activity */}
           {step === 3 && (
-            <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-16">
-              <section>
-                <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Your Live Streaming Habits</h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-12 italic">Be as accurate as possible — this determines which campaigns you match with.</p>
-                <div className="flex flex-col gap-12">
-                  <div className="flex flex-col gap-6">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic">How often do you go live? <span className="text-red-500">*</span></label>
-                    <div className="flex flex-col gap-3">
-                      {[{ val: "Daily", sub: "Every day" }, { val: "Several times a week", sub: "3–5 times per week" }, { val: "Weekly", sub: "Once a week" }, { val: "A few times a month", sub: "2–3 times per month" }].map((opt) => (
-                        <label key={opt.val} className="cursor-pointer">
-                          <input type="radio" {...register("frequency", { required: "Please select frequency" })} value={opt.val} className="peer hidden" />
-                          <div className="p-6 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#1D1D1D] peer-checked:text-white peer-checked:border-[#1D1D1D] transition-all">
-                            <p className="text-[11px] font-black uppercase tracking-widest mb-1 italic">{opt.val}</p>
-                            <p className="text-[9px] font-medium uppercase tracking-widest opacity-40 italic">{opt.sub}</p>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                    {errors.frequency && <p className="text-red-500 text-[9px] font-black uppercase">{errors.frequency.message}</p>}
-                  </div>
-                  <div className="flex flex-col gap-6">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic">How long are your streams on average? <span className="text-red-500">*</span></label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {["Under 30 minutes", "30 to 45 minutes", "45 minutes to 1 hour", "1 to 2 hours", "Over 2 hours"].map((opt) => (
-                        <label key={opt} className="cursor-pointer">
-                          <input type="radio" {...register("duration", { required: "Please select duration" })} value={opt} className="peer hidden" />
-                          <div className="p-6 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#1D1D1D] peer-checked:text-white peer-checked:border-[#1D1D1D] transition-all text-center italic">
-                            <p className="text-[10px] font-black uppercase tracking-widest">{opt}</p>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                    <div className="flex flex-col gap-6">
-                      <label className="text-[10px] font-black uppercase tracking-widest italic">Days you go live</label>
-                      <div className="flex flex-wrap gap-2">
-                        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-                          <label key={day} className="cursor-pointer">
-                            <input type="checkbox" {...register("days")} value={day} className="peer hidden" />
-                            <div className="w-12 h-12 flex items-center justify-center border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[10px] font-black transition-all italic">{day[0]}</div>
-                          </label>
-                        ))}
+            <motion.div
+              key="step3"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col gap-10"
+            >
+              <div>
+                <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Streaming Habits</h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">
+                  Determines which campaigns you match with.
+                </p>
+              </div>
+
+              {/* Frequency */}
+              <div>
+                <label className={`${labelClass} mb-3`}>How often do you go live? <span className="text-red-400">*</span></label>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { val: "Daily", sub: "Every day" },
+                    { val: "Several times a week", sub: "3–5 times per week" },
+                    { val: "Weekly", sub: "Once a week" },
+                    { val: "A few times a month", sub: "2–3 times per month" },
+                  ].map((opt) => (
+                    <label key={opt.val} className="cursor-pointer">
+                      <input type="radio" {...register("frequency", { required: true })} value={opt.val} className="peer hidden" />
+                      <div className="peer-checked:bg-[#1D1D1D] peer-checked:text-white peer-checked:border-[#1D1D1D] border-2 border-[#E8E8E8] rounded-xl p-4 transition-all hover:border-[#1D1D1D]/40">
+                        <p className="text-[11px] font-black uppercase tracking-wide italic">{opt.val}</p>
+                        <p className="text-[9px] opacity-50 mt-0.5">{opt.sub}</p>
                       </div>
-                    </div>
-                    <div className="flex flex-col gap-6">
-                      <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Typical Time <span className="text-red-500">*</span></label>
-                      <select {...register("timeOfDay", { required: "Please select typical time" })} className="w-full bg-white border-2 border-[#1D1D1D]/10 p-5 text-xs font-black uppercase tracking-tight outline-none italic">
-                        <option value="">Select time</option>
-                        <option value="morning">Morning (6am–12pm)</option>
-                        <option value="afternoon">Afternoon (12pm–5pm)</option>
-                        <option value="evening">Evening (5pm–9pm)</option>
-                        <option value="night">Late Night (9pm–12am)</option>
-                        <option value="varies">Varies</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-8">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic">Average Viewership</label>
-                    {[{ field: "avgConcurrent" as const, label: "Average concurrent viewers per stream", placeholder: "e.g. 250" }].map((item, i) => (
-                      <div key={item.field} className="flex flex-col gap-2">
-                        <div className="flex items-center gap-4">
-                          <span className="w-8 h-8 flex items-center justify-center bg-[#1D1D1D] text-white text-[10px] font-black italic">{i + 1}</span>
-                          <input type="number" {...register(item.field)} placeholder={item.placeholder} min="0" className="flex-1 bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase outline-none focus:border-[#1D1D1D] transition-all italic" />
+                    </label>
+                  ))}
+                </div>
+                {errors.frequency && <p className={errorClass}>Please select a frequency</p>}
+              </div>
+
+              {/* Duration */}
+              <div>
+                <label className={`${labelClass} mb-3`}>Average stream length <span className="text-red-400">*</span></label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {["Under 30 min", "30–45 min", "45 min–1 hr", "1–2 hours", "Over 2 hours"].map((opt) => (
+                    <label key={opt} className="cursor-pointer">
+                      <input type="radio" {...register("duration", { required: true })} value={opt} className="peer hidden" />
+                      <div className="peer-checked:bg-[#1D1D1D] peer-checked:text-white peer-checked:border-[#1D1D1D] border-2 border-[#E8E8E8] rounded-xl p-3 text-center transition-all hover:border-[#1D1D1D]/40">
+                        <p className="text-[10px] font-black uppercase tracking-wide italic">{opt}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Days + time */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                <div>
+                  <label className={`${labelClass} mb-3`}>Days you go live</label>
+                  <div className="flex flex-wrap gap-2">
+                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                      <label key={day} className="cursor-pointer">
+                        <input type="checkbox" {...register("days")} value={day} className="peer hidden" />
+                        <div className="w-11 h-11 flex items-center justify-center border-2 border-[#E8E8E8] rounded-xl peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[10px] font-black transition-all hover:border-[#1D1D1D]/40">
+                          {day[0]}
                         </div>
-                        <p className="text-[9px] font-medium opacity-40 ml-12 italic uppercase tracking-widest">{item.label}</p>
-                      </div>
+                      </label>
                     ))}
                   </div>
-                  <div className="flex flex-col gap-6">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic">What content do you create?</label>
-                    <div className="flex flex-wrap gap-2">
-                      {["Gaming", "Beauty", "Fashion", "Fitness", "Food", "Music", "Comedy", "Education", "Business", "Lifestyle", "Sports", "Tech", "Travel", "Other"].map((cat) => (
-                        <label key={cat} className="cursor-pointer">
-                          <input type="checkbox" {...register("categories")} value={cat} className="peer hidden" />
-                          <div className="px-4 py-2 border-2 border-[#1D1D1D]/10 bg-white peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[9px] font-black uppercase tracking-widest transition-all italic">{cat}</div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
                 </div>
-              </section>
+                <div>
+                  <label className={labelClass}>Typical Time <span className="text-red-400">*</span></label>
+                  <select
+                    {...register("timeOfDay", { required: true })}
+                    className="w-full bg-[#F8F8F8] border-2 border-[#E8E8E8] rounded-xl px-4 py-3.5 text-xs font-semibold outline-none focus:border-[#1D1D1D] transition-colors"
+                  >
+                    <option value="">Select time</option>
+                    <option value="morning">Morning (6am–12pm)</option>
+                    <option value="afternoon">Afternoon (12pm–5pm)</option>
+                    <option value="evening">Evening (5pm–9pm)</option>
+                    <option value="night">Late Night (9pm–12am)</option>
+                    <option value="varies">Varies</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Avg viewers */}
+              <div>
+                <label className={labelClass}>Average Concurrent Viewers</label>
+                <input
+                  type="number"
+                  {...register("avgConcurrent")}
+                  placeholder="e.g. 250"
+                  min="0"
+                  className={inputClass()}
+                />
+              </div>
+
+              {/* Categories */}
+              <div>
+                <label className={`${labelClass} mb-3`}>Content Categories</label>
+                <div className="flex flex-wrap gap-2">
+                  {["Gaming", "Beauty", "Fashion", "Fitness", "Food", "Music", "Comedy", "Education", "Business", "Lifestyle", "Sports", "Tech", "Travel", "Other"].map((cat) => (
+                    <label key={cat} className="cursor-pointer">
+                      <input type="checkbox" {...register("categories")} value={cat} className="peer hidden" />
+                      <div className="px-3.5 py-2 border-2 border-[#E8E8E8] rounded-full peer-checked:bg-[#389C9A] peer-checked:text-white peer-checked:border-[#389C9A] text-[9px] font-black uppercase tracking-wide transition-all hover:border-[#1D1D1D]/40">
+                        {cat}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </motion.div>
           )}
 
+          {/* STEP 4 — Proof */}
           {step === 4 && (
-            <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-12">
-              <section>
-                <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Upload Verification</h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Proof of your streaming analytics from the last 30 days.</p>
-                <div className="relative">
-                  <input type="file" id="verification" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} className="hidden" />
-                  <label htmlFor="verification" className="border-2 border-dashed border-[#1D1D1D]/20 p-12 flex flex-col items-center gap-6 bg-[#F8F8F8] group hover:border-[#1D1D1D] transition-all cursor-pointer">
-                    <div className="p-6 border-2 border-[#1D1D1D] bg-white group-hover:bg-[#1D1D1D] group-hover:text-white transition-all">
-                      <Upload className="w-8 h-8" />
-                    </div>
-                    <div className="text-center">
-                      {selectedFile ? (
-                        <>
-                          <p className="text-[10px] font-black uppercase tracking-widest mb-2 italic text-[#389C9A]">{selectedFile.name}</p>
-                          <p className="text-[8px] font-bold uppercase opacity-30 tracking-widest">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-[10px] font-black uppercase tracking-widest mb-2 italic">Click to Upload Screenshot</p>
-                          <p className="text-[8px] font-bold uppercase opacity-30 tracking-widest">JPG, PNG OR PDF · MAX 10MB</p>
-                        </>
-                      )}
-                    </div>
-                  </label>
+            <motion.div
+              key="step4"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col gap-8"
+            >
+              <div>
+                <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Upload Verification</h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">
+                  Proof of your streaming analytics from the last 30 days.
+                </p>
+              </div>
+
+              <input
+                type="file"
+                id="verification"
+                accept="image/*,application/pdf"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }}
+                className="hidden"
+              />
+              <label
+                htmlFor="verification"
+                className="border-2 border-dashed border-[#1D1D1D]/20 rounded-2xl p-10 flex flex-col items-center gap-5 bg-[#F8F8F8] hover:border-[#389C9A] hover:bg-[#F0FAFA] transition-all cursor-pointer group"
+              >
+                <div className="w-14 h-14 border-2 border-[#1D1D1D] rounded-xl bg-white flex items-center justify-center group-hover:bg-[#1D1D1D] group-hover:text-white transition-colors">
+                  <Upload className="w-6 h-6" />
                 </div>
-                <div className="flex flex-col gap-6 pt-12 border-t-2 border-[#1D1D1D]/10">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest italic text-[#1D1D1D]/40">Referral Code (Optional)</label>
-                    <input {...register("referral")} placeholder="If you were referred by another creator" className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 text-sm font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] transition-all italic" />
+                {selectedFile ? (
+                  <div className="text-center">
+                    <p className="text-[11px] font-black uppercase tracking-wide text-[#389C9A] italic">{selectedFile.name}</p>
+                    <p className="text-[9px] opacity-40 mt-1">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
                   </div>
-                </div>
-              </section>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-[11px] font-black uppercase tracking-wide italic">Click to upload screenshot</p>
+                    <p className="text-[9px] opacity-40 mt-1">JPG, PNG or PDF · Max 10MB</p>
+                  </div>
+                )}
+              </label>
+
+              <div className="border-t-2 border-[#E8E8E8] pt-6">
+                <label className={labelClass}>Referral Code (Optional)</label>
+                <input
+                  {...register("referral")}
+                  placeholder="If referred by another creator"
+                  className={inputClass()}
+                />
+              </div>
             </motion.div>
           )}
 
+          {/* STEP 5 — Review */}
           {step === 5 && (
-            <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-12">
-              <section>
-                <div className="mt-8 mb-12">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input type="checkbox" required className="peer hidden" />
-                    <div className="mt-1 w-5 h-5 border-2 border-[#1D1D1D] flex items-center justify-center bg-white peer-checked:bg-[#389C9A] peer-checked:border-[#389C9A] transition-all flex-shrink-0">
-                      <CheckCircle2 className="w-3 h-3 text-white" />
-                    </div>
-                    <span className="text-[10px] font-bold leading-tight opacity-60 italic uppercase tracking-tight">
-                      I agree to LiveLink's Terms of Service and Privacy Policy. I confirm all information provided is accurate.
+            <motion.div
+              key="step5"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-col gap-8"
+            >
+              <div>
+                <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Final Review</h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">
+                  Confirm your details before submitting.
+                </p>
+              </div>
+
+              <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-2xl overflow-hidden">
+                {[
+                  { label: "Name", value: fullName },
+                  { label: "Email", value: email },
+                  { label: "Country", value: country },
+                  { label: "Stream Frequency", value: frequency },
+                ].map(({ label, value }, i) => (
+                  <div
+                    key={label}
+                    className={`flex justify-between items-center px-5 py-4 ${
+                      i < 3 ? "border-b border-[#1D1D1D]/10" : ""
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">{label}</span>
+                    <span className="text-[10px] font-black uppercase text-right max-w-[60%] truncate">
+                      {value || <span className="opacity-30">Not entered</span>}
                     </span>
-                  </label>
+                  </div>
+                ))}
+              </div>
+
+              {/* Terms */}
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" required className="peer hidden" />
+                <div className="mt-0.5 w-5 h-5 border-2 border-[#1D1D1D] rounded-md flex items-center justify-center bg-white peer-checked:bg-[#389C9A] peer-checked:border-[#389C9A] transition-all shrink-0">
+                  <CheckCircle2 className="w-3 h-3 text-white" />
                 </div>
-                <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Final Review</h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please confirm your details before submitting.</p>
-                <div className="bg-[#F8F8F8] border-2 border-[#1D1D1D] p-8 flex flex-col gap-6">
-                  <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
-                    <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Name</span>
-                    <span className="text-[10px] font-black uppercase">{fullName || "Not entered"}</span>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
-                    <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Email</span>
-                    <span className="text-[10px] font-black uppercase break-all">{email || "Not entered"}</span>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
-                    <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Country</span>
-                    <span className="text-[10px] font-black uppercase">{country || "Not entered"}</span>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-[#1D1D1D]/10 pb-4 italic">
-                    <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">Stream Frequency</span>
-                    <span className="text-[10px] font-black uppercase">{frequency || "Not entered"}</span>
-                  </div>
-                </div>
-                
-              </section>
+                <span className="text-[10px] font-semibold leading-relaxed opacity-60 italic">
+                  I agree to LiveLink's Terms of Service and Privacy Policy. I confirm all information provided is accurate.
+                </span>
+              </label>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Footer Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-6 bg-white border-t-2 border-[#1D1D1D] z-50 max-w-[480px] mx-auto">
-        <div className="flex gap-4">
+      {/* ── Fixed footer nav ── */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t-2 border-[#1D1D1D] px-5 py-4 z-50">
+        <div className="max-w-lg mx-auto flex gap-3">
           {step > 1 && (
-            <button onClick={prevStep} disabled={isLoading} className="px-6 py-5 border-2 border-[#1D1D1D] font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-all italic disabled:opacity-50">Back</button>
+            <button
+              type="button"
+              onClick={prevStep}
+              disabled={isLoading}
+              className="px-5 py-4 border-2 border-[#1D1D1D] rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-[#F8F8F8] transition-colors disabled:opacity-50"
+            >
+              Back
+            </button>
           )}
           <button
+            type="button"
             onClick={step === 5 ? handleSubmit(onSubmit) : nextStep}
             disabled={isLoading}
-            className="flex-1 flex items-center justify-between bg-[#1D1D1D] text-white p-5 sm:p-6 font-black uppercase tracking-tight active:scale-[0.98] transition-all italic disabled:opacity-50"
+            className="flex-1 flex items-center justify-between bg-[#1D1D1D] text-white px-5 py-4 rounded-xl font-black uppercase tracking-tight text-[11px] active:scale-[0.98] transition-all disabled:opacity-50"
           >
             <span>
               {isLoading ? (
@@ -758,9 +925,13 @@ export function BecomeCreator() {
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Processing...
                 </span>
-              ) : step === 5 ? "Submit Application" : "Continue"}
+              ) : step === 5 ? (
+                "Submit Application"
+              ) : (
+                "Continue"
+              )}
             </span>
-            {!isLoading && step < 5 && <ArrowRight className="w-5 h-5 text-[#FEDB71]" />}
+            {!isLoading && step < 5 && <ArrowRight className="w-4 h-4 text-[#FEDB71]" />}
           </button>
         </div>
       </div>
