@@ -306,7 +306,7 @@ export function Messages() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
         <AppHeader showBack title="Messages" backPath={backPath} userType={isCreator ? "creator" : "business"} />
         <div className="flex items-center justify-center h-[80vh]">
           <Loader2 className="w-10 h-10 animate-spin text-[#389C9A]" />
@@ -317,7 +317,7 @@ export function Messages() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <AppHeader
         showBack
         title="Messages"
