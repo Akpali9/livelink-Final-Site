@@ -20,11 +20,11 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../lib/contexts/AuthContext";
-import { AppHeader } from "../../components/app-header";
-import { BottomNav } from "../../components/bottom-nav";
-import { ImageWithFallback } from "../../components/ImageWithFallback";
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../lib/contexts/AuthContext";
+import { AppHeader } from "../components/app-header";
+import { BottomNav } from "../components/bottom-nav";
+import { ImageWithFallback } from "../components/ImageWithFallback";
 
 interface Message {
   id: string;
