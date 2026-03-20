@@ -14,14 +14,14 @@ export function BottomNav() {
     ? [
         { icon: Home,      label: "Home",      path: "/business/dashboard" },
         { icon: Search,    label: "Browse",    path: "/browse" },
-        { icon: Briefcase, label: "Campaigns", path: "/business/dashboard" },
-        { icon: Bell,      label: "Alerts",    path: "/notifications?role=business" },
+        { icon: Briefcase, label: "My Campaigns", path: "/business/dashboard" },
+        { icon: Bell,      label: "Notification",    path: "/notifications?role=business" },
       ]
     : [
         { icon: Home,      label: "Home",      path: "/dashboard" },
         { icon: Search,    label: "Browse",    path: "/browse" },
         { icon: Briefcase, label: "Campaigns", path: "/campaigns" },
-        { icon: Bell,      label: "Alerts",    path: "/notifications?role=creator" },
+        { icon: Bell,      label: "Notification",    path: "/notifications?role=creator" },
       ];
 
   const isActive = (path: string, label: string) => {
