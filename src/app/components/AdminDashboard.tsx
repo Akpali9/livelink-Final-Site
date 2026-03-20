@@ -1192,7 +1192,7 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
                   className={`flex-1 py-1.5 text-[7px] font-black uppercase tracking-widest rounded-lg transition-colors ${
                     filter === f ? "bg-[#1D1D1D] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                   }`}>
-                  {f === "all" ? "All" : f === "unread" ? "Unread" : f === "creators" ? "Creators" : "Biz"}
+                  {f === "all" ? "All" : f === "unread" ? "Unread" : f === "creators" ? "Creators" : "Business"}
                 </button>
               ))}
             </div>
