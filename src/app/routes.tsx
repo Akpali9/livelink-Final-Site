@@ -11,7 +11,7 @@ import { BusinessCampaigns } from "./screens/business-campaigns";
 import { BusinessCampaignDetail } from "./screens/business-campaign-detail";
 import { BusinessCampaignCreators } from "./screens/business-campaign-creators";
 import { BrowseBusinesses } from "./screens/browse-businesses";
-import { BrowseCreators } from "./screens/browse-creators";
+import { BrowseCreators } from "./screens/browse";
 import { Messages } from "./screens/messages";
 import { Notifications } from "./screens/notifications";
 import { CampaignLiveUpdate } from "./screens/campaign-live-update";
