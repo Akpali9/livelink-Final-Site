@@ -328,7 +328,7 @@ export function AppHeader({
 
   return (
     <header className="px-5 pt-6 pb-4 border-b-2 border-[#1D1D1D]/10 sticky top-0 bg-white/95 left-0 right-0 backdrop-blur-sm z-50">
-      <div className="flex justify-between items-center max-w-7xl mx-auto gap-4">
+      <div className="flex justify-between items-center max-w-[480px] mx-auto gap-4">
 
         {/* ── Left side ── */}
         <div className="flex items-center gap-3 min-w-0">
