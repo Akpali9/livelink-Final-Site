@@ -114,9 +114,47 @@ function formatNumber(num: number): string {
 // ─────────────────────────────────────────────
 
 export function Profile() {
-  const { id } = useParams();
+  const { id: rawId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // ── Resolve "me" → real UUID ─────────────────────────────────────────────
+  // If the route is /profile/me we can't send the literal string "me" to
+  // Supabase because the column is uuid type → "invalid input syntax for
+  // type uuid: 'me'".  We resolve it first, then store the real id.
+  const [id, setId] = useState<string | undefined>(
+    rawId === "me" ? undefined : rawId
+  );
+
+  useEffect(() => {
+    if (rawId !== "me") {
+      // If rawId changed to a normal UUID (e.g. navigation), keep in sync
+      setId(rawId);
+      return;
+    }
+
+    // rawId === "me" → look up the logged-in user's creator profile
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+
+    supabase
+      .from("creator_profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          toast.error("Creator profile not found");
+          navigate("/");
+          return;
+        }
+        setId(data.id); // real UUID → triggers fetchCreator below
+      });
+  }, [rawId, user]);
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   const [creator, setCreator] = useState<FormattedCreator | null>(null);
   const [loading, setLoading] = useState(true);
@@ -137,12 +175,12 @@ export function Profile() {
   // ─── FETCH CREATOR ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!id) return;
+    // Wait until id is resolved (not undefined) and not "me"
+    if (!id || id === "me") return;
 
     const fetchCreator = async () => {
       setLoading(true);
       try {
-        // Correct table: creator_profiles — all columns matched to real schema
         const { data: creatorData, error: creatorError } = await supabase
           .from("creator_profiles")
           .select(`
@@ -179,18 +217,18 @@ export function Profile() {
           .maybeSingle();
 
         if (creatorError) throw creatorError;
-        if (!creatorData) { setCreator(null); return; }
+        if (!creatorData) { setCreator(null); setLoading(false); return; }
 
-        // ✅ creator_platforms — uses creator_id which matches creator_profiles.id
+        // creator_platforms — creator_id matches creator_profiles.id
         const { data: platformsData } = await supabase
           .from("creator_platforms")
           .select("*")
           .eq("creator_id", id);
 
         const defaultPackages: CreatorPackage[] = [
-          { id: "1", name: "Bronze Package", streams: 4,  price: 15000, description: "Perfect for testing the partnership",   enabled: true, is_default: true },
-          { id: "2", name: "Silver Package", streams: 8,  price: 28000, description: "Best value for ongoing campaigns",      enabled: true },
-          { id: "3", name: "Gold Package",   streams: 12, price: 40000, description: "Maximum exposure for premium brands",   enabled: false },
+          { id: "1", name: "Bronze Package", streams: 4,  price: 15000, description: "Perfect for testing the partnership",  enabled: true, is_default: true },
+          { id: "2", name: "Silver Package", streams: 8,  price: 28000, description: "Best value for ongoing campaigns",     enabled: true },
+          { id: "3", name: "Gold Package",   streams: 12, price: 40000, description: "Maximum exposure for premium brands",  enabled: false },
         ];
 
         // Own profile check
@@ -198,7 +236,6 @@ export function Profile() {
 
         // Business check
         if (user) {
-          // ✅ Correct table: businesses
           const { data: business } = await supabase
             .from("businesses")
             .select("id, business_name, email, logo_url")
@@ -224,7 +261,6 @@ export function Profile() {
           location:     creatorData.location || `${creatorData.city || ""}, ${creatorData.country || ""}`.replace(/^, |, $/, "") || "Remote",
           verified:     creatorData.verification_status === "approved",
           availability: creatorData.status === "active" ? "Available for campaigns" : "Not available",
-          // use categories if niche is empty (both columns exist in schema)
           niches:       (creatorData.niche?.length ? creatorData.niche : creatorData.categories) || [],
           stats: {
             avgViewers:  creatorData.avg_viewers || creatorData.avg_concurrent || 0,
@@ -391,9 +427,10 @@ export function Profile() {
 
   // ─── LOADING / NOT FOUND ─────────────────────────────────────────────────
 
-  if (loading) {
+  // Show spinner while resolving "me" or fetching
+  if (loading || (rawId === "me" && !id)) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
         <AppHeader showBack title="Creator Profile" />
         <div className="flex items-center justify-center h-[80vh]">
           <div className="flex flex-col items-center gap-4">
@@ -408,7 +445,7 @@ export function Profile() {
 
   if (!creator) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
         <AppHeader showBack title="Creator Profile" />
         <div className="flex flex-col items-center justify-center h-[80vh] px-8">
           <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
@@ -431,10 +468,10 @@ export function Profile() {
   // ─── RENDER ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <AppHeader showBack title="Creator Profile" userType={isBusiness ? "business" : "creator"} />
 
-      <main className="max-w-[480px] mx-auto w-full">
+      <main className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
 
         {/* ── Profile Header ── */}
         <div className="bg-white border-b border-[#1D1D1D]">
