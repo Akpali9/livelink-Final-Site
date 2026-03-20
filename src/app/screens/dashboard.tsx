@@ -505,8 +505,9 @@ export function Dashboard() {
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
-        <AppHeader showLogo subtitle="Creator Hub" userType="creator" />
+       
         <div className="flex items-center justify-center h-[80vh]">
+           <AppHeader showLogo subtitle="Creator Hub" userType="creator" />
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
             <p className="text-sm text-gray-500">Loading your dashboard...</p>
