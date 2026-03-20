@@ -562,15 +562,17 @@ export function Settings() {
           updated_at: new Date().toISOString(),
         }).eq("id", creatorId);
         if (error) throw error;
-      }
-
-      if (userType === "business" && businessId) {
+        toast.success("Creator profile saved!");
+      } else if (userType === "business" && businessId) {
         const { error } = await supabase.from("businesses").update({
           ...businessForm,
           ...(avatarUrl ? { logo_url: avatarUrl } : {}),
           updated_at: new Date().toISOString(),
         }).eq("id", businessId);
         if (error) throw error;
+        toast.success("Business profile saved!");
+      } else {
+        toast.error("No profile found to save");
       }
 
       await supabase.auth.updateUser({
@@ -616,12 +618,11 @@ export function Settings() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-white pb-28 max-w-md mx-auto">
+    <div className="min-h-screen bg-white max-w-md mx-auto">
       <AppHeader showBack title={userType === "business" ? "Business Settings" : "Creator Settings"}
         userType={userType || "creator"} />
 
-      <div className="px-4 py-6 space-y-10">
-
+      <div className="px-4 py-6 pb-32 space-y-10">
         {/* ── AVATAR ──────────────────────────────────────────────────── */}
         <div className="flex flex-col items-center">
           <div className="relative mb-3">
@@ -905,8 +906,8 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Sticky Save Button */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-[#1D1D1D]/10 z-40 max-w-md mx-auto">
+      {/* Sticky Save Button - positioned above bottom nav */}
+      <div className="fixed bottom-20 left-0 right-0 p-4 bg-white border-t-2 border-[#1D1D1D]/10 z-40 max-w-md mx-auto">
         <button onClick={handleSaveAll} disabled={saving}
           className="w-full bg-[#1D1D1D] text-white py-4 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
           {saving
