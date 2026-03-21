@@ -55,7 +55,7 @@ export function BusinessCreateCampaign() {
       if (!user) return;
       const { data, error } = await supabase
         .from("businesses")
-        .select("id, business_name")
+        .select("id, name")           // ✅ "name" not "business_name"
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -67,9 +67,9 @@ export function BusinessCreateCampaign() {
 
       if (data) {
         setBusinessId(data.id);
-        setBusinessName(data.business_name || "Your Business");
+        setBusinessName(data.name || "Your Business");  // ✅ "name" not "business_name"
       } else {
-        toast.error("You are not registered as a business. Please create a business profile first.");
+        toast.error("No business profile found. Please register your business first.");
         navigate("/become-business");
       }
     };
@@ -91,7 +91,7 @@ export function BusinessCreateCampaign() {
 
     setLoading(true);
     try {
-      // 1. Insert campaign (status = pending_review)
+      // 1. Insert campaign
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
@@ -117,7 +117,7 @@ export function BusinessCreateCampaign() {
           .from("promo_codes")
           .insert({
             campaign_id: campaign.id,
-            business_id: businessId,
+            business_id: businessId,  // ✅ now correctly set
             code: formData.promoCode.toUpperCase(),
             discount_type: formData.discountType,
             discount_value: formData.discountValue,
@@ -131,24 +131,27 @@ export function BusinessCreateCampaign() {
       }
 
       // 3. Insert campaign_creators entries
-      const creatorEntries = formData.creatorIds.map((creatorId) => ({
-        campaign_id: campaign.id,
-        creator_id: creatorId,
-        status: "pending",
-        streams_target: 4,
-        streams_completed: 0,
-        created_at: new Date().toISOString(),
-      }));
-
-      if (creatorEntries.length > 0) {
+      if (formData.creatorIds.length > 0) {
         const { error: creatorsError } = await supabase
           .from("campaign_creators")
-          .insert(creatorEntries);
+          .insert(
+            formData.creatorIds.map((creatorId) => ({
+              campaign_id: campaign.id,
+              creator_id: creatorId,
+              status: "pending",
+              streams_target: 4,
+              streams_completed: 0,
+              created_at: new Date().toISOString(),
+            }))
+          );
         if (creatorsError) throw creatorsError;
       }
 
       // 4. Notify admins
-      const { data: adminRows } = await supabase.from("admins").select("user_id");
+      const { data: adminRows } = await supabase
+        .from("admins")
+        .select("user_id");
+
       if (adminRows && adminRows.length > 0) {
         await supabase.from("notifications").insert(
           adminRows.map((admin) => ({
@@ -163,8 +166,6 @@ export function BusinessCreateCampaign() {
         );
       }
 
-      // Success – let the confirmation component show the modal
-      // We'll return the campaign id, but the modal will handle redirect
       return campaign.id;
     } catch (error: any) {
       console.error(error);
@@ -176,10 +177,10 @@ export function BusinessCreateCampaign() {
   };
 
   const steps = [
-    { number: 1, title: "Basic Info", component: CampaignBasicInfo },
-    { number: 2, title: "Select Creators", component: CampaignCreatorSelection },
-    { number: 3, title: "Offer Details", component: CampaignOfferDetails },
-    { number: 4, title: "Confirm", component: CampaignConfirmation },
+    { number: 1, title: "Basic Info",        component: CampaignBasicInfo },
+    { number: 2, title: "Select Creators",   component: CampaignCreatorSelection },
+    { number: 3, title: "Offer Details",     component: CampaignOfferDetails },
+    { number: 4, title: "Confirm",           component: CampaignConfirmation },
   ];
 
   const CurrentStepComponent = steps[step - 1].component;
@@ -199,14 +200,14 @@ export function BusinessCreateCampaign() {
           {steps.map((s) => (
             <div
               key={s.number}
-              className={`h-1.5 flex-1 rounded-full transition-colors ${
+              className={`h-1.5 flex-1 transition-colors ${
                 step >= s.number ? "bg-[#1D1D1D]" : "bg-[#1D1D1D]/20"
               }`}
             />
           ))}
         </div>
         <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/40 text-center italic">
-          STEP {step} OF {steps.length}: {steps[step - 1].title}
+          Step {step} of {steps.length}: {steps[step - 1].title}
         </p>
       </div>
 
