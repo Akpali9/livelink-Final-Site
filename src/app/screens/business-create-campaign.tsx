@@ -94,7 +94,7 @@ export function BusinessCreateCampaign() {
           type: formData.type,
           description: formData.description,
           budget: formData.budget,
-          status: "pending_review",   // <-- awaiting admin approval
+          status: "pending_review",
           start_date: formData.start_date || null,
           end_date: formData.end_date || null,
           streams_required: 4,
@@ -143,7 +143,7 @@ export function BusinessCreateCampaign() {
 
       // 4. Notify all admin users about the new pending campaign
       const { data: adminRows } = await supabase
-        .from("admins")   // you must have this table
+        .from("admins")
         .select("user_id");
 
       if (adminRows && adminRows.length > 0) {
