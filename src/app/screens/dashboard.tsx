@@ -631,12 +631,6 @@ export function Dashboard() {
                   {liveCampaign.remainingMins} mins to next payment
                 </p>
               </div>
-              <div className="pt-4 border-t border-white/10 flex justify-end relative z-10">
-                <Link to={`/campaign/live-update/${liveCampaign.campaign_id}`}
-                  className="text-[9px] font-black uppercase tracking-widest text-white flex items-center gap-2 group hover:text-[#FEDB71] transition-all">
-                  Update Campaign <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </div>
             </div>
           ) : (
             <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
@@ -661,7 +655,7 @@ export function Dashboard() {
                 <div key={app.id} onClick={() => navigate(`/campaign/${app.campaign_id}/summary`)}
                   className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 border-2 border-[#1D1D1D]/10 rounded-lg overflow-hidden">
+                    <div clas]/10 rounded-lg overflow-hidden">
                       <ImageWithFallback src={app.logo} className="w-full h-full object-cover" />
                     </div>
                     <div>
