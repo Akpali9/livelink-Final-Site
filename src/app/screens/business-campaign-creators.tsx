@@ -116,6 +116,7 @@ export function BusinessCampaignCreators() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [lastUpdated, setLastUpdated]   = useState<Date>(new Date());
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [stats, setStats] = useState<Stats>({
     total: 0, active: 0, pending: 0, completed: 0,
     totalStreams: 0, completedStreams: 0,
@@ -208,116 +209,155 @@ export function BusinessCampaignCreators() {
 
     fetchCampaignData();
 
-    // Subscribe to campaign_creators changes for this campaign
-    const channel = supabase
-      .channel(`campaign-creators-${id}`)
+    let campaignCreatorsChannel: any;
+    let campaignChannel: any;
+    let retryTimeout: NodeJS.Timeout;
 
-      // New creator added to campaign
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "campaign_creators",
-          filter: `campaign_id=eq.${id}`,
-        },
-        async (payload) => {
-          const row = payload.new;
-
-          // Fetch their profile if not already cached
-          let profile = profileMapRef.current[row.creator_id];
-          if (!profile) {
-            const { data } = await supabase
-              .from("creator_profiles")
-              .select(`
-                id, full_name, username, email,
-                avatar_url, rating, avg_concurrent,
-                avg_viewers, categories, niche, country, location
-              `)
-              .eq("id", row.creator_id)
-              .maybeSingle();
-            if (data) {
-              profileMapRef.current[data.id] = data;
-              profile = data;
+    const subscribe = () => {
+      // Channel for campaign_creators changes
+      campaignCreatorsChannel = supabase
+        .channel(`campaign-creators-${id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "campaign_creators",
+            filter: `campaign_id=eq.${id}`,
+          },
+          async (payload) => {
+            const row = payload.new;
+            let profile = profileMapRef.current[row.creator_id];
+            if (!profile) {
+              const { data } = await supabase
+                .from("creator_profiles")
+                .select(`
+                  id, full_name, username, email,
+                  avatar_url, rating, avg_concurrent,
+                  avg_viewers, categories, niche, country, location
+                `)
+                .eq("id", row.creator_id)
+                .maybeSingle();
+              if (data) {
+                profileMapRef.current[data.id] = data;
+                profile = data;
+              }
             }
-          }
 
-          const newEntry = buildSingleEntry(row, profile || {});
-
-          setCreators((prev) => {
-            // Avoid duplicates
-            if (prev.find((c) => c.id === row.id)) return prev;
-            const updated = [newEntry, ...prev];
-            setStats(calcStats(updated));
-            return updated;
-          });
-
-          toast.success(`New creator joined: ${newEntry.creator.name}`);
-          setLastUpdated(new Date());
-        }
-      )
-
-      // Status / streams updated
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "campaign_creators",
-          filter: `campaign_id=eq.${id}`,
-        },
-        (payload) => {
-          const row = payload.new;
-
-          setCreators((prev) => {
-            const updated = prev.map((c) => {
-              if (c.id !== row.id) return c;
-              return {
-                ...c,
-                status:            (row.status || c.status).toLowerCase() as any,
-                streams_completed: row.streams_completed ?? c.streams_completed,
-                streams_target:    row.streams_target ?? c.streams_target,
-                total_earnings:    row.total_earnings ?? c.total_earnings,
-                paid_out:          row.paid_out ?? c.paid_out,
-              };
+            const newEntry = buildSingleEntry(row, profile || {});
+            setCreators((prev) => {
+              if (prev.find((c) => c.id === row.id)) return prev;
+              const updated = [newEntry, ...prev];
+              setStats(calcStats(updated));
+              return updated;
             });
-            setStats(calcStats(updated));
-            return updated;
-          });
+            toast.success(`New creator joined: ${newEntry.creator.name}`);
+            setLastUpdated(new Date());
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "campaign_creators",
+            filter: `campaign_id=eq.${id}`,
+          },
+          (payload) => {
+            const row = payload.new;
+            setCreators((prev) => {
+              const updated = prev.map((c) => {
+                if (c.id !== row.id) return c;
+                return {
+                  ...c,
+                  status:            (row.status || c.status).toLowerCase() as any,
+                  streams_completed: row.streams_completed ?? c.streams_completed,
+                  streams_target:    row.streams_target ?? c.streams_target,
+                  total_earnings:    row.total_earnings ?? c.total_earnings,
+                  paid_out:          row.paid_out ?? c.paid_out,
+                };
+              });
+              setStats(calcStats(updated));
+              return updated;
+            });
+            setLastUpdated(new Date());
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "campaign_creators",
+            filter: `campaign_id=eq.${id}`,
+          },
+          (payload) => {
+            setCreators((prev) => {
+              const updated = prev.filter((c) => c.id !== payload.old.id);
+              setStats(calcStats(updated));
+              return updated;
+            });
+            setLastUpdated(new Date());
+          }
+        );
 
-          setLastUpdated(new Date());
-        }
-      )
+      // Channel for campaign updates (budget, status, etc.)
+      campaignChannel = supabase
+        .channel(`campaign-${id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "campaigns",
+            filter: `id=eq.${id}`,
+          },
+          (payload) => {
+            setCampaign((prev) => prev ? { ...prev, ...payload.new } : null);
+            setLastUpdated(new Date());
+          }
+        );
 
-      // Creator removed
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "campaign_creators",
-          filter: `campaign_id=eq.${id}`,
-        },
-        (payload) => {
-          setCreators((prev) => {
-            const updated = prev.filter((c) => c.id !== payload.old.id);
-            setStats(calcStats(updated));
-            return updated;
-          });
-          setLastUpdated(new Date());
-        }
-      )
-
-      .subscribe((status) => {
+      campaignCreatorsChannel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          console.log(`[Realtime] Subscribed to campaign-creators-${id}`);
+          setIsRealtimeConnected(true);
+          console.log(`[Realtime] Connected to campaign-creators-${id}`);
+        } else if (status === "CHANNEL_ERROR") {
+          setIsRealtimeConnected(false);
+          console.warn(`[Realtime] Error on campaign-creators-${id}, reconnecting...`);
+          // Clear any existing retry timeout and schedule a reconnect
+          if (retryTimeout) clearTimeout(retryTimeout);
+          retryTimeout = setTimeout(() => {
+            campaignCreatersChannel?.unsubscribe();
+            campaignChannel?.unsubscribe();
+            subscribe();
+          }, 3000);
         }
       });
 
-    return () => {
-      channel.unsubscribe();
+      campaignChannel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log(`[Realtime] Connected to campaign-${id}`);
+        }
+      });
     };
-  }, [id]);
+
+    subscribe();
+
+    // Polling fallback: refresh data every 30 seconds if realtime is disconnected
+    const pollInterval = setInterval(() => {
+      if (!isRealtimeConnected) {
+        fetchCampaignData(true);
+      }
+    }, 30000);
+
+    return () => {
+      clearInterval(pollInterval);
+      if (retryTimeout) clearTimeout(retryTimeout);
+      campaignCreatorsChannel?.unsubscribe();
+      campaignChannel?.unsubscribe();
+    };
+  }, [id, fetchCampaignData, isRealtimeConnected]);
 
   // ─── MERGE HELPERS ─────────────────────────────────────────────────────
 
@@ -352,9 +392,11 @@ export function BusinessCampaignCreators() {
     return ccRows.map((row) => buildSingleEntry(row, pMap[row.creator_id] || {}));
   }
 
-  // ─── ACTIONS ───────────────────────────────────────────────────────────
+  // ─── ACTIONS (with optimistic updates) ─────────────────────────────────
 
   const updateStatus = async (ccId: string, newStatus: string) => {
+    // Optimistic update
+    setCreators(prev => prev.map(c => c.id === ccId ? { ...c, status: newStatus as any } : c));
     try {
       const { error } = await supabase
         .from("campaign_creators")
@@ -366,15 +408,17 @@ export function BusinessCampaignCreators() {
         .eq("id", ccId);
 
       if (error) throw error;
-      // Realtime UPDATE will update local state automatically
       toast.success(`Status updated to ${newStatus}`);
     } catch (error) {
-      console.error("Error updating status:", error);
+      // Rollback
+      fetchCampaignData(true);
       toast.error("Failed to update status");
     }
   };
 
   const markPaid = async (ccId: string, amount: number) => {
+    // Optimistic update
+    setCreators(prev => prev.map(c => c.id === ccId ? { ...c, paid_out: amount } : c));
     try {
       const { error } = await supabase
         .from("campaign_creators")
@@ -382,10 +426,10 @@ export function BusinessCampaignCreators() {
         .eq("id", ccId);
 
       if (error) throw error;
-      // Realtime UPDATE handles local state
       toast.success("Marked as paid");
     } catch (error) {
-      console.error("Error marking paid:", error);
+      // Rollback
+      fetchCampaignData(true);
       toast.error("Failed to mark as paid");
     }
   };
@@ -498,7 +542,7 @@ export function BusinessCampaignCreators() {
       <main className="flex-1">
 
         {/* ── Campaign Header ── */}
-        <section className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-20 max-w-[480px] mx-auto w-full">
+        <section className="px-6 py-8 bg-gradient-to-br from-[#1D1D1D] to-gray-800 text-white">
           <div className="flex items-start justify-between mb-6">
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl font-black uppercase tracking-tighter italic leading-tight mb-1">
@@ -529,7 +573,7 @@ export function BusinessCampaignCreators() {
         {/* ── Realtime Status Bar ── */}
         <div className="px-6 py-2.5 border-b border-[#1D1D1D]/10 flex items-center justify-between bg-white sticky top-0 z-10">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <div className={`w-2 h-2 rounded-full ${isRealtimeConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
             <span className="text-[8px] font-black uppercase tracking-widest text-green-600">Live</span>
             <span className="text-[8px] text-[#1D1D1D]/30">
               · Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
