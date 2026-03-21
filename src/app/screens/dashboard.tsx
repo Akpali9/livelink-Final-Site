@@ -337,7 +337,7 @@ export function Dashboard() {
         requestedCount: prev.requestedCount - 1,
         activeCount:    prev.activeCount + 1,
       }));
-      navigate(`/gig-accepted/${req.campaign_id}`);
+      
     } catch (error) {
       console.error("Accept error:", error);
       toast.error("Failed to accept offer");
