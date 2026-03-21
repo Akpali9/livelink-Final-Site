@@ -7,7 +7,7 @@ import { BusinessDashboard } from "./screens/business-dashboard";
 import { BusinessProfile } from "./screens/business-profile";
 import { BusinessSettings } from "./screens/business-settings";
 import { BusinessCampaigns } from "./screens/business-campaign-detail";
-import { BusinessCampaignDetail } from "./screens/business-campaign-detail";
+// import { BusinessCampaignDetail } from "./screens/business-campaign-detail";
 import { BusinessCampaignCreators } from "./screens/business-campaign-detail";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { BrowseCreators } from "./screens/browse";
