@@ -1,4 +1,3 @@
-// src/components/creator-selector.tsx
 import React from "react";
 import { ImageWithFallback } from "./ImageWithFallback";
 import { CheckCircle2 } from "lucide-react";
