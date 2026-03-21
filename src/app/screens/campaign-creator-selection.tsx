@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { CampaignFormData } from "./business-create-campaign";
 import { CreatorSelector } from "../components/creator-selector";
 import { supabase } from "../lib/supabase";
@@ -19,9 +20,13 @@ export function CampaignCreatorSelection({ data, updateData, onNext, onBack }: P
       const { data: profiles, error } = await supabase
         .from("creator_profiles")
         .select("id, full_name, avatar_url, avg_viewers, rating")
-        .eq("status", "active");   // Only active creators
-      if (error) console.error(error);
-      else setCreators(profiles || []);
+        .eq("status", "active");
+      if (error) {
+        console.error(error);
+        toast.error("Failed to load creators");
+      } else {
+        setCreators(profiles || []);
+      }
       setLoading(false);
     };
     fetchCreators();
@@ -36,7 +41,7 @@ export function CampaignCreatorSelection({ data, updateData, onNext, onBack }: P
 
   const handleNext = () => {
     if (data.creatorIds.length === 0) {
-      alert("Please select at least one creator");
+      toast.error("Please select at least one creator");
       return;
     }
     onNext();
