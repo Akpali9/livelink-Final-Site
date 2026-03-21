@@ -1,4 +1,3 @@
-// src/screens/campaign-creator-selection.tsx
 import React, { useState, useEffect } from "react";
 import { CampaignFormData } from "./business-create-campaign";
 import { CreatorSelector } from "../components/creator-selector";
@@ -17,10 +16,11 @@ export function CampaignCreatorSelection({ data, updateData, onNext, onBack }: P
 
   useEffect(() => {
     const fetchCreators = async () => {
+      // ✅ CHANGE: Filter by status = 'active' instead of 'approved'
       const { data: profiles, error } = await supabase
         .from("creator_profiles")
         .select("id, full_name, avatar_url, avg_viewers, rating")
-        .eq("status", "approved"); // only approved creators
+        .eq("status", "active");   // or "active" if that's the correct field
       if (error) console.error(error);
       else setCreators(profiles || []);
       setLoading(false);
