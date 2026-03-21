@@ -276,7 +276,7 @@ export function BusinessDashboard() {
                 </p>
                 {campaignFilter === "LIVE" && (
                   <button
-                    onClick={() => navigate("/campaign/type")}
+                    onClick={() => navigate("/business/create-campaign")}
                     className="mt-4 px-4 py-2 bg-[#1D1D1D] text-white text-[9px] font-black uppercase italic hover:bg-[#389C9A] transition-colors"
                   >
                     Create Campaign
@@ -343,7 +343,7 @@ export function BusinessDashboard() {
           <div className="flex flex-col gap-2">
             {[
               { label: "Browse Creators",   path: "/browse",            icon: Users },
-              { label: "Create Campaign",   path: "/campaign/type",     icon: Megaphone },
+              { label: "Create Campaign",   path: "/business/create-campaign",     icon: Megaphone },
               { label: "Business Settings", path: "/business/settings", icon: ArrowRight },
             ].map((action) => (
               <button
