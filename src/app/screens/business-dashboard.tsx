@@ -352,7 +352,7 @@ export function BusinessDashboard() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  onClick={() => navigate(`/business/campaign/${c.id}`)}
+                  onClick={() => navigate(`/business/campaign/overview/${c.id}`)}
                   className="border-2 border-[#1D1D1D] p-5 cursor-pointer hover:bg-[#F8F8F8] active:scale-[0.99] transition-all group"
                 >
                   <div className="flex items-start justify-between">
