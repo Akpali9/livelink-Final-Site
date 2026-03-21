@@ -161,7 +161,8 @@ export function BusinessCreateCampaign() {
       }
 
       toast.success("Campaign created! Waiting for admin approval.");
-      navigate(`/business/campaigns`); // go back to campaigns list
+      // Redirect to campaigns list – the campaign will appear in the pending tab
+      navigate("/business/campaigns?status=pending");
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to create campaign");
