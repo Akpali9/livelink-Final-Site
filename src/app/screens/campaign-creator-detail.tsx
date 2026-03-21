@@ -1,4 +1,3 @@
-// src/screens/campaign-creator-detail.tsx
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router";
 import {
@@ -108,7 +107,7 @@ export function CampaignCreatorDetail() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [selectedProof, setSelectedProof] = useState<number | null>(null);
 
-  // Refs for subscriptions
+  // Refs
   const campaignCreatorChannelRef = useRef<any>(null);
   const campaignChannelRef = useRef<any>(null);
   const profileChannelRef = useRef<any>(null);
