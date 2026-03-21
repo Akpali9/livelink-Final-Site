@@ -128,7 +128,7 @@ export function BusinessDashboard() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+    <div className="min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
       <Toaster position="top-center" richColors />
       <AppHeader showLogo userType="business" subtitle="Business Hub" />
 
@@ -235,7 +235,7 @@ export function BusinessDashboard() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic">My Campaigns</h2>
             <button
-              onClick={() => navigate("/business/create-campaign")}
+              onClick={() => navigate("/campaign/type")}
               className="flex items-center gap-1.5 bg-[#389C9A] text-white px-3 py-2 text-[9px] font-black uppercase tracking-widest italic hover:bg-[#1D1D1D] transition-colors"
             >
               <Plus className="w-3 h-3" /> New
@@ -269,7 +269,7 @@ export function BusinessDashboard() {
                 </p>
                 {campaignFilter === "LIVE" && (
                   <button
-                    onClick={() => navigate("/business/create-campaign")}
+                    onClick={() => navigate("/campaign/type")}
                     className="mt-4 px-4 py-2 bg-[#1D1D1D] text-white text-[9px] font-black uppercase italic hover:bg-[#389C9A] transition-colors"
                   >
                     Create Campaign
@@ -336,7 +336,7 @@ export function BusinessDashboard() {
           <div className="flex flex-col gap-2">
             {[
               { label: "Browse Creators",   path: "/browse",            icon: Users },
-              { label: "Create Campaign",   path: "/business/create-campaign",     icon: Megaphone },
+              { label: "Create Campaign",   path: "/campaign/type",     icon: Megaphone },
               { label: "Business Settings", path: "/business/settings", icon: ArrowRight },
             ].map((action) => (
               <button
