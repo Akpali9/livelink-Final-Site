@@ -49,7 +49,6 @@ export const routes: RouteObject[] = [
   { path: "/business/profile", element: protectBusiness(BusinessProfile) },
   { path: "/business/settings", element: protectBusiness(BusinessSettings) },
   { path: "/business/campaigns", element: protectBusiness(BusinessCampaigns) },
-  { path: "/campaign/:id/summary", element: <YourCampaignSummaryComponent /> },
   
   // Campaign detail routes – use the new components
   { path: "/business/campaign/overview/:id", element: protectBusiness(BusinessCampaignOverview) },
@@ -65,7 +64,7 @@ export const routes: RouteObject[] = [
   // Admin routes
   { path: "/admin/dashboard", element: protectAdmin(AdminDashboard) },
   { path: "/admin/*", element: protectAdmin(AdminDashboard) },
-  
+  { path: "/campaign/:id/summary", element: protectCreator(CampaignSummary) },
   // Catch all
   { path: "*", element: <LoginPortal /> },
 ];
