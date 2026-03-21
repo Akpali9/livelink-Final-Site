@@ -19,22 +19,24 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+// ── Normalise status so comparisons work regardless of case/format ──
+const normaliseStatus = (s: string = "") => s.toLowerCase().replace(/[\s_]+/g, "_");
+
 export function BusinessDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [businessId, setBusinessId]     = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("");
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [offers, setOffers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [campaigns, setCampaigns]       = useState<any[]>([]);
+  const [offers, setOffers]             = useState<any[]>([]);
+  const [loading, setLoading]           = useState(true);
   const [campaignFilter, setCampaignFilter] = useState<"LIVE" | "PENDING" | "COMPLETED">("LIVE");
 
   /* ── Fetch business ── */
   useEffect(() => {
     if (!user) return;
     const fetchBusiness = async () => {
-      // Email not confirmed — RLS blocks all queries, redirect to confirm screen
       if (!user.email_confirmed_at) {
         navigate("/confirm-email", { state: { email: user.email } });
         return;
@@ -62,21 +64,26 @@ export function BusinessDashboard() {
     fetchBusiness();
   }, [user]);
 
-  /* ── Fetch data ── */
+  /* ── Fetch campaigns + offers ── */
   useEffect(() => {
     if (!businessId) return;
     const fetchData = async () => {
       setLoading(true);
-      const { data: campaignData } = await supabase
+
+      const { data: campaignData, error: campErr } = await supabase
         .from("campaigns")
         .select(`*, campaign_creators(id, status)`)
         .eq("business_id", businessId);
 
-      const { data: offerData } = await supabase
+      if (campErr) console.error("Campaign fetch error:", campErr);
+
+      const { data: offerData, error: offerErr } = await supabase
         .from("offers")
         .select(`*, creators(id, name, avatar), campaigns(id, name, type)`)
         .eq("business_id", businessId)
         .in("status", ["Offer Received", "Negotiating"]);
+
+      if (offerErr) console.error("Offer fetch error:", offerErr);
 
       setCampaigns(campaignData || []);
       setOffers(offerData || []);
@@ -85,15 +92,21 @@ export function BusinessDashboard() {
     fetchData();
   }, [businessId]);
 
-  /* ── Stats ── */
-  const active    = campaigns.filter(c => c.status === "ACTIVE").length;
-  const pending   = campaigns.filter(c => c.status === "PENDING REVIEW").length;
-  const completed = campaigns.filter(c => c.status === "COMPLETED").length;
+  /* ── Stats — normalised so "active" / "ACTIVE" / "Active" all match ── */
+  const active    = campaigns.filter(c => normaliseStatus(c.status) === "active").length;
+  const pending   = campaigns.filter(c =>
+    ["pending_review", "not_started", "pending"].includes(normaliseStatus(c.status))
+  ).length;
+  const completed = campaigns.filter(c => normaliseStatus(c.status) === "completed").length;
+
+  // Accept budget / pay_rate / price — handles number or formatted string
   const totalSpent = campaigns.reduce((sum, c) => {
-    return sum + parseInt(c.price?.replace(/[^\d]/g, "") || "0");
+    const raw = c.budget ?? c.pay_rate ?? c.price ?? 0;
+    const num = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[^\d.]/g, "")) || 0;
+    return sum + num;
   }, 0);
 
-  /* ── Accept / Reject ── */
+  /* ── Accept / Reject offers ── */
   const acceptOffer = async (offer: any) => {
     await supabase.from("offers").update({ status: "Accepted" }).eq("id", offer.id);
     await supabase.from("campaign_creators").insert({
@@ -112,12 +125,31 @@ export function BusinessDashboard() {
     setOffers(prev => prev.filter(o => o.id !== offerId));
   };
 
+  /* ── Filter campaigns for list ── */
   const filteredCampaigns = campaigns.filter(c => {
-    if (campaignFilter === "LIVE")      return c.status === "ACTIVE" || c.status === "active";
-    if (campaignFilter === "PENDING")   return c.status === "PENDING REVIEW" || c.status === "pending_review" || c.status === "NOT STARTED";
-    if (campaignFilter === "COMPLETED") return c.status === "COMPLETED" || c.status === "completed";
+    const s = normaliseStatus(c.status);
+    if (campaignFilter === "LIVE")      return s === "active";
+    if (campaignFilter === "PENDING")   return ["pending_review", "not_started", "pending"].includes(s);
+    if (campaignFilter === "COMPLETED") return s === "completed";
     return false;
   });
+
+  /* ── Status dot + badge colour helpers ── */
+  const statusDot = (status: string) => {
+    const s = normaliseStatus(status);
+    if (s === "active") return "bg-[#389C9A]";
+    if (["pending_review", "not_started", "pending"].includes(s)) return "bg-[#FEDB71]";
+    return "bg-[#1D1D1D]/20";
+  };
+
+  const statusBadge = (status: string) => {
+    const s = normaliseStatus(status);
+    if (s === "active")
+      return "bg-[#389C9A]/10 border-[#389C9A]/30 text-[#389C9A]";
+    if (["pending_review", "not_started", "pending"].includes(s))
+      return "bg-[#FEDB71]/10 border-[#FEDB71]/50 text-[#1D1D1D]";
+    return "bg-[#F8F8F8] border-[#1D1D1D]/10 text-[#1D1D1D]/40";
+  };
 
   if (loading) {
     return (
@@ -155,10 +187,10 @@ export function BusinessDashboard() {
         {/* ── Stats Grid ── */}
         <div className="grid grid-cols-2 gap-3 px-6 mt-4">
           {[
-            { label: "Active",    val: active,           sub: "Live Now",    icon: Zap,          color: "text-[#389C9A]" },
-            { label: "Pending",   val: pending,          sub: "Reviewing",   icon: Clock,        color: "text-[#FEDB71]" },
-            { label: "Completed", val: completed,        sub: "Finished",    icon: CheckCircle2, color: "text-[#1D1D1D]/40" },
-            { label: "Spent",     val: `₦${totalSpent.toLocaleString()}`, sub: "Total Budget", icon: DollarSign, color: "text-[#389C9A]" },
+            { label: "Active",    val: active,                            sub: "Live Now",     icon: Zap,          color: "text-[#389C9A]" },
+            { label: "Pending",   val: pending,                           sub: "Reviewing",    icon: Clock,        color: "text-[#FEDB71]" },
+            { label: "Completed", val: completed,                         sub: "Finished",     icon: CheckCircle2, color: "text-[#1D1D1D]/40" },
+            { label: "Spent",     val: `₦${totalSpent.toLocaleString()}`, sub: "Total Budget", icon: DollarSign,   color: "text-[#389C9A]" },
           ].map((s, i) => (
             <motion.div
               key={i}
@@ -289,11 +321,7 @@ export function BusinessDashboard() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 flex-shrink-0 ${
-                          c.status === "ACTIVE"         ? "bg-[#389C9A]" :
-                          c.status === "PENDING REVIEW" ? "bg-[#FEDB71]" :
-                          "bg-[#1D1D1D]/20"
-                        }`} />
+                        <span className={`w-2 h-2 flex-shrink-0 ${statusDot(c.status)}`} />
                         <h3 className="text-[12px] font-black uppercase tracking-tight italic truncate">{c.name}</h3>
                       </div>
                       <p className="text-[9px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 italic ml-4">{c.type}</p>
@@ -308,19 +336,15 @@ export function BusinessDashboard() {
                         {c.campaign_creators?.length || 0} creator{c.campaign_creators?.length !== 1 ? "s" : ""}
                       </span>
                     </div>
-                    {c.price && (
+                    {(c.budget ?? c.pay_rate ?? c.price) != null && (
                       <div className="flex items-center gap-1.5">
                         <DollarSign className="w-3 h-3 text-[#FEDB71]" />
-                        <span className="text-[9px] font-black uppercase italic">{c.price}</span>
+                        <span className="text-[9px] font-black uppercase italic">
+                          ₦{Number(c.budget ?? c.pay_rate ?? c.price).toLocaleString()}
+                        </span>
                       </div>
                     )}
-                    <span className={`ml-auto text-[8px] font-black uppercase px-2 py-0.5 border italic ${
-                      c.status === "ACTIVE"
-                        ? "bg-[#389C9A]/10 border-[#389C9A]/30 text-[#389C9A]"
-                        : c.status === "PENDING REVIEW"
-                        ? "bg-[#FEDB71]/10 border-[#FEDB71]/50 text-[#1D1D1D]"
-                        : "bg-[#F8F8F8] border-[#1D1D1D]/10 text-[#1D1D1D]/40"
-                    }`}>
+                    <span className={`ml-auto text-[8px] font-black uppercase px-2 py-0.5 border italic ${statusBadge(c.status)}`}>
                       {c.status}
                     </span>
                   </div>
