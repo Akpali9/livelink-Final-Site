@@ -49,43 +49,30 @@ export function BusinessCreateCampaign() {
   const [loading, setLoading] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState("");
-  const [businessChecked, setBusinessChecked] = useState(false); // to avoid multiple redirects
 
-  // Fetch business profile – redirect if missing or not approved
   useEffect(() => {
     const fetchBusiness = async () => {
       if (!user) return;
-
       const { data, error } = await supabase
         .from("businesses")
-        .select("id, business_name, status, application_status")
+        .select("id, business_name")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (error) {
         console.error("Business fetch error:", error);
         toast.error("Failed to load business profile");
-        setBusinessChecked(true);
         return;
       }
 
       if (data) {
-        const isApproved =
-          data.status === "approved" || data.application_status === "approved";
-        if (isApproved) {
-          setBusinessId(data.id);
-          setBusinessName(data.business_name || "Your Business");
-          setBusinessChecked(true);
-        } else {
-          toast.error("Your business profile is still pending approval.");
-          navigate("/business/dashboard", { replace: true });
-        }
+        setBusinessId(data.id);
+        setBusinessName(data.business_name || "Your Business");
       } else {
         toast.error("You are not registered as a business. Please create a business profile first.");
-        navigate("/become-business", { replace: true });
+        navigate("/become-business");
       }
     };
-
     fetchBusiness();
   }, [user, navigate]);
 
@@ -160,11 +147,8 @@ export function BusinessCreateCampaign() {
         if (creatorsError) throw creatorsError;
       }
 
-      // 4. Notify all admin users about the new pending campaign
-      const { data: adminRows } = await supabase
-        .from("admins")
-        .select("user_id");
-
+      // 4. Notify admins
+      const { data: adminRows } = await supabase.from("admins").select("user_id");
       if (adminRows && adminRows.length > 0) {
         await supabase.from("notifications").insert(
           adminRows.map((admin) => ({
@@ -179,14 +163,13 @@ export function BusinessCreateCampaign() {
         );
       }
 
-      // The confirmation component will handle the success modal and redirect.
-      // We don't redirect here; the child component does it after showing the modal.
-      // Just return a success flag
-      return true;
+      // Success – let the confirmation component show the modal
+      // We'll return the campaign id, but the modal will handle redirect
+      return campaign.id;
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to create campaign");
-      throw error; // re-throw so child knows it failed
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -200,18 +183,6 @@ export function BusinessCreateCampaign() {
   ];
 
   const CurrentStepComponent = steps[step - 1].component;
-
-  // While checking business, show loading spinner (optional)
-  if (!businessChecked) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
-          <p className="text-sm text-gray-400">Loading business profile...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-white pb-24 max-w-md mx-auto">
