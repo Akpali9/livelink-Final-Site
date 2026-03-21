@@ -128,7 +128,7 @@ export function BusinessDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <Toaster position="top-center" richColors />
       <AppHeader showLogo userType="business" subtitle="Business Hub" />
 
