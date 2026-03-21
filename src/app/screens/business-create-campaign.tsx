@@ -1,4 +1,3 @@
-// src/screens/business-create-campaign.tsx
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
@@ -14,29 +13,25 @@ import { CampaignConfirmation } from "./campaign-confirmation";
 
 // Types
 export interface CampaignFormData {
-  // Step 1: Basic info
   name: string;
-  type: string;          // e.g., "promo-only", "banner+promo"
+  type: string;
   description: string;
   budget: number;
   start_date: string;
   end_date: string;
-  // Step 2: Creators
-  creatorIds: string[];  // selected creator IDs
-  // Step 3: Offer details
+  creatorIds: string[];
   promoCode: string;
   discountType: "percentage" | "fixed_amount" | "bogo" | "free_shipping";
   discountValue: number;
   usageLimit: number | null;
   expiryDate: string | null;
   instructions: string;
-  // Additional
   status: "draft" | "active" | "paused";
 }
 
 export function BusinessCreateCampaign() {
   const navigate = useNavigate();
-  const { id: editCampaignId } = useParams(); // if editing
+  const { id: editCampaignId } = useParams();
   const { user } = useAuth();
 
   const [step, setStep] = useState(1);
@@ -60,7 +55,6 @@ export function BusinessCreateCampaign() {
   const [loading, setLoading] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
 
-  // Fetch business ID from profile
   useEffect(() => {
     const fetchBusiness = async () => {
       if (!user) return;
@@ -101,7 +95,7 @@ export function BusinessCreateCampaign() {
           status: formData.status,
           start_date: formData.start_date || null,
           end_date: formData.end_date || null,
-          streams_required: 4, // you can make this dynamic
+          streams_required: 4, // default, can be dynamic
           created_at: new Date().toISOString(),
         })
         .select()
@@ -109,7 +103,7 @@ export function BusinessCreateCampaign() {
 
       if (campaignError) throw campaignError;
 
-      // 2. Insert promo code details (if provided)
+      // 2. Insert promo code details
       if (formData.promoCode) {
         const { error: promoError } = await supabase
           .from("promo_codes")
@@ -122,18 +116,18 @@ export function BusinessCreateCampaign() {
             usage_limit: formData.usageLimit,
             expires_at: formData.expiryDate,
             instructions: formData.instructions,
-            goal: "sales", // you might want to capture goal earlier
-            offer_duration: "30", // placeholder
+            goal: "sales",
+            offer_duration: "30",
           });
         if (promoError) throw promoError;
       }
 
-      // 3. Insert campaign_creators entries for each selected creator
+      // 3. Insert campaign_creators entries
       const creatorEntries = formData.creatorIds.map((creatorId) => ({
         campaign_id: campaign.id,
         creator_id: creatorId,
         status: "pending",
-        streams_target: 4, // default, can be customized per creator later
+        streams_target: 4,
         streams_completed: 0,
         created_at: new Date().toISOString(),
       }));
@@ -165,7 +159,7 @@ export function BusinessCreateCampaign() {
   const CurrentStepComponent = steps[step - 1].component;
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+    <div className="min-h-screen bg-white pb-24 max-w-md mx-auto">
       <AppHeader
         showBack
         backPath="/business/dashboard"
@@ -192,7 +186,6 @@ export function BusinessCreateCampaign() {
 
       <div className="w-full h-px bg-[#1D1D1D]/10 mb-6" />
 
-      {/* Step component */}
       <CurrentStepComponent
         data={formData}
         updateData={updateFormData}
