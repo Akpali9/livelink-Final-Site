@@ -1,14 +1,11 @@
-// src/screens/campaign-confirmation.tsx
 import React from "react";
 import { CampaignFormData } from "./business-create-campaign";
 
 interface Props {
   data: CampaignFormData;
-  updateData: (updates: Partial<CampaignFormData>) => void;
   onBack: () => void;
   onSubmit: () => void;
   loading: boolean;
-  isLastStep: boolean;
 }
 
 export function CampaignConfirmation({ data, onBack, onSubmit, loading }: Props) {
@@ -29,13 +26,13 @@ export function CampaignConfirmation({ data, onBack, onSubmit, loading }: Props)
         </div>
         <div>
           <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Budget</p>
-          <p className="font-black">₦{data.budget.toLocaleString()}</p>
+          <p className="font-black">₦{Math.max(0, data.budget).toLocaleString()}</p>
         </div>
         <div>
           <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Creators</p>
           <p className="font-black">{data.creatorIds.length} creator(s) selected</p>
         </div>
-        {data.promoCode && (
+        {data.promoCode && data.discountValue > 0 && (
           <>
             <div>
               <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Promo Code</p>
