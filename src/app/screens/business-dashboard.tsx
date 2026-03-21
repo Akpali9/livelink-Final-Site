@@ -119,13 +119,20 @@ export function BusinessDashboard() {
     return false;
   });
 
-  if (loading) {
-    return (
-      <div className="max-w-[480px] mx-auto w-full">
-        <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+ if (loading && !authChecked) {
+  return (
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+      <AppHeader showLogo userType="business" subtitle="Business Hub" />
+      <div className="flex items-center justify-center h-[80vh]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
+          <p className="text-sm text-gray-500">Loading your dashboard...</p>
+        </div>
       </div>
-    );
-  }
+      <BottomNav />
+    </div>
+  );
+}
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
