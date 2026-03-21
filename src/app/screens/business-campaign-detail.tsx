@@ -1,24 +1,23 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router";
-import { 
-  ArrowLeft, 
-  Download, 
-  Calendar, 
-  Tag, 
-  Tv, 
-  PoundSterling as Pound, 
-  Info, 
-  Clock, 
-  CheckCircle2, 
-  MessageSquare, 
-  AlertTriangle, 
-  ChevronRight, 
+import {
+  ArrowLeft,
+  Download,
+  Calendar,
+  Tag,
+  Tv,
+  PoundSterling as Pound,
+  Clock,
+  CheckCircle2,
+  MessageSquare,
+  AlertTriangle,
+  ChevronRight,
   RefreshCcw,
-  X,
-  FileText,
+  Loader2,
+  Shield,
   Flag,
-  Share2,
-  Loader2
+  Repeat,
+  Lock
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
@@ -28,10 +27,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
-// ─────────────────────────────────────────────
-// INTERFACES
-// ─────────────────────────────────────────────
-
+// ========== INTERFACES ==========
 interface Campaign {
   id: string;
   name: string;
@@ -44,6 +40,8 @@ interface Campaign {
   streams_required: number;
   business_id: string;
   created_at: string;
+  banner_url?: string;
+  promo_code?: string;
 }
 
 interface CampaignCreator {
@@ -67,12 +65,10 @@ interface CreatorProfile {
   avatar_url?: string;
   email: string;
   avg_viewers?: number;
+  verified?: boolean;
 }
 
-// ─────────────────────────────────────────────
-// HELPER: Build stream log from streams_target and streams_completed
-// ─────────────────────────────────────────────
-
+// ========== HELPER ==========
 type StreamStatus = "Verified" | "Awaiting Proof" | "Upcoming";
 
 function buildStreamLog(streamsTarget: number, streamsCompleted: number) {
@@ -84,7 +80,6 @@ function buildStreamLog(streamsTarget: number, streamsCompleted: number) {
 
     if (i <= streamsCompleted) {
       status = "Verified";
-      // For completed streams we could show a placeholder date
       date = "Completed";
       duration = "45 mins";
     } else if (i === streamsCompleted + 1 && streamsCompleted < streamsTarget) {
@@ -97,11 +92,8 @@ function buildStreamLog(streamsTarget: number, streamsCompleted: number) {
   return log;
 }
 
-// ─────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────
-
-export function BusinessCampaignDetail() {
+// ========== COMPONENT ==========
+export function CampaignCreatorDetail() {
   const navigate = useNavigate();
   const { campaignId, creatorId } = useParams();
   const { user } = useAuth();
@@ -115,36 +107,34 @@ export function BusinessCampaignDetail() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [selectedProof, setSelectedProof] = useState<number | null>(null);
 
-  // Refs for subscription cleanup
+  // Refs
   const campaignCreatorChannelRef = useRef<any>(null);
   const campaignChannelRef = useRef<any>(null);
+  const profileChannelRef = useRef<any>(null);
 
   // ─── FETCH DATA ─────────────────────────────────────────────────────────
-
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !creatorId) return;
     if (!silent) setLoading(true);
     else setRefreshing(true);
 
     try {
-      // 1. Fetch campaign
+      // 1. Campaign
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
         .select("*")
         .eq("id", campaignId)
         .single();
-
       if (campaignError) throw campaignError;
       setCampaign(campaignData);
 
-      // 2. Fetch campaign_creator row
+      // 2. Campaign creator row
       const { data: ccData, error: ccError } = await supabase
         .from("campaign_creators")
         .select("*")
         .eq("campaign_id", campaignId)
         .eq("creator_id", creatorId)
         .maybeSingle();
-
       if (ccError) throw ccError;
       if (!ccData) {
         toast.error("Creator not found in this campaign");
@@ -153,13 +143,12 @@ export function BusinessCampaignDetail() {
       }
       setCampaignCreator(ccData);
 
-      // 3. Fetch creator profile
+      // 3. Creator profile
       const { data: profileData, error: profileError } = await supabase
         .from("creator_profiles")
-        .select("id, full_name, username, avatar_url, email, avg_viewers")
+        .select("id, full_name, username, avatar_url, email, avg_viewers, verified")
         .eq("id", creatorId)
         .single();
-
       if (profileError) throw profileError;
       setCreatorProfile(profileData);
 
@@ -175,16 +164,14 @@ export function BusinessCampaignDetail() {
   }, [campaignId, creatorId, navigate]);
 
   // ─── REALTIME SUBSCRIPTIONS ────────────────────────────────────────────
-
   useEffect(() => {
     if (!campaignId || !creatorId) return;
-
     fetchData();
 
     let retryTimeout: NodeJS.Timeout;
 
     const subscribe = () => {
-      // Subscribe to campaign_creators changes for this specific row
+      // Campaign creator updates
       campaignCreatorChannelRef.current = supabase
         .channel(`campaign-creator-${campaignId}-${creatorId}`)
         .on(
@@ -196,18 +183,15 @@ export function BusinessCampaignDetail() {
             filter: `campaign_id=eq.${campaignId},creator_id=eq.${creatorId}`,
           },
           (payload) => {
-            const updated = payload.new as CampaignCreator;
-            setCampaignCreator((prev) => (prev ? { ...prev, ...updated } : updated));
+            setCampaignCreator((prev) => (prev ? { ...prev, ...payload.new } : prev));
             setLastUpdated(new Date());
           }
         )
         .subscribe((status) => {
           if (status === "SUBSCRIBED") {
             setIsRealtimeConnected(true);
-            console.log(`[Realtime] Connected to campaign-creator-${campaignId}-${creatorId}`);
           } else if (status === "CHANNEL_ERROR") {
             setIsRealtimeConnected(false);
-            console.warn(`[Realtime] Error on campaign-creator-${campaignId}-${creatorId}, reconnecting...`);
             if (retryTimeout) clearTimeout(retryTimeout);
             retryTimeout = setTimeout(() => {
               campaignCreatorChannelRef.current?.unsubscribe();
@@ -216,7 +200,7 @@ export function BusinessCampaignDetail() {
           }
         });
 
-      // Subscribe to campaign changes (optional)
+      // Campaign updates
       campaignChannelRef.current = supabase
         .channel(`campaign-${campaignId}`)
         .on(
@@ -233,11 +217,28 @@ export function BusinessCampaignDetail() {
           }
         )
         .subscribe();
+
+      // Creator profile updates
+      profileChannelRef.current = supabase
+        .channel(`creator-profile-${creatorId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "creator_profiles",
+            filter: `id=eq.${creatorId}`,
+          },
+          (payload) => {
+            setCreatorProfile((prev) => (prev ? { ...prev, ...payload.new } : prev));
+            setLastUpdated(new Date());
+          }
+        )
+        .subscribe();
     };
 
     subscribe();
 
-    // Polling fallback: if realtime disconnected, refresh every 30 seconds
     const pollInterval = setInterval(() => {
       if (!isRealtimeConnected) {
         fetchData(true);
@@ -249,16 +250,14 @@ export function BusinessCampaignDetail() {
       if (retryTimeout) clearTimeout(retryTimeout);
       campaignCreatorChannelRef.current?.unsubscribe();
       campaignChannelRef.current?.unsubscribe();
+      profileChannelRef.current?.unsubscribe();
     };
   }, [campaignId, creatorId, fetchData, isRealtimeConnected]);
 
-  // ─── ACTIONS (optional: mark stream as completed) ───────────────────────
-
+  // ─── ACTIONS ──────────────────────────────────────────────────────────
   const markStreamCompleted = async () => {
     if (!campaignCreator) return;
-
     const newCompleted = campaignCreator.streams_completed + 1;
-    // Optimistic update
     setCampaignCreator({ ...campaignCreator, streams_completed: newCompleted });
     try {
       const { error } = await supabase
@@ -268,18 +267,16 @@ export function BusinessCampaignDetail() {
       if (error) throw error;
       toast.success(`Stream ${newCompleted} marked as completed`);
     } catch (error) {
-      // Rollback
       setCampaignCreator({ ...campaignCreator, streams_completed: campaignCreator.streams_completed });
       toast.error("Failed to mark stream");
     }
   };
 
-  // ─── RENDER LOGIC ───────────────────────────────────────────────────────
-
+  // ─── RENDER LOGIC ─────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] max-w-[480px] mx-auto w-full">
-        <AppHeader showBack backPath={`/business/campaign/${campaignId}`} title="Creator Breakdown" />
+        <AppHeader showBack backPath={`/business/campaign/${campaignId}`} title="Creator Detail" userType="business" />
         <div className="flex items-center justify-center h-[80vh]">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
@@ -293,7 +290,7 @@ export function BusinessCampaignDetail() {
   if (!campaign || !campaignCreator || !creatorProfile) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] max-w-[480px] mx-auto w-full">
-        <AppHeader showBack backPath={`/business/campaign/${campaignId}`} title="Creator Breakdown" />
+        <AppHeader showBack backPath={`/business/campaign/${campaignId}`} title="Creator Detail" userType="business" />
         <div className="flex flex-col items-center justify-center h-[80vh] px-8 text-center">
           <AlertTriangle className="w-16 h-16 text-gray-200 mb-4" />
           <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Not Found</h2>
@@ -311,15 +308,21 @@ export function BusinessCampaignDetail() {
 
   const progress = (campaignCreator.streams_completed / campaignCreator.streams_target) * 100;
   const streams = buildStreamLog(campaignCreator.streams_target, campaignCreator.streams_completed);
-
-  // Total budget may be from campaign.budget or campaignCreator.total_earnings
   const totalBudget = campaign.budget || 0;
   const releasedSoFar = campaignCreator.paid_out || 0;
   const remainingHeld = totalBudget - releasedSoFar;
 
+  // Payout schedule (simple example based on 4 equal milestones)
+  const payoutMilestones = [
+    { label: "After Streams 1–4 verified", amount: totalBudget * 0.25, completed: campaignCreator.streams_completed >= 4 },
+    { label: "After Streams 5–8 verified", amount: totalBudget * 0.25, completed: campaignCreator.streams_completed >= 8 },
+    { label: "After Streams 9–12 verified", amount: totalBudget * 0.25, completed: campaignCreator.streams_completed >= 12 },
+    { label: "After Streams 13–16 verified", amount: totalBudget * 0.25, completed: campaignCreator.streams_completed >= 16 },
+  ];
+
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
-      <AppHeader showBack backPath={`/business/campaign/${campaignId}`} title="Creator Breakdown" />
+      <AppHeader showBack backPath={`/business/campaign/${campaignId}`} title="Creator Detail" userType="business" />
 
       {/* Realtime Status Bar */}
       <div className="px-6 py-2.5 border-b border-[#1D1D1D]/10 flex items-center justify-between bg-white sticky top-0 z-10">
@@ -335,11 +338,7 @@ export function BusinessCampaignDetail() {
           disabled={refreshing}
           className="flex items-center gap-1 px-2.5 py-1 hover:bg-[#F8F8F8] rounded-lg transition-colors disabled:opacity-50"
         >
-          {refreshing ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <RefreshCcw className="w-3 h-3" />
-          )}
+          {refreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCcw className="w-3 h-3" />}
           <span className="text-[8px] font-black uppercase tracking-widest">
             {refreshing ? "Refreshing..." : "Refresh"}
           </span>
@@ -395,8 +394,8 @@ export function BusinessCampaignDetail() {
               { icon: Calendar, label: "End Date", val: campaign.end_date ? new Date(campaign.end_date).toLocaleDateString() : "TBC" },
               { icon: Tag, label: "Package", val: `${campaignCreator.streams_target} Streams` },
               { icon: Tv, label: "Campaign Type", val: campaign.type },
-              { icon: Pound, label: "Total Budget", val: `£${totalBudget.toFixed(2)}` },
-              { icon: Pound, label: "Released So Far", val: `£${releasedSoFar.toFixed(2)}` },
+              { icon: Pound, label: "Total Budget", val: `₦${totalBudget.toLocaleString()}` },
+              { icon: Pound, label: "Released So Far", val: `₦${releasedSoFar.toLocaleString()}` },
             ].map((tile, i) => (
               <div key={i} className="bg-white p-5 flex items-start gap-4">
                 <tile.icon className="w-4 h-4 mt-0.5 text-[#389C9A]" />
@@ -409,8 +408,53 @@ export function BusinessCampaignDetail() {
           </div>
         </section>
 
-        {/* Stream Log */}
+        {/* Financial Summary + Payout Schedule */}
         <section className="px-6 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Financial Summary</h3>
+          <div className="bg-white border-2 border-[#1D1D1D] mb-12">
+            <div className="p-6 space-y-4">
+              <div className="flex justify-between items-center italic">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Total Campaign Value</span>
+                <span className="text-lg font-black tracking-tighter">₦{totalBudget.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center italic">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Released to Creator So Far</span>
+                <span className="text-lg font-black tracking-tighter">₦{releasedSoFar.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center italic">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Remaining Held</span>
+                <span className="text-lg font-black tracking-tighter">₦{remainingHeld.toLocaleString()}</span>
+              </div>
+              <div className="h-[1px] bg-[#1D1D1D]/10 my-4" />
+              <div className="flex items-start gap-3 bg-[#F8F8F8] p-4 border border-[#1D1D1D]/5 italic">
+                <Shield className="w-4 h-4 text-[#D2691E] flex-shrink-0" />
+                <p className="text-[9px] font-bold uppercase tracking-tight leading-relaxed text-[#1D1D1D]/60">
+                  Any unverified streams will be refunded to your original payment method within 3 to 5 business days.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <h4 className="text-[9px] font-black uppercase tracking-[0.2em] mb-4 opacity-40 italic">Payout Release Schedule</h4>
+          <div className="flex flex-col gap-3">
+            {payoutMilestones.map((row, i) => (
+              <div key={i} className="bg-white border border-[#1D1D1D]/10 p-5 flex items-center justify-between italic">
+                <div>
+                  <p className="text-[10px] font-black uppercase mb-1">{row.label}</p>
+                  <p className="text-lg font-black tracking-tighter">₦{row.amount.toLocaleString()}</p>
+                </div>
+                <div className={`px-3 py-1 border text-[8px] font-black uppercase tracking-widest italic ${
+                  row.completed ? "bg-[#389C9A] text-white border-[#389C9A]" : "bg-[#F8F8F8] text-[#1D1D1D]/20 border-[#1D1D1D]/10"
+                }`}>
+                  {row.completed ? "Paid" : "Upcoming"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Stream Log */}
+        <section className="px-6 py-12 bg-white">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Stream Log</h3>
           <div className="flex flex-col gap-4">
             <AnimatePresence>
@@ -450,6 +494,39 @@ export function BusinessCampaignDetail() {
           </div>
         </section>
 
+        {/* Banner (if exists) */}
+        {campaign.banner_url && (
+          <section className="px-6 py-12 border-y border-[#1D1D1D]/10 bg-[#F8F8F8]">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Active Banner</h3>
+            <div className="bg-black border-2 border-[#1D1D1D] overflow-hidden mb-6 opacity-40 grayscale">
+              <ImageWithFallback src={campaign.banner_url} className="w-full h-auto grayscale opacity-80" />
+            </div>
+            <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic text-center mb-8">
+              This banner is scheduled to go live on the creator's streams.
+            </p>
+            <button className="w-full bg-white border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 active:bg-[#F8F8F8] transition-all italic">
+              <Download className="w-4 h-4 text-[#D2691E]" /> Download Banner
+            </button>
+          </section>
+        )}
+
+        {/* Promo Code Performance (if promo code exists) */}
+        {campaign.promo_code && (
+          <section className="px-6 py-12 bg-[#FFF8DC]/30 border-b border-[#1D1D1D]/10">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Promo Code Performance</h3>
+            <div className="bg-white border-2 border-[#1D1D1D] p-8">
+              <div className="flex justify-between items-center mb-6 italic">
+                <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Active Code</span>
+                <span className="text-3xl font-black tracking-tighter text-[#1D1D1D]">{campaign.promo_code}</span>
+              </div>
+              <div className="h-[1px] bg-[#1D1D1D]/10 mb-6" />
+              <p className="text-[8px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 italic text-center">
+                Performance data will appear here once the campaign goes live.
+              </p>
+            </div>
+          </section>
+        )}
+
         {/* Communication */}
         <section className="px-6 py-12">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Communication</h3>
@@ -461,6 +538,47 @@ export function BusinessCampaignDetail() {
               <MessageSquare className="w-4 h-4 text-[#389C9A]" />
               Message {creatorProfile.full_name}
             </Link>
+          </div>
+          <div className="bg-red-50 border border-red-200 p-6 flex items-start gap-4 mt-6 italic">
+            <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0" />
+            <p className="text-[10px] font-bold text-red-600 leading-relaxed uppercase tracking-tight">
+              All communication must remain within LiveLink. Moving conversations outside the platform will result in immediate account closure and forfeiture of all funds.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 mt-4 opacity-30 italic">
+            <Lock className="w-3 h-3" />
+            <span className="text-[8px] font-black uppercase tracking-[0.2em]">Secured Messaging Active</span>
+          </div>
+        </section>
+
+        {/* Campaign Actions */}
+        <section className="px-6 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Actions</h3>
+          <div className="flex flex-col gap-1 border border-[#1D1D1D]/10 bg-[#1D1D1D]/10">
+            {[
+              { icon: Download, label: "Download Campaign Report", subtext: "Export a full PDF summary of this campaign", color: "#389C9A" },
+              { icon: Flag, label: "Report a Campaign Issue", subtext: "Raise a dispute or report a problem", color: "#D2691E" },
+              { icon: Repeat, label: "Rebook This Creator", subtext: "Start a new campaign with the same creator", color: "#1D1D1D" }
+            ].map((action, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  if (action.label === "Download Campaign Report") toast.info("Report generation coming soon");
+                  else if (action.label === "Report a Campaign Issue") navigate(`/report/campaign/${campaignId}`);
+                  else if (action.label === "Rebook This Creator") navigate(`/business/create-campaign?creator=${creatorProfile.id}`);
+                }}
+                className="w-full bg-white p-6 flex items-center gap-4 text-left active:bg-[#F8F8F8] transition-all italic"
+              >
+                <div className="w-10 h-10 flex items-center justify-center border border-[#1D1D1D]/10 bg-[#F8F8F8]">
+                  <action.icon className="w-5 h-5" style={{ color: action.color }} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-[10px] font-black uppercase tracking-tight leading-none mb-1">{action.label}</h4>
+                  <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest">{action.subtext}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#1D1D1D]/20" />
+              </button>
+            ))}
           </div>
         </section>
       </main>
