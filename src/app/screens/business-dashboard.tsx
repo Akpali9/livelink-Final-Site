@@ -242,7 +242,7 @@ export function BusinessDashboard() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic">My Campaigns</h2>
             <button
-              onClick={() => navigate("/business/create-campaign")}
+              onClick={() => navigate("/business/campaigns")}
               className="flex items-center gap-1.5 bg-[#389C9A] text-white px-3 py-2 text-[9px] font-black uppercase tracking-widest italic hover:bg-[#1D1D1D] transition-colors"
             >
               <Plus className="w-3 h-3" /> New
