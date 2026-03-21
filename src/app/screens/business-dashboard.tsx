@@ -121,14 +121,14 @@ export function BusinessDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
         <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <Toaster position="top-center" richColors />
       <AppHeader showLogo userType="business" subtitle="Business Hub" />
 
