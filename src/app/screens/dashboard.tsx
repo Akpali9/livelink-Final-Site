@@ -325,11 +325,10 @@ export function Dashboard() {
 
   const handleAcceptOffer = async (req: IncomingRequest) => {
     try {
-      const { error } = await supabase
-        .from("campaign_creators")
-        .update({ status: "ACTIVE", accepted_at: new Date().toISOString() })
-        .eq("id", req.id);
-
+      cconst { error } = await supabase
+  .from("campaign_creators")
+  .update({ status: "ACTIVE", accepted_at: new Date().toISOString() })
+  .eq("id", req.id);
       if (error) throw error;
 
       toast.success("Offer accepted! 🎉");
