@@ -660,7 +660,7 @@ export function Dashboard() {
             </div>
             <div className="flex flex-col gap-3">
               {(applicationsExpanded ? applications : applications.slice(0, 3)).map(app => (
-                <div key={app.id} onClick={() => navigate(`/campaign/${app.campaign_id}`)}
+                <div key={app.id} onClick={() => navigate(`/campaign/${app.campaign_id}/summary`)}
                   className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 border-2 border-[#1D1D1D]/10 rounded-lg overflow-hidden">
