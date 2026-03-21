@@ -655,7 +655,7 @@ export function Dashboard() {
                 <div key={app.id} onClick={() => navigate(`/campaign/${app.campaign_id}/summary`)}
                   className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl">
                   <div className="flex items-center gap-3">
-                    <div clas]/10 rounded-lg overflow-hidden">
+                    <div clasName="bg-gray-100/10 rounded-lg overflow-hidden">
                       <ImageWithFallback src={app.logo} className="w-full h-full object-cover" />
                     </div>
                     <div>
