@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { toast } from "sonner";
 import { CampaignFormData } from "./business-create-campaign";
 
 interface Props {
@@ -9,12 +10,29 @@ interface Props {
 }
 
 export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props) {
+  const [errors, setErrors] = useState<{ promoCode?: string; discountValue?: string }>({});
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!data.promoCode || data.discountValue <= 0) {
-      alert("Please fill promo code and discount value > 0");
+    const newErrors: typeof errors = {};
+
+    if (!data.promoCode.trim()) {
+      newErrors.promoCode = "Promo code is required";
+    } else if (data.promoCode.length < 3) {
+      newErrors.promoCode = "Promo code must be at least 3 characters";
+    }
+
+    if (data.discountValue <= 0) {
+      newErrors.discountValue = "Discount value must be greater than 0";
+    }
+
+    if (Object.keys(newErrors).length) {
+      setErrors(newErrors);
+      toast.error("Please fix the errors above");
       return;
     }
+
+    setErrors({});
     onNext();
   };
 
@@ -28,10 +46,18 @@ export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props
           <input
             type="text"
             value={data.promoCode}
-            onChange={(e) => updateData({ promoCode: e.target.value.toUpperCase() })}
-            className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-lg uppercase"
+            onChange={(e) => {
+              updateData({ promoCode: e.target.value.toUpperCase() });
+              if (errors.promoCode) setErrors((prev) => ({ ...prev, promoCode: undefined }));
+            }}
+            className={`w-full p-4 border-2 outline-none rounded-lg uppercase ${
+              errors.promoCode ? "border-red-500" : "border-[#1D1D1D]/10 focus:border-[#389C9A]"
+            }`}
             placeholder="SUMMER20"
           />
+          {errors.promoCode && (
+            <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.promoCode}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-4">
@@ -65,12 +91,18 @@ export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props
                   val = Math.max(0, isNaN(val) ? 0 : val);
                 }
                 updateData({ discountValue: val });
+                if (errors.discountValue) setErrors((prev) => ({ ...prev, discountValue: undefined }));
               }}
               min="0"
               step={data.discountType === "percentage" ? "1" : "0.01"}
-              className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-lg"
+              className={`w-full p-4 border-2 outline-none rounded-lg ${
+                errors.discountValue ? "border-red-500" : "border-[#1D1D1D]/10 focus:border-[#389C9A]"
+              }`}
               placeholder={data.discountType === "percentage" ? "20" : "10"}
             />
+            {errors.discountValue && (
+              <p className="text-red-500 text-[8px] font-black uppercase tracking-widest mt-1">{errors.discountValue}</p>
+            )}
           </div>
         </div>
 
