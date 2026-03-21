@@ -1,4 +1,3 @@
-// src/screens/campaign-basic-info.tsx
 import React from "react";
 import { CampaignFormData } from "./business-create-campaign";
 
@@ -11,8 +10,8 @@ interface Props {
 export function CampaignBasicInfo({ data, updateData, onNext }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!data.name || !data.type || !data.budget) {
-      alert("Please fill all required fields");
+    if (!data.name || !data.type || data.budget <= 0) {
+      alert("Please fill all required fields (name, type, budget > 0)");
       return;
     }
     onNext();
@@ -21,7 +20,6 @@ export function CampaignBasicInfo({ data, updateData, onNext }: Props) {
   return (
     <div className="px-4 space-y-6 pb-8">
       <form onSubmit={handleSubmit}>
-        {/* Campaign Name */}
         <div className="mb-4">
           <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
             Campaign Name <span className="text-red-500">*</span>
@@ -35,7 +33,6 @@ export function CampaignBasicInfo({ data, updateData, onNext }: Props) {
           />
         </div>
 
-        {/* Campaign Type */}
         <div className="mb-4">
           <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
             Campaign Type <span className="text-red-500">*</span>
@@ -52,7 +49,6 @@ export function CampaignBasicInfo({ data, updateData, onNext }: Props) {
           </select>
         </div>
 
-        {/* Description */}
         <div className="mb-4">
           <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
             Description
@@ -66,7 +62,6 @@ export function CampaignBasicInfo({ data, updateData, onNext }: Props) {
           />
         </div>
 
-        {/* Budget */}
         <div className="mb-4">
           <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
             Total Budget (₦) <span className="text-red-500">*</span>
@@ -74,13 +69,17 @@ export function CampaignBasicInfo({ data, updateData, onNext }: Props) {
           <input
             type="number"
             value={data.budget || ""}
-            onChange={(e) => updateData({ budget: parseFloat(e.target.value) || 0 })}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              updateData({ budget: isNaN(val) ? 0 : Math.max(0, val) });
+            }}
+            min="0"
+            step="1000"
             className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-lg"
             placeholder="50000"
           />
         </div>
 
-        {/* Start & End Dates */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
             <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
