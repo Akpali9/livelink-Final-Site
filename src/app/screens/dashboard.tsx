@@ -477,7 +477,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px]">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <Toaster position="top-center" richColors />
 
       <main className="max-w-[480px] mx-auto w-full">
