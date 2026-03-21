@@ -1,18 +1,19 @@
-// src/screens/campaign-confirmation.tsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router";
-import { CheckCircle2, X } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { CampaignFormData } from "./business-create-campaign";
 
 interface Props {
   data: CampaignFormData;
   onBack: () => void;
-  onSubmit: () => void;
+  onSubmit: () => Promise<void>;
   loading: boolean;
+  isLastStep: boolean;
 }
 
 export function CampaignConfirmation({ data, onBack, onSubmit, loading }: Props) {
+  const navigate = useNavigate();
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const handleSubmit = async () => {
@@ -22,8 +23,7 @@ export function CampaignConfirmation({ data, onBack, onSubmit, loading }: Props)
 
   const handleCloseModal = () => {
     setShowSuccessModal(false);
-    // Redirect after modal closes
-    window.location.href = "/business/campaigns?status=pending";
+    navigate("/business/campaigns?status=pending");
   };
 
   return (
