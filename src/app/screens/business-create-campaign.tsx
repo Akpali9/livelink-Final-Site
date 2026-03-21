@@ -1,17 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
-import { motion, AnimatePresence } from "motion/react";
 import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
-
 import { CampaignBasicInfo } from "./campaign-basic-info";
 import { CampaignCreatorSelection } from "./campaign-creator-selection";
 import { CampaignOfferDetails } from "./campaign-offer-details";
 import { CampaignConfirmation } from "./campaign-confirmation";
 
-// Types
 export interface CampaignFormData {
   name: string;
   type: string;
@@ -26,7 +23,6 @@ export interface CampaignFormData {
   usageLimit: number | null;
   expiryDate: string | null;
   instructions: string;
-  status: "draft" | "active" | "paused";
 }
 
 export function BusinessCreateCampaign() {
@@ -49,21 +45,27 @@ export function BusinessCreateCampaign() {
     usageLimit: null,
     expiryDate: null,
     instructions: "",
-    status: "draft",
   });
-
   const [loading, setLoading] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
+  const [businessName, setBusinessName] = useState("");
 
   useEffect(() => {
     const fetchBusiness = async () => {
       if (!user) return;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("businesses")
-        .select("id")
+        .select("id, business_name")
         .eq("user_id", user.id)
         .single();
-      if (data) setBusinessId(data.id);
+      if (error) {
+        console.error(error);
+        return;
+      }
+      if (data) {
+        setBusinessId(data.id);
+        setBusinessName(data.business_name || "Your Business");
+      }
     };
     fetchBusiness();
   }, [user]);
@@ -83,7 +85,7 @@ export function BusinessCreateCampaign() {
 
     setLoading(true);
     try {
-      // 1. Insert campaign
+      // 1. Insert campaign (status = pending_review)
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
@@ -92,10 +94,10 @@ export function BusinessCreateCampaign() {
           type: formData.type,
           description: formData.description,
           budget: formData.budget,
-          status: formData.status,
+          status: "pending_review",   // <-- awaiting admin approval
           start_date: formData.start_date || null,
           end_date: formData.end_date || null,
-          streams_required: 4, // default, can be dynamic
+          streams_required: 4,
           created_at: new Date().toISOString(),
         })
         .select()
@@ -103,7 +105,7 @@ export function BusinessCreateCampaign() {
 
       if (campaignError) throw campaignError;
 
-      // 2. Insert promo code details
+      // 2. Insert promo code if provided
       if (formData.promoCode) {
         const { error: promoError } = await supabase
           .from("promo_codes")
@@ -139,8 +141,27 @@ export function BusinessCreateCampaign() {
         if (creatorsError) throw creatorsError;
       }
 
-      toast.success("Campaign created successfully!");
-      navigate(`/business/campaign/overview/${campaign.id}`);
+      // 4. Notify all admin users about the new pending campaign
+      const { data: adminRows } = await supabase
+        .from("admins")   // you must have this table
+        .select("user_id");
+
+      if (adminRows && adminRows.length > 0) {
+        await supabase.from("notifications").insert(
+          adminRows.map(admin => ({
+            user_id: admin.user_id,
+            type: "campaign_pending",
+            title: "New Campaign Pending Approval",
+            message: `${formData.name} by ${businessName} needs review.`,
+            data: { campaign_id: campaign.id },
+            is_read: false,
+            created_at: new Date().toISOString(),
+          }))
+        );
+      }
+
+      toast.success("Campaign created! Waiting for admin approval.");
+      navigate(`/business/campaigns`); // go back to campaigns list
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to create campaign");
@@ -163,7 +184,7 @@ export function BusinessCreateCampaign() {
       <AppHeader
         showBack
         backPath="/business/dashboard"
-        title={`${editCampaignId ? "Edit" : "Create"} Campaign`}
+        title={editCampaignId ? "Edit Campaign" : "Create Campaign"}
         userType="business"
       />
 
