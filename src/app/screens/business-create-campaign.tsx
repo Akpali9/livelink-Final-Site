@@ -50,6 +50,7 @@ export function BusinessCreateCampaign() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState("");
 
+  // Fetch business profile – now using maybeSingle() to avoid PGRST116
   useEffect(() => {
     const fetchBusiness = async () => {
       if (!user) return;
@@ -57,18 +58,25 @@ export function BusinessCreateCampaign() {
         .from("businesses")
         .select("id, business_name")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle(); // ✅ use maybeSingle() to handle no rows gracefully
+
       if (error) {
-        console.error(error);
+        console.error("Business fetch error:", error);
+        toast.error("Failed to load business profile");
+        navigate("/become-business");
         return;
       }
+
       if (data) {
         setBusinessId(data.id);
         setBusinessName(data.business_name || "Your Business");
+      } else {
+        toast.error("Business profile not found. Please register first.");
+        navigate("/become-business");
       }
     };
     fetchBusiness();
-  }, [user]);
+  }, [user, navigate]);
 
   const updateFormData = (updates: Partial<CampaignFormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));
@@ -160,12 +168,15 @@ export function BusinessCreateCampaign() {
         );
       }
 
-      toast.success("Campaign created! Waiting for admin approval.");
-      // Redirect to campaigns list with pending status
-      navigate("/business/campaigns?status=pending");
+      // The confirmation component will handle the success modal and redirect.
+      // The parent does not redirect automatically; we'll let the child handle it.
+      // However, we need to return some indication that it succeeded.
+      // We'll just rely on the child's modal to redirect.
+      return campaign.id;
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to create campaign");
+      throw error; // re-throw so child knows it failed
     } finally {
       setLoading(false);
     }
