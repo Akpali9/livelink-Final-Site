@@ -1,56 +1,31 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
-  ChevronRight,
-  Star,
-  Tv,
-  Users,
-  DollarSign,
-  Search,
+  ArrowLeft,
+  Download,
   CheckCircle2,
-  AlertCircle,
+  Star,
+  Tag,
+  Calendar,
+  Clock,
+  Shield,
+  ChevronRight,
   MessageSquare,
-  RefreshCw,
+  AlertTriangle,
+  Lock,
+  Flag,
+  Repeat,
   Loader2,
+  RefreshCw
 } from "lucide-react";
+import { motion } from "motion/react";
+import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { AppHeader } from "../components/app-header";
-import { ImageWithFallback } from "../components/ImageWithFallback";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
-import { motion, AnimatePresence } from "motion/react";
 
-// ─────────────────────────────────────────────
-// INTERFACES
-// ─────────────────────────────────────────────
-
-interface Creator {
-  id: string;
-  name: string;
-  username: string;
-  avatar: string;
-  rating: number;
-  email: string;
-  avg_concurrent: number;
-  categories: string[];
-  niche: string[];
-  country: string;
-  location: string;
-}
-
-interface CampaignCreator {
-  id: string;
-  campaign_id: string;
-  creator_id: string;
-  status: "pending" | "active" | "completed" | "rejected";
-  streams_completed: number;
-  streams_target: number;
-  total_earnings: number;
-  paid_out: number;
-  created_at: string;
-  creator: Creator;
-}
-
+// ========== INTERFACES ==========
 interface Campaign {
   id: string;
   name: string;
@@ -62,73 +37,79 @@ interface Campaign {
   end_date?: string;
   streams_required: number;
   business_id: string;
+  created_at: string;
+  banner_url?: string;
 }
 
-interface Stats {
-  total: number;
-  active: number;
-  pending: number;
-  completed: number;
-  totalStreams: number;
-  completedStreams: number;
+interface CampaignCreator {
+  id: string;
+  campaign_id: string;
+  creator_id: string;
+  status: string;
+  streams_completed: number;
+  streams_target: number;
+  total_earnings: number;
+  paid_out: number;
+  created_at: string;
+  accepted_at?: string;
+  completed_at?: string;
 }
 
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
-
-const STATUS_STYLES: Record<string, string> = {
-  active:    "bg-[#389C9A] text-white",
-  pending:   "bg-[#FEDB71] text-[#1D1D1D]",
-  completed: "bg-green-500 text-white",
-  rejected:  "bg-red-500 text-white",
-};
-
-function getProgress(completed: number, target: number) {
-  if (!target) return 0;
-  return Math.min(100, Math.round((completed / target) * 100));
+interface CreatorProfile {
+  id: string;
+  full_name: string;
+  username?: string;
+  avatar_url?: string;
+  email: string;
+  avg_viewers?: number;
+  verified?: boolean;
 }
 
-function calcStats(list: CampaignCreator[]): Stats {
-  return {
-    total:            list.length,
-    active:           list.filter((c) => c.status === "active").length,
-    pending:          list.filter((c) => c.status === "pending").length,
-    completed:        list.filter((c) => c.status === "completed").length,
-    totalStreams:     list.reduce((s, c) => s + c.streams_target, 0),
-    completedStreams: list.reduce((s, c) => s + c.streams_completed, 0),
-  };
+// ========== HELPER ==========
+function buildStreamLog(streamsTarget: number, streamsCompleted: number) {
+  const log = [];
+  for (let i = 1; i <= streamsTarget; i++) {
+    let status: "Verified" | "Awaiting Proof" | "Upcoming" = "Upcoming";
+    let date: string | null = null;
+    let duration: string | null = null;
+
+    if (i <= streamsCompleted) {
+      status = "Verified";
+      date = "Completed";
+      duration = "45 mins";
+    } else if (i === streamsCompleted + 1 && streamsCompleted < streamsTarget) {
+      status = "Awaiting Proof";
+      date = "Pending";
+    }
+
+    log.push({ id: i, num: i, date, duration, status });
+  }
+  return log;
 }
 
-// ─────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────
-
-export function BusinessCampaignCreators() {
+// ========== COMPONENT ==========
+export function BusinessCampaignOverview() {
   const navigate = useNavigate();
-  const { id }   = useParams();
+  const { id: campaignId } = useParams();
   const { user } = useAuth();
 
-  const [campaign, setCampaign]     = useState<Campaign | null>(null);
-  const [creators, setCreators]     = useState<CampaignCreator[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [creatorProfile, setCreatorProfile] = useState<CreatorProfile | null>(null);
+  const [campaignCreators, setCampaignCreators] = useState<CampaignCreator[]>([]);
+  const [selectedCreator, setSelectedCreator] = useState<CampaignCreator | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [lastUpdated, setLastUpdated]   = useState<Date>(new Date());
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
-  const [stats, setStats] = useState<Stats>({
-    total: 0, active: 0, pending: 0, completed: 0,
-    totalStreams: 0, completedStreams: 0,
-  });
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-  // Keep a ref to profileMap so realtime handlers can enrich new rows
-  const profileMapRef = useRef<Record<string, any>>({});
+  // Refs for subscriptions
+  const campaignChannelRef = useRef<any>(null);
+  const creatorsChannelRef = useRef<any>(null);
+  const profileChannelRef = useRef<any>(null);
 
-  // ─── FETCH ─────────────────────────────────────────────────────────────
-
-  const fetchCampaignData = useCallback(async (silent = false) => {
-    if (!id) return;
+  // ─── FETCH DATA ─────────────────────────────────────────────────────────
+  const fetchData = useCallback(async (silent = false) => {
+    if (!campaignId) return;
     if (!silent) setLoading(true);
     else setRefreshing(true);
 
@@ -137,62 +118,35 @@ export function BusinessCampaignCreators() {
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
         .select("*")
-        .eq("id", id)
+        .eq("id", campaignId)
         .single();
-
       if (campaignError) throw campaignError;
       setCampaign(campaignData);
 
-      // 2. campaign_creators rows
-      const { data: ccRows, error: ccError } = await supabase
+      // 2. Campaign creators
+      const { data: ccData, error: ccError } = await supabase
         .from("campaign_creators")
-        .select(`
-          id,
-          campaign_id,
-          creator_id,
-          status,
-          streams_completed,
-          streams_target,
-          total_earnings,
-          paid_out,
-          created_at
-        `)
-        .eq("campaign_id", id)
-        .order("created_at", { ascending: false });
-
+        .select("*")
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: true });
       if (ccError) throw ccError;
-      if (!ccRows || ccRows.length === 0) {
-        setCreators([]);
-        setStats(calcStats([]));
-        return;
+      setCampaignCreators(ccData || []);
+
+      if (ccData && ccData.length > 0) {
+        const first = ccData[0];
+        setSelectedCreator(first);
+
+        // 3. Creator profile
+        const { data: profileData, error: profileError } = await supabase
+          .from("creator_profiles")
+          .select("id, full_name, username, avatar_url, email, avg_viewers, verified")
+          .eq("id", first.creator_id)
+          .single();
+        if (!profileError) setCreatorProfile(profileData);
       }
 
-      // 3. Fetch creator_profiles for all creator_ids
-      const creatorIds = [...new Set(ccRows.map((r) => r.creator_id).filter(Boolean))];
-
-      const { data: profileRows, error: profileError } = await supabase
-        .from("creator_profiles")
-        .select(`
-          id, full_name, username, email,
-          avatar_url, rating, avg_concurrent,
-          avg_viewers, categories, niche, country, location
-        `)
-        .in("id", creatorIds);
-
-      if (profileError) throw profileError;
-
-      // 4. Build lookup map and store in ref for realtime use
-      const pMap: Record<string, any> = {};
-      (profileRows || []).forEach((p) => { pMap[p.id] = p; });
-      profileMapRef.current = pMap;
-
-      // 5. Merge
-      const merged = buildMerged(ccRows, pMap);
-      setCreators(merged);
-      setStats(calcStats(merged));
       setLastUpdated(new Date());
-
-      if (silent) toast.success("Campaign data refreshed");
+      if (silent) toast.success("Data refreshed");
     } catch (error) {
       console.error("Error fetching campaign data:", error);
       toast.error("Failed to load campaign data");
@@ -200,310 +154,122 @@ export function BusinessCampaignCreators() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id]);
+  }, [campaignId]);
 
-  // ─── REALTIME ──────────────────────────────────────────────────────────
-
+  // ─── REALTIME SUBSCRIPTIONS ────────────────────────────────────────────
   useEffect(() => {
-    if (!id) return;
+    if (!campaignId) return;
+    fetchData();
 
-    fetchCampaignData();
-
-    let campaignCreatorsChannel: any;
-    let campaignChannel: any;
     let retryTimeout: NodeJS.Timeout;
 
     const subscribe = () => {
-      // Channel for campaign_creators changes
-      campaignCreatorsChannel = supabase
-        .channel(`campaign-creators-${id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "campaign_creators",
-            filter: `campaign_id=eq.${id}`,
-          },
-          async (payload) => {
-            const row = payload.new;
-            let profile = profileMapRef.current[row.creator_id];
-            if (!profile) {
-              const { data } = await supabase
-                .from("creator_profiles")
-                .select(`
-                  id, full_name, username, email,
-                  avatar_url, rating, avg_concurrent,
-                  avg_viewers, categories, niche, country, location
-                `)
-                .eq("id", row.creator_id)
-                .maybeSingle();
-              if (data) {
-                profileMapRef.current[data.id] = data;
-                profile = data;
-              }
-            }
-
-            const newEntry = buildSingleEntry(row, profile || {});
-            setCreators((prev) => {
-              if (prev.find((c) => c.id === row.id)) return prev;
-              const updated = [newEntry, ...prev];
-              setStats(calcStats(updated));
-              return updated;
-            });
-            toast.success(`New creator joined: ${newEntry.creator.name}`);
-            setLastUpdated(new Date());
-          }
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "campaign_creators",
-            filter: `campaign_id=eq.${id}`,
-          },
-          (payload) => {
-            const row = payload.new;
-            setCreators((prev) => {
-              const updated = prev.map((c) => {
-                if (c.id !== row.id) return c;
-                return {
-                  ...c,
-                  status:            (row.status || c.status).toLowerCase() as any,
-                  streams_completed: row.streams_completed ?? c.streams_completed,
-                  streams_target:    row.streams_target ?? c.streams_target,
-                  total_earnings:    row.total_earnings ?? c.total_earnings,
-                  paid_out:          row.paid_out ?? c.paid_out,
-                };
-              });
-              setStats(calcStats(updated));
-              return updated;
-            });
-            setLastUpdated(new Date());
-          }
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "DELETE",
-            schema: "public",
-            table: "campaign_creators",
-            filter: `campaign_id=eq.${id}`,
-          },
-          (payload) => {
-            setCreators((prev) => {
-              const updated = prev.filter((c) => c.id !== payload.old.id);
-              setStats(calcStats(updated));
-              return updated;
-            });
-            setLastUpdated(new Date());
-          }
-        );
-
-      // Channel for campaign updates (budget, status, etc.)
-      campaignChannel = supabase
-        .channel(`campaign-${id}`)
+      // Campaign updates
+      campaignChannelRef.current = supabase
+        .channel(`campaign-${campaignId}`)
         .on(
           "postgres_changes",
           {
             event: "UPDATE",
             schema: "public",
             table: "campaigns",
-            filter: `id=eq.${id}`,
+            filter: `id=eq.${campaignId}`,
           },
           (payload) => {
-            setCampaign((prev) => prev ? { ...prev, ...payload.new } : null);
+            setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev));
             setLastUpdated(new Date());
           }
-        );
+        )
+        .subscribe();
 
-      campaignCreatorsChannel.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          setIsRealtimeConnected(true);
-          console.log(`[Realtime] Connected to campaign-creators-${id}`);
-        } else if (status === "CHANNEL_ERROR") {
-          setIsRealtimeConnected(false);
-          console.warn(`[Realtime] Error on campaign-creators-${id}, reconnecting...`);
-          // Clear any existing retry timeout and schedule a reconnect
-          if (retryTimeout) clearTimeout(retryTimeout);
-          retryTimeout = setTimeout(() => {
-            campaignCreatersChannel?.unsubscribe();
-            campaignChannel?.unsubscribe();
-            subscribe();
-          }, 3000);
-        }
-      });
+      // Campaign creators updates
+      creatorsChannelRef.current = supabase
+        .channel(`campaign-creators-${campaignId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "campaign_creators",
+            filter: `campaign_id=eq.${campaignId}`,
+          },
+          (payload) => {
+            if (payload.eventType === "INSERT") {
+              setCampaignCreators((prev) => [...prev, payload.new]);
+            } else if (payload.eventType === "UPDATE") {
+              setCampaignCreators((prev) =>
+                prev.map((c) => (c.id === payload.new.id ? { ...c, ...payload.new } : c))
+              );
+              if (selectedCreator?.id === payload.new.id) {
+                setSelectedCreator((prev) => (prev ? { ...prev, ...payload.new } : prev));
+              }
+            } else if (payload.eventType === "DELETE") {
+              setCampaignCreators((prev) => prev.filter((c) => c.id !== payload.old.id));
+            }
+            setLastUpdated(new Date());
+          }
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setIsRealtimeConnected(true);
+          } else if (status === "CHANNEL_ERROR") {
+            setIsRealtimeConnected(false);
+            if (retryTimeout) clearTimeout(retryTimeout);
+            retryTimeout = setTimeout(() => {
+              creatorsChannelRef.current?.unsubscribe();
+              subscribe();
+            }, 3000);
+          }
+        });
 
-      campaignChannel.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          console.log(`[Realtime] Connected to campaign-${id}`);
-        }
-      });
+      // Creator profile updates (if we have a selected creator)
+      if (selectedCreator) {
+        profileChannelRef.current = supabase
+          .channel(`creator-profile-${selectedCreator.creator_id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "creator_profiles",
+              filter: `id=eq.${selectedCreator.creator_id}`,
+            },
+            (payload) => {
+              setCreatorProfile((prev) => (prev ? { ...prev, ...payload.new } : prev));
+              setLastUpdated(new Date());
+            }
+          )
+          .subscribe();
+      }
     };
 
     subscribe();
 
-    // Polling fallback: refresh data every 30 seconds if realtime is disconnected
+    // Polling fallback
     const pollInterval = setInterval(() => {
       if (!isRealtimeConnected) {
-        fetchCampaignData(true);
+        fetchData(true);
       }
     }, 30000);
 
     return () => {
       clearInterval(pollInterval);
       if (retryTimeout) clearTimeout(retryTimeout);
-      campaignCreatorsChannel?.unsubscribe();
-      campaignChannel?.unsubscribe();
+      campaignChannelRef.current?.unsubscribe();
+      creatorsChannelRef.current?.unsubscribe();
+      profileChannelRef.current?.unsubscribe();
     };
-  }, [id, fetchCampaignData, isRealtimeConnected]);
+  }, [campaignId, fetchData, isRealtimeConnected, selectedCreator]);
 
-  // ─── MERGE HELPERS ─────────────────────────────────────────────────────
-
-  function buildSingleEntry(row: any, p: any): CampaignCreator {
-    return {
-      id:                row.id,
-      campaign_id:       row.campaign_id,
-      creator_id:        row.creator_id,
-      status:            (row.status || "pending").toLowerCase() as any,
-      streams_completed: row.streams_completed || 0,
-      streams_target:    row.streams_target || 4,
-      total_earnings:    row.total_earnings || 0,
-      paid_out:          row.paid_out || 0,
-      created_at:        row.created_at,
-      creator: {
-        id:             p.id || row.creator_id,
-        name:           p.full_name || "Unknown Creator",
-        username:       p.username ? `@${p.username}` : "@creator",
-        avatar:         p.avatar_url || "",
-        rating:         p.rating || 0,
-        email:          p.email || "",
-        avg_concurrent: p.avg_concurrent || p.avg_viewers || 0,
-        categories:     p.categories || p.niche || [],
-        niche:          p.niche || p.categories || [],
-        country:        p.country || "",
-        location:       p.location || "",
-      },
-    };
-  }
-
-  function buildMerged(ccRows: any[], pMap: Record<string, any>): CampaignCreator[] {
-    return ccRows.map((row) => buildSingleEntry(row, pMap[row.creator_id] || {}));
-  }
-
-  // ─── ACTIONS (with optimistic updates) ─────────────────────────────────
-
-  const updateStatus = async (ccId: string, newStatus: string) => {
-    // Optimistic update
-    setCreators(prev => prev.map(c => c.id === ccId ? { ...c, status: newStatus as any } : c));
-    try {
-      const { error } = await supabase
-        .from("campaign_creators")
-        .update({
-          status: newStatus,
-          ...(newStatus === "completed" ? { completed_at: new Date().toISOString() } : {}),
-          ...(newStatus === "active"    ? { accepted_at:  new Date().toISOString() } : {}),
-        })
-        .eq("id", ccId);
-
-      if (error) throw error;
-      toast.success(`Status updated to ${newStatus}`);
-    } catch (error) {
-      // Rollback
-      fetchCampaignData(true);
-      toast.error("Failed to update status");
-    }
-  };
-
-  const markPaid = async (ccId: string, amount: number) => {
-    // Optimistic update
-    setCreators(prev => prev.map(c => c.id === ccId ? { ...c, paid_out: amount } : c));
-    try {
-      const { error } = await supabase
-        .from("campaign_creators")
-        .update({ paid_out: amount })
-        .eq("id", ccId);
-
-      if (error) throw error;
-      toast.success("Marked as paid");
-    } catch (error) {
-      // Rollback
-      fetchCampaignData(true);
-      toast.error("Failed to mark as paid");
-    }
-  };
-
-  const openMessage = async (creatorProfileId: string) => {
-    if (!user) return;
-
-    try {
-      // Get user_id from creator_profiles
-      const { data: profile } = await supabase
-        .from("creator_profiles")
-        .select("user_id")
-        .eq("id", creatorProfileId)
-        .maybeSingle();
-
-      if (!profile?.user_id) { toast.error("Cannot find creator account"); return; }
-      const creatorUserId = profile.user_id;
-
-      const { data: existing } = await supabase
-        .from("conversations")
-        .select("id")
-        .or(
-          `and(participant1_id.eq.${user.id},participant2_id.eq.${creatorUserId}),` +
-          `and(participant1_id.eq.${creatorUserId},participant2_id.eq.${user.id})`
-        )
-        .maybeSingle();
-
-      if (existing) {
-        navigate(`/messages/${existing.id}?role=business`);
-        return;
-      }
-
-      const { data: newConv, error } = await supabase
-        .from("conversations")
-        .insert({
-          participant1_id:   user.id,
-          participant2_id:   creatorUserId,
-          participant1_type: "business",
-          participant2_type: "creator",
-          last_message_at:   new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      navigate(`/messages/${newConv.id}?role=business`);
-    } catch (error) {
-      console.error("Error opening message:", error);
-      toast.error("Failed to open conversation");
-    }
-  };
-
-  // ─── FILTER ────────────────────────────────────────────────────────────
-
-  const filtered = creators.filter((c) => {
-    const q = searchQuery.toLowerCase();
-    const matchSearch =
-      c.creator.name.toLowerCase().includes(q) ||
-      c.creator.username.toLowerCase().includes(q) ||
-      c.creator.email.toLowerCase().includes(q);
-    const matchStatus = statusFilter === "all" || c.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
-
-  // ─── LOADING ───────────────────────────────────────────────────────────
-
+  // ========== RENDER ==========
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] max-w-[480px] mx-auto w-full">
-        <AppHeader showBack backPath="/business/dashboard" title="Campaign Creators" userType="business" />
+        <AppHeader showBack backPath="/business/dashboard" title="Campaign Overview" userType="business" />
         <div className="flex items-center justify-center h-[80vh]">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
-            <p className="text-sm text-gray-400">Loading creators...</p>
+            <p className="text-sm text-gray-400">Loading campaign overview...</p>
           </div>
         </div>
       </div>
@@ -513,9 +279,9 @@ export function BusinessCampaignCreators() {
   if (!campaign) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] max-w-[480px] mx-auto w-full">
-        <AppHeader showBack backPath="/business/dashboard" title="Campaign Creators" userType="business" />
+        <AppHeader showBack backPath="/business/dashboard" title="Campaign Overview" userType="business" />
         <div className="flex flex-col items-center justify-center h-[80vh] px-8 text-center">
-          <AlertCircle className="w-16 h-16 text-gray-200 mb-4" />
+          <AlertTriangle className="w-16 h-16 text-gray-200 mb-4" />
           <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Campaign Not Found</h2>
           <p className="text-gray-400 mb-8">This campaign doesn't exist or has been removed.</p>
           <button
@@ -529,333 +295,389 @@ export function BusinessCampaignCreators() {
     );
   }
 
-  // ─── RENDER ────────────────────────────────────────────────────────────
-
-  const streamProgress = stats.totalStreams > 0
-    ? Math.round((stats.completedStreams / stats.totalStreams) * 100)
+  const currentCreator = selectedCreator;
+  const streamLog = currentCreator ? buildStreamLog(currentCreator.streams_target, currentCreator.streams_completed) : [];
+  const progressPercent = currentCreator
+    ? (currentCreator.streams_completed / currentCreator.streams_target) * 100
     : 0;
 
+  const totalBudget = campaign.budget || 0;
+  const releasedSoFar = currentCreator?.paid_out || 0;
+  const remainingHeld = totalBudget - releasedSoFar;
+
+  // Placeholder payout schedule (could be fetched from campaign terms)
+  const payoutSchedule = [
+    { label: "After Streams 1–4 verified", amount: (totalBudget * 0.25).toFixed(2), status: currentCreator?.streams_completed >= 4 ? "Paid" : "Upcoming" },
+    { label: "After Streams 5–8 verified", amount: (totalBudget * 0.25).toFixed(2), status: currentCreator?.streams_completed >= 8 ? "Paid" : "Upcoming" },
+    { label: "After Streams 9–12 verified", amount: (totalBudget * 0.25).toFixed(2), status: currentCreator?.streams_completed >= 12 ? "Paid" : "Upcoming" },
+    { label: "After Streams 13–16 verified", amount: (totalBudget * 0.25).toFixed(2), status: currentCreator?.streams_completed >= 16 ? "Paid" : "Upcoming" },
+  ];
+
+  const daysUntilStart = campaign.start_date
+    ? Math.ceil((new Date(campaign.start_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isUpcoming = campaign.status?.toLowerCase() === "upcoming" || (campaign.start_date && new Date(campaign.start_date) > new Date());
+
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-20 max-w-[480px] mx-auto w-full">
-      <AppHeader showBack backPath="/business/dashboard" title="Campaign Creators" userType="business" />
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
+      <AppHeader showBack backPath="/business/dashboard" title="Campaign Overview" userType="business" />
+
+      {/* Realtime Status Bar */}
+      <div className="px-6 py-2.5 border-b border-[#1D1D1D]/10 flex items-center justify-between bg-white sticky top-0 z-10">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${isRealtimeConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
+          <span className="text-[8px] font-black uppercase tracking-widest text-green-600">Live</span>
+          <span className="text-[8px] text-[#1D1D1D]/30">
+            · Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="flex items-center gap-1 px-2.5 py-1 hover:bg-[#F8F8F8] rounded-lg transition-colors disabled:opacity-50"
+        >
+          {refreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+          <span className="text-[8px] font-black uppercase tracking-widest">
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </span>
+        </button>
+      </div>
 
       <main className="flex-1">
-
-        {/* ── Campaign Header ── */}
-        <section className="px-6 py-8 bg-gradient-to-br from-[#1D1D1D] to-gray-800 text-white">
-          <div className="flex items-start justify-between mb-6">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-black uppercase tracking-tighter italic leading-tight mb-1">
-                {campaign.name}
-              </h1>
-              <p className="text-xs text-gray-400 uppercase tracking-widest">{campaign.type}</p>
-            </div>
-            <span className={`ml-3 shrink-0 px-3 py-1 text-[8px] font-black uppercase tracking-widest rounded-full ${
-              campaign.status?.toLowerCase() === "active"
-                ? "bg-[#389C9A] text-white"
-                : "bg-gray-600 text-gray-200"
-            }`}>
-              {campaign.status}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/10 rounded-xl p-4">
-              <p className="text-[8px] font-black uppercase tracking-widest opacity-50 mb-1">Budget</p>
-              <p className="text-xl font-black">₦{Number(campaign.budget || 0).toLocaleString()}</p>
-            </div>
-            <div className="bg-white/10 rounded-xl p-4">
-              <p className="text-[8px] font-black uppercase tracking-widest opacity-50 mb-1">Streams Required</p>
-              <p className="text-xl font-black">{campaign.streams_required || "—"}</p>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Realtime Status Bar ── */}
-        <div className="px-6 py-2.5 border-b border-[#1D1D1D]/10 flex items-center justify-between bg-white sticky top-0 z-10">
+        {/* SECTION 1 — CAMPAIGN STATUS BANNER */}
+        <div className={`w-full px-6 py-4 flex items-center justify-between italic ${
+          isUpcoming ? "bg-[#FFF8DC]" : campaign.status?.toLowerCase() === "active" ? "bg-[#E6F4F0]" : "bg-gray-100"
+        } border-b-2 border-[#1D1D1D]`}>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isRealtimeConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
-            <span className="text-[8px] font-black uppercase tracking-widest text-green-600">Live</span>
-            <span className="text-[8px] text-[#1D1D1D]/30">
-              · Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
+            {isUpcoming ? (
+              <>
+                <Clock className="w-3.5 h-3.5 text-[#D2691E]" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#D2691E]">Upcoming</span>
+              </>
+            ) : campaign.status?.toLowerCase() === "active" ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#389C9A]" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A]">Active</span>
+              </>
+            ) : (
+              <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">{campaign.status}</span>
+            )}
           </div>
-          <button
-            onClick={() => fetchCampaignData(true)}
-            disabled={refreshing}
-            className="flex items-center gap-1 px-2.5 py-1 hover:bg-[#F8F8F8] rounded-lg transition-colors disabled:opacity-50"
-          >
-            {refreshing
-              ? <Loader2 className="w-3 h-3 animate-spin" />
-              : <RefreshCw className="w-3 h-3" />}
-            <span className="text-[8px] font-black uppercase tracking-widest">
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </span>
-          </button>
+          {isUpcoming && daysUntilStart !== null && daysUntilStart > 0 && (
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#D2691E]">
+              Starts in {daysUntilStart} day{daysUntilStart !== 1 ? "s" : ""}
+            </p>
+          )}
         </div>
 
-        {/* ── Progress Stats ── */}
-        <section className="px-6 py-6 border-b border-[#1D1D1D]/10">
-          <h2 className="text-[9px] font-black uppercase tracking-[0.3em] mb-5 opacity-40">Campaign Progress</h2>
-          <div className="grid grid-cols-4 gap-2 mb-6">
-            {[
-              { label: "Total",   value: stats.total,     color: "text-[#1D1D1D]" },
-              { label: "Active",  value: stats.active,    color: "text-[#389C9A]" },
-              { label: "Pending", value: stats.pending,   color: "text-[#FEDB71]" },
-              { label: "Done",    value: stats.completed, color: "text-green-500" },
-            ].map((s) => (
-              <div key={s.label} className="text-center bg-[#F8F8F8] rounded-xl py-3">
-                <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
-                <p className="text-[7px] font-black uppercase tracking-widest opacity-40 mt-0.5">{s.label}</p>
+        {/* SECTION 2 — CREATOR SUMMARY CARD */}
+        {currentCreator && creatorProfile && (
+          <div className="px-6 py-8">
+            <div className="bg-white border-2 border-[#1D1D1D] overflow-hidden">
+              <div className="p-6">
+                <div className="flex items-center gap-4 mb-6">
+                  <ImageWithFallback
+                    src={creatorProfile.avatar_url || "https://via.placeholder.com/100"}
+                    className="w-16 h-16 border-2 border-[#1D1D1D] grayscale object-cover rounded-none"
+                  />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-2xl font-black uppercase tracking-tighter italic">{creatorProfile.full_name}</h2>
+                      {creatorProfile.verified && <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500 text-white" />}
+                    </div>
+                    <p className="text-[10px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic">
+                      {creatorProfile.username || `@${creatorProfile.full_name.toLowerCase().replace(/\s/g, "")}`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="h-[1px] bg-[#1D1D1D]/10 mb-6" />
+
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4 italic">
+                    <Star className="w-4 h-4 text-[#FEDB71] mt-0.5" />
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Package</p>
+                      <p className="text-[11px] font-black uppercase tracking-tight">{currentCreator.streams_target} Streams</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4 italic">
+                    <Tag className="w-4 h-4 text-[#389C9A] mt-0.5" />
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Campaign Type</p>
+                      <p className="text-[11px] font-black uppercase tracking-tight">{campaign.type}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4 italic">
+                    <Calendar className="w-4 h-4 text-[#D2691E] mt-0.5" />
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Start Date</p>
+                      <p className="text-[11px] font-black uppercase tracking-tight">
+                        {campaign.start_date ? new Date(campaign.start_date).toLocaleDateString() : "TBC"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-4 italic">
+                    <Clock className="w-4 h-4 text-[#D2691E] mt-0.5" />
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Stream Deadline</p>
+                      <p className="text-[11px] font-black uppercase tracking-tight">
+                        Complete all streams by {campaign.end_date ? new Date(campaign.end_date).toLocaleDateString() : "TBC"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-[1px] bg-[#1D1D1D]/10 my-6" />
+
+                <div className="flex items-center justify-between italic">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Total Campaign Value</p>
+                    <p className="text-3xl font-black tracking-tighter text-[#1D1D1D]">₦{totalBudget.toLocaleString()}</p>
+                  </div>
+                  <p className="text-[8px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 text-right max-w-[120px]">
+                    Released per verified stream cycle
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 3 — CAMPAIGN PROGRESS */}
+        <div className="px-6 py-12 bg-[#F8F8F8] border-y-2 border-[#1D1D1D]">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8">Campaign Progress</h3>
+          <div className="bg-white border-2 border-[#1D1D1D] p-8">
+            <div className="flex justify-between items-end mb-4 italic">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Streams Completed</p>
+                <h4 className="text-2xl font-black tracking-tighter">
+                  {currentCreator?.streams_completed || 0} of {currentCreator?.streams_target || 0}
+                </h4>
+              </div>
+              <p className="text-[12px] font-black uppercase italic tracking-widest text-[#1D1D1D]/20">
+                {Math.round(progressPercent)}% Complete
+              </p>
+            </div>
+
+            <div className="h-4 bg-[#1D1D1D]/5 w-full rounded-none overflow-hidden mb-8 border border-[#1D1D1D]/10">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progressPercent}%` }}
+                className="h-full bg-[#389C9A]"
+              />
+            </div>
+
+            <div className="h-[1px] bg-[#1D1D1D]/10 mb-8" />
+
+            <div className="grid grid-cols-3 gap-4 italic text-center">
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 leading-none">Verified Streams</p>
+                <p className="text-xl font-black tracking-tighter">{currentCreator?.streams_completed || 0}</p>
+              </div>
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 leading-none">Awaiting Verification</p>
+                <p className="text-xl font-black tracking-tighter text-[#D2691E]">
+                  {currentCreator && currentCreator.streams_completed < currentCreator.streams_target ? 1 : 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 leading-none">Remaining</p>
+                <p className="text-xl font-black tracking-tighter">
+                  {(currentCreator?.streams_target || 0) - (currentCreator?.streams_completed || 0)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 4 — FINANCIAL SUMMARY */}
+        <div className="px-6 py-12">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8">Financial Summary</h3>
+          <div className="bg-white border-2 border-[#1D1D1D] mb-12">
+            <div className="p-6 space-y-4">
+              <div className="flex justify-between items-center italic">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Total Campaign Value</span>
+                <span className="text-lg font-black tracking-tighter">₦{totalBudget.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center italic">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Released to Creator So Far</span>
+                <span className="text-lg font-black tracking-tighter">₦{releasedSoFar.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center italic">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Remaining Held</span>
+                <span className="text-lg font-black tracking-tighter">₦{remainingHeld.toLocaleString()}</span>
+              </div>
+              <div className="h-[1px] bg-[#1D1D1D]/10 my-4" />
+              <div className="flex items-start gap-3 bg-[#F8F8F8] p-4 border border-[#1D1D1D]/5 italic">
+                <Shield className="w-4 h-4 text-[#D2691E] flex-shrink-0" />
+                <p className="text-[9px] font-bold uppercase tracking-tight leading-relaxed text-[#1D1D1D]/60">
+                  Any unverified streams will be refunded to your original payment method within 3 to 5 business days.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <h4 className="text-[9px] font-black uppercase tracking-[0.2em] mb-4 opacity-40 italic">Payout Release Schedule</h4>
+          <div className="flex flex-col gap-3">
+            {payoutSchedule.map((row, i) => (
+              <div key={i} className="bg-white border border-[#1D1D1D]/10 p-5 flex items-center justify-between italic">
+                <div>
+                  <p className="text-[10px] font-black uppercase mb-1">{row.label}</p>
+                  <p className="text-lg font-black tracking-tighter">₦{Number(row.amount).toLocaleString()}</p>
+                </div>
+                <div className={`px-3 py-1 border text-[8px] font-black uppercase tracking-widest italic ${
+                  row.status === "Paid" ? "bg-[#389C9A] text-white border-[#389C9A]" : "bg-[#F8F8F8] text-[#1D1D1D]/20 border-[#1D1D1D]/10"
+                }`}>
+                  {row.status}
+                </div>
               </div>
             ))}
           </div>
-          <div>
-            <div className="flex justify-between text-[8px] font-black uppercase tracking-widest mb-1.5">
-              <span>Stream Progress</span>
-              <span>{stats.completedStreams} / {stats.totalStreams}</span>
-            </div>
-            <div className="h-2 bg-[#F0F0F0] rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-[#389C9A] rounded-full"
-                animate={{ width: `${streamProgress}%` }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-              />
-            </div>
-            <p className="text-right text-[8px] font-black opacity-40 mt-1">{streamProgress}%</p>
-          </div>
-        </section>
+        </div>
 
-        {/* ── Search & Filter ── */}
-        <section className="px-6 py-4 border-b border-[#1D1D1D]/10">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-30 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search creators..."
-                className="w-full pl-9 pr-3 py-2.5 border-2 border-[#E8E8E8] focus:border-[#1D1D1D] outline-none text-sm rounded-xl transition-colors"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2.5 border-2 border-[#E8E8E8] focus:border-[#1D1D1D] outline-none text-[10px] font-black uppercase rounded-xl"
-            >
-              <option value="all">All</option>
-              <option value="pending">Pending</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </div>
-        </section>
+        {/* SECTION 5 — STREAM LOG */}
+        <div className="px-6 py-12 bg-[#F8F8F8] border-y-2 border-[#1D1D1D]">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-2">Stream Log</h3>
+          <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest mb-8 italic">
+            Every stream {creatorProfile?.full_name || "the creator"} has completed for this campaign.
+          </p>
 
-        {/* ── Creators List ── */}
-        <section className="px-6 py-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-[9px] font-black uppercase tracking-[0.3em] opacity-40">Creators</h3>
-            <span className="text-[9px] font-black bg-[#F8F8F8] px-3 py-1 rounded-full">
-              {filtered.length} of {creators.length}
-            </span>
-          </div>
-
-          {filtered.length === 0 ? (
-            <div className="text-center py-16 border-2 border-dashed border-[#E8E8E8] rounded-2xl">
-              <Users className="w-10 h-10 mx-auto mb-3 opacity-20" />
-              <p className="text-sm font-black uppercase tracking-wide opacity-30">No creators found</p>
-              <p className="text-xs opacity-20 mt-1">
-                {creators.length === 0 ? "No creators have joined yet" : "Try adjusting your filters"}
-              </p>
-            </div>
-          ) : (
-            <AnimatePresence mode="popLayout">
-              <div className="flex flex-col gap-4">
-                {filtered.map((item) => {
-                  const c = item.creator;
-                  const progress = getProgress(item.streams_completed, item.streams_target);
-                  const isPaid = item.paid_out >= item.total_earnings && item.total_earnings > 0;
-                  const tags = (c.categories?.length ? c.categories : c.niche) || [];
-
-                  return (
-                    <motion.div
-                      key={item.id}
-                      layout
-                      initial={{ opacity: 0, y: 16 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.2 }}
-                      className="relative bg-white border-2 border-[#1D1D1D] rounded-2xl p-5 group"
-                    >
-                      {/* Status badge */}
-                      <div className={`absolute -top-3 right-5 px-3 py-1 text-[7px] font-black uppercase tracking-widest rounded-full ${
-                        STATUS_STYLES[item.status] || "bg-gray-200 text-gray-600"
-                      }`}>
-                        {item.status}
-                      </div>
-
-                      <div className="flex items-start gap-4">
-                        {/* Avatar */}
-                        <div
-                          className="w-14 h-14 border-2 border-[#1D1D1D]/10 overflow-hidden rounded-xl shrink-0 bg-[#F8F8F8] cursor-pointer"
-                          onClick={() => navigate(`/profile/${c.id}`)}
-                        >
-                          <ImageWithFallback
-                            src={c.avatar}
-                            alt={c.name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <h4
-                              className="font-black text-sm uppercase tracking-tight truncate cursor-pointer hover:text-[#389C9A] transition-colors"
-                              onClick={() => navigate(`/profile/${c.id}`)}
-                            >
-                              {c.name}
-                            </h4>
-                            {c.rating > 0 && (
-                              <span className="flex items-center gap-0.5 text-[7px] font-black bg-[#FEDB71] px-1.5 py-0.5 rounded shrink-0">
-                                <Star className="w-2 h-2" />
-                                {Number(c.rating).toFixed(1)}
-                              </span>
-                            )}
-                          </div>
-
-                          <p className="text-[9px] text-gray-400 mb-2">{c.username}</p>
-
-                          <div className="grid grid-cols-2 gap-2 mb-3">
-                            <div className="flex items-center gap-1 text-[8px] text-gray-500">
-                              <Tv className="w-3 h-3 text-[#389C9A]" />
-                              <span>{c.avg_concurrent || 0} avg viewers</span>
-                            </div>
-                            <div className="flex items-center gap-1 text-[8px] text-gray-500">
-                              <DollarSign className="w-3 h-3 text-[#389C9A]" />
-                              <span>₦{Number(item.total_earnings).toLocaleString()}</span>
-                            </div>
-                          </div>
-
-                          {/* Stream Progress */}
-                          <div>
-                            <div className="flex justify-between text-[7px] font-black uppercase tracking-widest mb-1">
-                              <span>Streams</span>
-                              <span>{item.streams_completed}/{item.streams_target}</span>
-                            </div>
-                            <div className="h-1.5 bg-[#F0F0F0] rounded-full overflow-hidden">
-                              <motion.div
-                                className="h-full bg-[#389C9A] rounded-full"
-                                animate={{ width: `${progress}%` }}
-                                transition={{ duration: 0.4, ease: "easeOut" }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Right — paid status */}
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          {isPaid ? (
-                            <span className="text-[7px] font-black uppercase text-green-500 flex items-center gap-0.5">
-                              <CheckCircle2 className="w-3 h-3" /> Paid
-                            </span>
-                          ) : item.total_earnings > 0 ? (
-                            <span className="text-[7px] font-black uppercase text-[#FEDB71]">Unpaid</span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {/* Category tags */}
-                      {tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t border-[#1D1D1D]/10">
-                          {tags.slice(0, 4).map((tag) => (
-                            <span
-                              key={tag}
-                              className="text-[7px] font-black uppercase tracking-widest bg-[#F8F8F8] px-2 py-0.5 rounded-full"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Action row */}
-                      <div className="flex gap-2 mt-3 pt-3 border-t border-[#1D1D1D]/10">
-                        <button
-                          onClick={() => openMessage(c.id)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 border-2 border-[#1D1D1D]/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white hover:border-[#1D1D1D] transition-colors"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" /> Message
-                        </button>
-
-                        {item.status === "pending" && (
-                          <>
-                            <button
-                              onClick={() => updateStatus(item.id, "active")}
-                              className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#389C9A] text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#2d7a78] transition-colors"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Approve
-                            </button>
-                            <button
-                              onClick={() => updateStatus(item.id, "rejected")}
-                              className="px-3 py-2 border-2 border-red-200 text-red-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-
-                        {item.status === "completed" && !isPaid && (
-                          <button
-                            onClick={() => markPaid(item.id, item.total_earnings)}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-green-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-green-600 transition-colors"
-                          >
-                            <DollarSign className="w-3.5 h-3.5" /> Mark Paid
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => navigate(`/profile/${c.id}`)}
-                          className="px-3 py-2 border-2 border-[#1D1D1D]/10 rounded-xl hover:bg-[#F8F8F8] transition-colors"
-                        >
-                          <ChevronRight className="w-4 h-4 opacity-40" />
-                        </button>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </AnimatePresence>
-          )}
-        </section>
-
-        {/* ── Browse CTA ── */}
-        <section className="px-6 pb-8">
-          <div className="bg-gradient-to-br from-[#1D1D1D] to-gray-800 text-white p-8 rounded-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
-            <p className="text-[8px] font-black uppercase tracking-widest opacity-50 mb-2">Need more creators?</p>
-            <p className="text-xl font-black uppercase tracking-tight italic mb-5">Browse the marketplace</p>
-            <button
-              onClick={() => navigate("/browse")}
-              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#FEDB71] hover:gap-3 transition-all"
-            >
-              Find Creators <ChevronRight className="w-4 h-4" />
-            </button>
-            <div className="grid grid-cols-3 gap-4 mt-6 pt-5 border-t border-white/10">
-              {[
-                { val: "150+", label: "Available" },
-                { val: "4.8",  label: "Avg Rating" },
-                { val: "24h",  label: "Response" },
-              ].map((s) => (
-                <div key={s.label}>
-                  <p className="text-lg font-black text-[#389C9A]">{s.val}</p>
-                  <p className="text-[7px] font-black uppercase tracking-widest opacity-40">{s.label}</p>
+          <div className="flex flex-col gap-4 mb-8">
+            {streamLog.map((stream) => (
+              <div key={stream.id} className="bg-white border-2 border-[#1D1D1D] p-6 flex items-center justify-between italic">
+                <div className="space-y-1">
+                  <p className="text-sm font-black uppercase tracking-tight leading-none">Stream {stream.num}</p>
+                  <p className="text-[10px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest">{stream.date || "TBC"}</p>
+                  {stream.duration && (
+                    <p className="text-[10px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic opacity-40">{stream.duration}</p>
+                  )}
                 </div>
-              ))}
-            </div>
+                <div className="text-right flex flex-col items-end gap-2">
+                  <div className={`px-2 py-0.5 border text-[7px] font-black uppercase tracking-widest italic ${
+                    stream.status === "Verified" ? "bg-[#389C9A] text-white border-[#389C9A]" :
+                    stream.status === "Awaiting Proof" ? "bg-[#FEDB71] text-[#1D1D1D] border-[#1D1D1D]/10" :
+                    "bg-[#F8F8F8] text-[#1D1D1D]/20 border-[#1D1D1D]/10"
+                  }`}>
+                    {stream.status === "Verified" ? "✓ Verified" : stream.status === "Awaiting Proof" ? "⏳ Awaiting Proof" : "Upcoming"}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </section>
+
+          {streamLog.length < (currentCreator?.streams_target || 0) && (
+            <button className="w-full text-center text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 underline italic">
+              Show All Streams →
+            </button>
+          )}
+        </div>
+
+        {/* SECTION 6 — BANNER (if exists) */}
+        {campaign.banner_url && (
+          <div className="px-6 py-12 border-b-2 border-[#1D1D1D]">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8">Your Active Banner</h3>
+            <div className="bg-black border-2 border-[#1D1D1D] overflow-hidden mb-6 opacity-40 grayscale">
+              <ImageWithFallback src={campaign.banner_url} className="w-full h-auto grayscale opacity-80" />
+            </div>
+            <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic text-center mb-8">
+              This banner is scheduled to go live on the creator's streams.
+            </p>
+            <button className="w-full bg-white border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 active:bg-[#F8F8F8] transition-all italic">
+              <Download className="w-4 h-4 text-[#D2691E]" /> Download Banner
+            </button>
+          </div>
+        )}
+
+        {/* SECTION 7 — PROMO CODE PERFORMANCE (placeholder) */}
+        <div className="px-6 py-12 bg-[#FFF8DC]/30 border-b-2 border-[#1D1D1D]">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8">Promo Code Performance</h3>
+          <div className="bg-white border-2 border-[#1D1D1D] p-8">
+            <div className="flex justify-between items-center mb-6 italic">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Active Code</span>
+              <span className="text-3xl font-black tracking-tighter text-[#1D1D1D]/20">Coming Soon</span>
+            </div>
+            <div className="h-[1px] bg-[#1D1D1D]/10 mb-6" />
+            <p className="text-[8px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 italic text-center">
+              Performance data will appear here once the campaign goes live.
+            </p>
+          </div>
+        </div>
+
+        {/* SECTION 8 — COMMUNICATION */}
+        <div className="px-6 py-12">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8">Communication</h3>
+          {creatorProfile && (
+            <div
+              onClick={() => navigate(`/messages?userId=${creatorProfile.id}&role=business`)}
+              className="bg-[#F8F8F8] border border-[#1D1D1D]/10 p-5 flex items-center gap-4 mb-6 cursor-pointer active:bg-[#1D1D1D]/5 transition-colors"
+            >
+              <ImageWithFallback src={creatorProfile.avatar_url || "https://via.placeholder.com/100"} className="w-10 h-10 border border-[#1D1D1D]/10 grayscale object-cover rounded-none" />
+              <div className="flex-1 min-w-0 italic">
+                <div className="flex justify-between items-center mb-1">
+                  <h4 className="text-[10px] font-black uppercase">{creatorProfile.full_name}</h4>
+                  <span className="text-[8px] font-bold text-[#1D1D1D]/30 uppercase tracking-widest">Now</span>
+                </div>
+                <p className="text-[10px] font-medium text-[#1D1D1D]/60 truncate uppercase tracking-tight">
+                  Ready to start the campaign?
+                </p>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => creatorProfile && navigate(`/messages?userId=${creatorProfile.id}&role=business`)}
+            className="w-full bg-[#1D1D1D] text-white py-6 text-xl font-black uppercase italic tracking-tighter flex items-center justify-center gap-4 active:scale-[0.98] transition-all mb-6"
+          >
+            <MessageSquare className="w-6 h-6 text-[#FEDB71]" /> Message {creatorProfile?.full_name || "Creator"}
+          </button>
+
+          <div className="bg-red-50 border border-red-200 p-6 flex items-start gap-4 mb-4 italic">
+            <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0" />
+            <p className="text-[10px] font-bold text-red-600 leading-relaxed uppercase tracking-tight">
+              All communication must remain within LiveLink. Moving conversations outside the platform will result in immediate account closure and forfeiture of all funds.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 opacity-30 italic">
+            <Lock className="w-3 h-3" />
+            <span className="text-[8px] font-black uppercase tracking-[0.2em]">Secured Messaging Active</span>
+          </div>
+        </div>
+
+        {/* SECTION 9 — CAMPAIGN ACTIONS */}
+        <div className="px-6 py-12 bg-[#F8F8F8] border-y-2 border-[#1D1D1D] mb-12">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8">Actions</h3>
+          <div className="flex flex-col gap-1 border border-[#1D1D1D]/10 bg-[#1D1D1D]/10">
+            {[
+              { icon: Download, label: "Download Campaign Report", subtext: "Export a full PDF summary of this campaign", color: "#389C9A" },
+              { icon: Flag, label: "Report a Campaign Issue", subtext: "Raise a dispute or report a problem", color: "#D2691E" },
+              { icon: Repeat, label: "Rebook This Creator", subtext: "Start a new campaign with the same creator", color: "#1D1D1D" }
+            ].map((action, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  if (action.label === "Download Campaign Report") toast.info("Report generation coming soon");
+                  else if (action.label === "Report a Campaign Issue") navigate(`/report/campaign/${campaignId}`);
+                  else if (action.label === "Rebook This Creator") navigate(`/business/create-campaign?creator=${currentCreator?.creator_id}`);
+                }}
+                className="w-full bg-white p-6 flex items-center gap-4 text-left active:bg-[#F8F8F8] transition-all italic"
+              >
+                <div className="w-10 h-10 flex items-center justify-center border border-[#1D1D1D]/10 bg-[#F8F8F8]">
+                  <action.icon className="w-5 h-5" style={{ color: action.color }} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-[10px] font-black uppercase tracking-tight leading-none mb-1">{action.label}</h4>
+                  <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest">{action.subtext}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#1D1D1D]/20" />
+              </button>
+            ))}
+          </div>
+        </div>
       </main>
     </div>
   );
