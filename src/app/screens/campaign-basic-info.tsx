@@ -1,4 +1,5 @@
 import React from "react";
+import { toast } from "sonner";
 import { CampaignFormData } from "./business-create-campaign";
 
 interface Props {
@@ -11,7 +12,7 @@ export function CampaignBasicInfo({ data, updateData, onNext }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!data.name || !data.type || data.budget <= 0) {
-      alert("Please fill all required fields (name, type, budget > 0)");
+      toast.error("Please fill all required fields (name, type, budget > 0)");
       return;
     }
     onNext();
