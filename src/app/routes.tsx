@@ -1,5 +1,5 @@
 import {createBrowserRouter, RouteObject } from "react-router";
-import { Dashboard } from "./screens/dashboard";
+import  Dashboard  from "./screens/dashboard";
 import { Profile } from "./screens/profile";
 import { Settings } from "./screens/settings";
 import { Campaigns } from "./screens/campaigns";
