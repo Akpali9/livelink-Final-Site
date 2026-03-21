@@ -68,7 +68,7 @@ export function BusinessDashboard() {
     const fetchData = async () => {
       setLoading(true);
       const { data: campaignData } = await supabase
-        .from("igns")
+        .from("campaigns")
         .select(`*, campaign_creators(id, status)`)
         .eq("business_id", businessId);
 
@@ -113,26 +113,19 @@ export function BusinessDashboard() {
   };
 
   const filteredCampaigns = campaigns.filter(c => {
-    if (campaignFilter === "LIVE")      return c.status === "ACTIVE" || c.status === "OPEN";
-    if (campaignFilter === "PENDING")   return c.status === "PENDING REVIEW";
-    if (campaignFilter === "COMPLETED") return c.status === "COMPLETED";
+    if (campaignFilter === "LIVE")      return c.status === "ACTIVE" || c.status === "active";
+    if (campaignFilter === "PENDING")   return c.status === "PENDING REVIEW" || c.status === "pending_review" || c.status === "NOT STARTED";
+    if (campaignFilter === "COMPLETED") return c.status === "COMPLETED" || c.status === "completed";
     return false;
   });
 
- if (loading) {
-  return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
-      <AppHeader showLogo userType="business" subtitle="Business Hub" />
-      <div className="flex items-center justify-center h-[80vh]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
-          <p className="text-sm text-gray-500">Loading your dashboard...</p>
-        </div>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
       </div>
-      <BottomNav />
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
@@ -242,7 +235,7 @@ export function BusinessDashboard() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic">My Campaigns</h2>
             <button
-              onClick={() => navigate("/business/campaigns")}
+              onClick={() => navigate("/campaign/type")}
               className="flex items-center gap-1.5 bg-[#389C9A] text-white px-3 py-2 text-[9px] font-black uppercase tracking-widest italic hover:bg-[#1D1D1D] transition-colors"
             >
               <Plus className="w-3 h-3" /> New
@@ -276,7 +269,7 @@ export function BusinessDashboard() {
                 </p>
                 {campaignFilter === "LIVE" && (
                   <button
-                    onClick={() => navigate("/business/create-campaign")}
+                    onClick={() => navigate("/campaign/type")}
                     className="mt-4 px-4 py-2 bg-[#1D1D1D] text-white text-[9px] font-black uppercase italic hover:bg-[#389C9A] transition-colors"
                   >
                     Create Campaign
@@ -343,7 +336,7 @@ export function BusinessDashboard() {
           <div className="flex flex-col gap-2">
             {[
               { label: "Browse Creators",   path: "/browse",            icon: Users },
-              { label: "Create Campaign",   path: "/business/create-campaign",     icon: Megaphone },
+              { label: "Create Campaign",   path: "/campaign/type",     icon: Megaphone },
               { label: "Business Settings", path: "/business/settings", icon: ArrowRight },
             ].map((action) => (
               <button
