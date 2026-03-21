@@ -1,4 +1,3 @@
-// src/screens/campaign-offer-details.tsx
 import React from "react";
 import { CampaignFormData } from "./business-create-campaign";
 
@@ -12,8 +11,8 @@ interface Props {
 export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!data.promoCode || !data.discountValue) {
-      alert("Please fill promo code and discount value");
+    if (!data.promoCode || data.discountValue <= 0) {
+      alert("Please fill promo code and discount value > 0");
       return;
     }
     onNext();
@@ -22,7 +21,6 @@ export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props
   return (
     <div className="px-4 space-y-6 pb-8">
       <form onSubmit={handleSubmit}>
-        {/* Promo Code */}
         <div className="mb-4">
           <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
             Promo Code <span className="text-red-500">*</span>
@@ -36,7 +34,6 @@ export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props
           />
         </div>
 
-        {/* Discount Type & Value */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
             <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
@@ -60,14 +57,23 @@ export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props
             <input
               type="number"
               value={data.discountValue || ""}
-              onChange={(e) => updateData({ discountValue: parseFloat(e.target.value) || 0 })}
+              onChange={(e) => {
+                let val = parseFloat(e.target.value);
+                if (data.discountType === "percentage") {
+                  val = Math.min(100, Math.max(0, isNaN(val) ? 0 : val));
+                } else {
+                  val = Math.max(0, isNaN(val) ? 0 : val);
+                }
+                updateData({ discountValue: val });
+              }}
+              min="0"
+              step={data.discountType === "percentage" ? "1" : "0.01"}
               className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-lg"
               placeholder={data.discountType === "percentage" ? "20" : "10"}
             />
           </div>
         </div>
 
-        {/* Usage Limit */}
         <div className="mb-4">
           <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
             Usage Limit
@@ -85,7 +91,6 @@ export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props
           </select>
         </div>
 
-        {/* Expiry Date */}
         <div className="mb-4">
           <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
             Expiry Date
@@ -98,7 +103,6 @@ export function CampaignOfferDetails({ data, updateData, onNext, onBack }: Props
           />
         </div>
 
-        {/* Instructions */}
         <div className="mb-4">
           <label className="text-[10px] font-black uppercase tracking-widest mb-1 block">
             Instructions for Creators
