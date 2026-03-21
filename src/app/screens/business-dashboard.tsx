@@ -77,9 +77,14 @@ export function BusinessDashboard() {
 
       if (campErr) console.error("Campaign fetch error:", campErr);
 
+      // Fetch offers with creator profile and campaign name joined
       const { data: offerData, error: offerErr } = await supabase
         .from("offers")
-        .select(`*, creators(id, name, avatar), campaigns(id, name, type)`)
+        .select(`
+          *,
+          creator_profiles!creator_id (id, full_name, avatar_url),
+          campaigns!campaign_id (id, name, type)
+        `)
         .eq("business_id", businessId)
         .in("status", ["Offer Received", "Negotiating"]);
 
@@ -108,19 +113,40 @@ export function BusinessDashboard() {
 
   /* ── Accept / Reject offers ── */
   const acceptOffer = async (offer: any) => {
-    await supabase.from("offers").update({ status: "Accepted" }).eq("id", offer.id);
-    await supabase.from("campaign_creators").insert({
-      campaign_id: offer.campaigns.id,
-      creator_id: offer.creators.id,
-      status: "ACTIVE",
-      streams_target: 4,
-    });
-    toast.success("Offer accepted!");
-    setOffers(prev => prev.filter(o => o.id !== offer.id));
+    try {
+      const { error: offerErr } = await supabase
+        .from("offers")
+        .update({ status: "Accepted" })
+        .eq("id", offer.id);
+
+      if (offerErr) throw offerErr;
+
+      const { error: ccErr } = await supabase
+        .from("campaign_creators")
+        .insert({
+          campaign_id: offer.campaign_id,
+          creator_id: offer.creator_id,   // FK → creator_profiles.id
+          status: "NOT STARTED",
+          streams_target: offer.streams ?? 4,
+        });
+
+      if (ccErr) throw ccErr;
+
+      toast.success("Offer accepted!");
+      setOffers(prev => prev.filter(o => o.id !== offer.id));
+    } catch (e: any) {
+      console.error("Error accepting offer:", e);
+      toast.error(`Failed to accept offer: ${e.message}`);
+    }
   };
 
   const rejectOffer = async (offerId: string) => {
-    await supabase.from("offers").update({ status: "Rejected" }).eq("id", offerId);
+    const { error } = await supabase
+      .from("offers")
+      .update({ status: "Rejected" })
+      .eq("id", offerId);
+
+    if (error) { toast.error("Failed to reject offer"); return; }
     toast.success("Offer rejected");
     setOffers(prev => prev.filter(o => o.id !== offerId));
   };
@@ -236,11 +262,22 @@ export function BusinessDashboard() {
                   >
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <p className="text-[11px] font-black uppercase tracking-tight italic">{o.campaigns?.name}</p>
-                        <p className="text-[9px] font-bold text-[#389C9A] uppercase tracking-widest">{o.creators?.name}</p>
+                        <p className="text-[11px] font-black uppercase tracking-tight italic">
+                          {o.campaigns?.name ?? "Campaign"}
+                        </p>
+                        <p className="text-[9px] font-bold text-[#389C9A] uppercase tracking-widest">
+                          {o.creator_profiles?.full_name ?? "Creator"}
+                        </p>
                       </div>
-                      <span className="text-[10px] font-black italic">{o.amount}</span>
+                      <span className="text-[10px] font-black italic">
+                        {o.rate ? `₦${Number(o.rate).toLocaleString()}` : ""}
+                      </span>
                     </div>
+                    {o.message && (
+                      <p className="text-[9px] text-[#1D1D1D]/50 mb-3 italic border-l-2 border-[#1D1D1D]/10 pl-2">
+                        {o.message}
+                      </p>
+                    )}
                     <div className="flex gap-2">
                       <button
                         onClick={() => acceptOffer(o)}
@@ -360,7 +397,7 @@ export function BusinessDashboard() {
           <div className="flex flex-col gap-2">
             {[
               { label: "Browse Creators",   path: "/browse",            icon: Users },
-              { label: "Create Campaign",   path: "/campaign/type",     icon: Megaphone },
+              { label: "Create Campaign",   path: "/business/create-campaign",     icon: Megaphone },
               { label: "Business Settings", path: "/business/settings", icon: ArrowRight },
             ].map((action) => (
               <button
