@@ -498,7 +498,7 @@ export function BusinessCampaignCreators() {
       <main className="flex-1">
 
         {/* ── Campaign Header ── */}
-        <section className="px-6 py-8 bg-gradient-to-br from-[#1D1D1D] to-gray-800 text-white">
+        <section className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-20 max-w-[480px] mx-auto w-full">
           <div className="flex items-start justify-between mb-6">
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl font-black uppercase tracking-tighter italic leading-tight mb-1">
