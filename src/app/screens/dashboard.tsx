@@ -325,7 +325,7 @@ export function Dashboard() {
 
   const handleAcceptOffer = async (req: IncomingRequest) => {
     try {
-      cconst { error } = await supabase
+      const { error } = await supabase
   .from("campaign_creators")
   .update({ status: "ACTIVE", accepted_at: new Date().toISOString() })
   .eq("id", req.id);
