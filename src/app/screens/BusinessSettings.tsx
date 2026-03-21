@@ -262,7 +262,7 @@ export function BusinessSettings() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] max-w-[480px] mx-auto w-full">
         <AppHeader showBack title="Settings" userType="business" />
         <div className="flex items-center justify-center h-[70vh]">
           <Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" />
