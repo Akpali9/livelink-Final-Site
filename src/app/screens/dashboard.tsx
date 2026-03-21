@@ -737,3 +737,5 @@ export function CampaignSetupPromoOnly() {
     </div>
   );
 }
+
+export default Dashboard;
