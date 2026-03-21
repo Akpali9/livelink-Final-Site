@@ -121,7 +121,7 @@ export function BusinessDashboard() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+      <div className="max-w-[480px] mx-auto w-full">
         <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
       </div>
     );
