@@ -730,7 +730,7 @@ export function BrowseBusinesses() {
                 )}
 
                 {/* Actions */}
-                <div className="flex gap-3">
+                <div className="flex gap-3 mb-20">
                   <button
                     onClick={(e) => toggleSave(selectedCampaign.id, e)}
                     className={`flex-1 border-2 py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all rounded-xl ${
