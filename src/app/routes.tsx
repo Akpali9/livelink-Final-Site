@@ -6,9 +6,9 @@ import { Campaigns } from "./screens/campaigns";
 import { BusinessDashboard } from "./screens/business-dashboard";
 import { BusinessProfile } from "./screens/business-profile";
 import { BusinessSettings } from "./screens/business-settings";
-import { BusinessCampaigns } from "./screens/business-campaigns";
+// import { BusinessCampaigns } from "./screens/business-campaigns";
 import { BusinessCampaignDetail } from "./screens/business-campaign-detail";
-import { BusinessCampaignCreators } from "./screens/business-campaign-creators";
+// import { BusinessCampaignCreators } from "./screens/business-campaign-creators";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { BrowseCreators } from "./screens/browse";
 import { Messages } from "./screens/messages"; // Commented out - file doesn't exist
@@ -58,9 +58,9 @@ export const routes: RouteObject[] = [
   { path: "/business/dashboard", element: protectBusiness(BusinessDashboard) },
   { path: "/business/profile", element: protectBusiness(BusinessProfile) },
   { path: "/business/settings", element: protectBusiness(BusinessSettings) },
-  { path: "/business/campaigns", element: protectBusiness(BusinessCampaigns) },
+  { path: "/business/campaigns", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/business/campaign/overview/:id", element: protectBusiness(BusinessCampaignDetail) },
-  { path: "/business/campaign/creators/:id", element: protectBusiness(BusinessCampaignCreators) },
+  { path: "/business/campaign/creators/:id", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/business/create-campaign", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/business/campaign/edit/:id", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/browse", element: protectBusiness(BrowseCreators) },
