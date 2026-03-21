@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouteObject } from "react-router";
 import { Dashboard } from "./screens/dashboard";
 import { Profile } from "./screens/profile";
+import { CampaignSummary } from "./screens/CampaignSummary";
 import { Settings } from "./screens/settings";
 import { Campaigns } from "./screens/campaigns";
 import { BusinessDashboard } from "./screens/business-dashboard";
