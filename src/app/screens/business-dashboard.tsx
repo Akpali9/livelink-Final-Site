@@ -119,7 +119,7 @@ export function BusinessDashboard() {
     return false;
   });
 
- if (loading && !authChecked) {
+ if (loading) {
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <AppHeader showLogo userType="business" subtitle="Business Hub" />
