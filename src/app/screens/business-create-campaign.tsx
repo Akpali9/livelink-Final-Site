@@ -138,7 +138,7 @@ export function BusinessCreateCampaign() {
             formData.creatorIds.map((creatorId) => ({
               campaign_id: campaign.id,
               creator_id: creatorId,
-              status: "pending",
+              status: "NOT STARTED",
               streams_target: 4,
               streams_completed: 0,
               created_at: new Date().toISOString(),
