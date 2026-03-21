@@ -61,7 +61,7 @@ export const routes: RouteObject[] = [
   { path: "/business/campaigns", element: protectBusiness(BusinessCampaigns) },
   { path: "/business/campaign/overview/:id", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/business/campaign/creators/:id", element: protectBusiness(BusinessCampaignCreators) },
-  { path: "/business/create-campaign", element: protectBusiness(BusinessCampaignDetail) },
+  { path: "/business/create-campaign", element: protectBusiness(BusinessCampaignCreators) },
   { path: "/business/campaign/edit/:id", element: protectBusiness(BusinessCampaignDetail) },
   { path: "/browse", element: protectBusiness(BrowseCreators) },
   { path: "/business/messages", element: protectBusiness(Messages) }, // Commented out
