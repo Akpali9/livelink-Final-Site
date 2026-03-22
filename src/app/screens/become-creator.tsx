@@ -711,6 +711,15 @@ const { data: profileData, error: profileError } = await supabase
           {step === 5 && (
             <motion.div key="step5" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.2 }} className="flex flex-col gap-8">
               <div>
+                <label className="flex items-start gap-3 cursor-pointer mb-8">
+                <input type="checkbox" required className="peer hidden" />
+                <div className="mt-0.5 w-5 h-5 border-2 border-[#1D1D1D] rounded-md flex items-center justify-center bg-white peer-checked:bg-[#389C9A] peer-checked:border-[#389C9A] transition-all shrink-0">
+                  <CheckCircle2 className="w-3 h-3 text-white" />
+                </div>
+                <span className="text-[10px] font-semibold leading-relaxed opacity-60 italic">
+                  I agree to LiveLink's Terms of Service and Privacy Policy. I confirm all information provided is accurate.
+                </span>
+              </label>
                 <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Final Review</h2>
                 <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Confirm your details before submitting.</p>
               </div>
@@ -729,15 +738,7 @@ const { data: profileData, error: profileError } = await supabase
                   </div>
                 ))}
               </div>
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" required className="peer hidden" />
-                <div className="mt-0.5 w-5 h-5 border-2 border-[#1D1D1D] rounded-md flex items-center justify-center bg-white peer-checked:bg-[#389C9A] peer-checked:border-[#389C9A] transition-all shrink-0">
-                  <CheckCircle2 className="w-3 h-3 text-white" />
-                </div>
-                <span className="text-[10px] font-semibold leading-relaxed opacity-60 italic">
-                  I agree to LiveLink's Terms of Service and Privacy Policy. I confirm all information provided is accurate.
-                </span>
-              </label>
+              
             </motion.div>
           )}
         </AnimatePresence>
