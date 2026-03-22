@@ -319,7 +319,7 @@ export function BusinessCampaignOverview() {
             >
               <div className="flex items-center gap-3">
                 <Calendar className="w-4 h-4 text-[#389C9A]" />
-                <span className="text-[9px] font-black uppercase tracking-widest">Edit Campaign</span>
+                <span className="text-[9px] font-black uppercase tracking-widest">Add New Campaign</span>
               </div>
               <ChevronRight className="w-4 h-4 opacity-40" />
             </button>
