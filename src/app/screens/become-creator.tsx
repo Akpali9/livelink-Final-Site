@@ -392,7 +392,7 @@ const { data: profileData, error: profileError } = await supabase
       </div>
 
       {/* ── Form body ── */}
-      <div className="px-5 pt-8 max-w-lg mx-auto">
+      <div className="px-5 pt-8 max-w-lg mx-auto mb-12">
         <AnimatePresence mode="wait">
 
           {/* STEP 1 — Personal */}
