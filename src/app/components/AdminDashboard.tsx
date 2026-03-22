@@ -1408,26 +1408,6 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
                 <p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p>
               </div>
 
-              {/* Actions based on status */}
-              {(camp.status === "pending_review" || camp.status === "rejected") && (
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
-                  <button onClick={() => updateStatus(camp.id, "active")} disabled={updating === camp.id}
-                    className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                    <CheckCircle className="w-3 h-3" />
-                    {updating === camp.id ? "..." : "Approve"}
-                  </button>
-                  {camp.status !== "rejected" && (
-                    <button onClick={() => updateStatus(camp.id, "rejected")} disabled={updating === camp.id}
-                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                      <XCircle className="w-3 h-3" /> Reject
-                    </button>
-                  )}
-                  <button onClick={() => deleteCampaign(camp.id)}
-                    className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
 
               {camp.status === "active" && (
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
