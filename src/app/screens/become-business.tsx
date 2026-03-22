@@ -410,10 +410,10 @@ export function BecomeBusiness() {
         </div>
       )}
 
-      <div className="px-8 mt-12 max-w-[600px] mx-auto w-full flex-1 mb-23">
+      <div className="px-8 mt-12 max-w-[600px] mx-auto w-full flex-1 mb-12">
         {/* Step 1: Account */}
         {step === 1 && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12 mb-12">
             <section>
               <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Create Your Account</h2>
               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">This is how you will access your business dashboard.</p>
@@ -557,7 +557,7 @@ export function BecomeBusiness() {
 
         {/* Step 2: Business Info */}
         {step === 2 && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12 mb-12">
             <section>
               <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">About Your Business</h2>
               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Tell us about the business you will be advertising.</p>
@@ -710,7 +710,7 @@ export function BecomeBusiness() {
 
         {/* Step 3: Goals */}
         {step === 3 && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-16">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-16 mb-12">
             <section>
               <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Your Advertising Goals</h2>
               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-12 italic">Help us understand what you want to achieve.</p>
@@ -814,7 +814,7 @@ export function BecomeBusiness() {
 
         {/* Step 4: Verification */}
         {step === 4 && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12 mb-12">
             <section>
               <h2 className="text-2xl font-black uppercase tracking-tight italic mb-2">Account Verification</h2>
               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-8 italic">Please upload a valid form of government ID for the account holder.</p>
@@ -877,7 +877,7 @@ export function BecomeBusiness() {
 
         {/* Step 5: Review */}
         {step === 5 && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12 mb-12">
             <section>
                <div className="mt-2 mb-8 flex flex-col gap-4">
                 <label className="flex items-start gap-3 cursor-pointer group">
