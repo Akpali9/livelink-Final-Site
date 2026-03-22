@@ -631,25 +631,7 @@ export function AppHeader({
                                 )}
                               </Link>
                             ))
-                          )}
-                        </div>
 
-                        {/* Footer */}
-                        {recentConversations.length > 0 && (
-                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
-                            <Link
-                              to={messagesPath}
-                              onClick={() => setShowMessages(false)}
-                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                            >
-                              View All Messages →
-                            </Link>
-                          </div>
-                        )}
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
               </div>
             </>
           )}
@@ -675,7 +657,25 @@ export function AppHeader({
                 <User className="w-4 h-4" />
               )}
             </button>
+                                     )}
+                        </div>
 
+                        {/* Footer */}
+                        {recentConversations.length > 0 && (
+                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
+                            <Link
+                              to={messagesPath}
+                              onClick={() => setShowMessages(false)}
+                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                            >
+                              View All Messages →
+                            </Link>
+                          </div>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
             <AnimatePresence>
               {showProfileMenu && isAuthenticated && (
                 <>
