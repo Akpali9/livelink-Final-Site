@@ -410,7 +410,7 @@ export function BecomeBusiness() {
         </div>
       )}
 
-      <div className="px-8 mt-12 max-w-[600px] mx-auto w-full flex-1">
+      <div className="px-8 mt-12 max-w-[600px] mx-auto w-full flex-1 mb-23">
         {/* Step 1: Account */}
         {step === 1 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-12">
