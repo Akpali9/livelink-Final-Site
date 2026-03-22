@@ -998,16 +998,7 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                   className="px-3 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
                   <Eye className="w-3 h-3" /> View
                 </button>
-                {(creator.status === "pending_review" || creator.status === "pending") && (<>
-                  <button onClick={() => updateStatus(creator.id, "active")}
-                    className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1">
-                    <CheckCircle className="w-3 h-3" /> Approve
-                  </button>
-                  <button onClick={() => updateStatus(creator.id, "suspended")}
-                    className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
-                    <XCircle className="w-3 h-3" /> Reject
-                  </button>
-                </>)}
+                
                 {creator.status === "active" && (<>
                   <button onClick={() => updateStatus(creator.id, "suspended")}
                     className="col-span-2 border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
@@ -1203,22 +1194,7 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                     className="px-3 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
                     <Eye className="w-3 h-3" /> View
                   </button>
-                  {s === "pending" && (<>
-                    <button onClick={() => updateStatus(biz.id, "approved")}
-                      className="bg-[#1D1D1D] text-white py-2 text-[9px] font-black uppercase hover:bg-[#389C9A] transition-colors rounded-lg flex items-center justify-center gap-1">
-                      <CheckCircle className="w-3 h-3" /> Approve
-                    </button>
-                    <button onClick={() => updateStatus(biz.id, "rejected")}
-                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
-                      <XCircle className="w-3 h-3" /> Reject
-                    </button>
-                  </>)}
-                  {s !== "pending" && (
-                    <button onClick={() => deleteBusiness(biz.id)}
-                      className="col-span-2 border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
-                      <Trash2 className="w-3 h-3" /> Delete
-                    </button>
-                  )}
+                  
                 </div>
               </motion.div>
             );
