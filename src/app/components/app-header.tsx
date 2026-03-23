@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Link } from "react-router";
 import {
   MessageSquare, Bell, User, ArrowLeft, Settings, LogOut,
   Home, CheckCircle, AlertCircle, Calendar, DollarSign,
-  Briefcase, Mail, Send, Loader2
+  Briefcase, Mail, Send, Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../lib/contexts/AuthContext";
@@ -32,6 +32,7 @@ interface Notification {
   message: string;
   type: string;
   is_read: boolean;
+  data?: any;
   created_at: string;
 }
 
@@ -58,8 +59,8 @@ export function AppHeader({
   subtitle,
   showHome = false,
 }: AppHeaderProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
 
   const detectedType = user?.user_metadata?.user_type || user?.user_metadata?.role;
@@ -74,15 +75,14 @@ export function AppHeader({
   const [unreadMessages, setUnreadMessages]           = useState(0);
   const [notifications, setNotifications]             = useState<Notification[]>([]);
   const [recentConversations, setRecentConversations] = useState<ConversationPreview[]>([]);
-  const [userName, setUserName]                       = useState("");
-  const [userAvatar, setUserAvatar]                   = useState<string | null>(null);
-  const [creatorId, setCreatorId]                     = useState<string | null>(null);
+  const [userName, setUserName]     = useState("");
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [creatorId, setCreatorId]   = useState<string | null>(null);
 
-  // ─── USER DATA + PROFILE IDs ──────────────────────────────────────────
+  // ─── USER DATA ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!user) return;
-
     const meta = user.user_metadata || {};
     if (isBusiness) {
       setUserName(meta.business_name || meta.full_name || user.email?.split("@")[0] || "Business");
@@ -91,207 +91,194 @@ export function AppHeader({
     }
     setUserAvatar(meta.avatar_url || meta.logo_url || null);
 
-    const getProfileId = async () => {
+    const loadProfile = async () => {
       if (isBusiness) {
         const { data } = await supabase
-          .from("businesses")
-          .select("id, logo_url, business_name")
-          .eq("user_id", user.id)
-          .maybeSingle();
+          .from("businesses").select("id, logo_url, business_name")
+          .eq("user_id", user.id).maybeSingle();
         if (data) {
           if (!meta.avatar_url && data.logo_url) setUserAvatar(data.logo_url);
           if (data.business_name) setUserName(data.business_name);
         }
       } else {
         const { data } = await supabase
-          .from("creator_profiles")
-          .select("id, avatar_url, full_name")
-          .eq("user_id", user.id)
-          .maybeSingle();
+          .from("creator_profiles").select("id, avatar_url, full_name")
+          .eq("user_id", user.id).maybeSingle();
         if (data) {
           setCreatorId(data.id);
           if (!meta.avatar_url && data.avatar_url) setUserAvatar(data.avatar_url);
         }
       }
     };
-
-    getProfileId();
+    loadProfile();
   }, [user, isBusiness]);
 
-  // ─── FETCH NOTIFICATIONS + CONVERSATIONS ────────────────────────────
+  // ─── NOTIFICATIONS + CONVERSATIONS ────────────────────────────────────
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
-    const fetchData = async () => {
+    const loadData = async () => {
       try {
         const { count: notifCount } = await supabase
           .from("notifications")
           .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .eq("is_read", false);
+          .eq("user_id", user.id).eq("is_read", false);
         setUnreadNotifications(notifCount || 0);
 
         const { data: notifData } = await supabase
           .from("notifications")
-          .select("id, user_id, type, title, message, is_read, created_at")
+          .select("id, user_id, type, title, message, is_read, data, created_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(5);
         if (notifData) setNotifications(notifData as Notification[]);
 
-        await fetchConversations();
+        await loadConversations();
       } catch (err) {
         console.error("Header data error:", err);
       }
     };
 
-    fetchData();
+    loadData();
 
-    // ── Realtime: notifications ──
+    // Realtime: new notification inserted
     const notifSub = supabase
-      .channel(`header_notifications_${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const n: Notification = {
-            id:         payload.new.id,
-            user_id:    payload.new.user_id,
-            type:       payload.new.type,
-            title:      payload.new.title,
-            message:    payload.new.message,
-            is_read:    payload.new.is_read,
-            created_at: payload.new.created_at,
-          };
-          setUnreadNotifications((prev) => prev + 1);
-          setNotifications((prev) => [n, ...prev].slice(0, 5));
-
-          const type = n.type || "";
-          if (type.includes("approved")) {
-            toast.success(n.title, { description: n.message, icon: "✅" });
-          } else if (type.includes("offer") || type === "new_offer") {
-            toast.success(n.title, { description: n.message, icon: "🎯" });
-          } else if (type.includes("payment") || type === "payout") {
-            toast.success(n.title, { description: n.message, icon: "💰" });
-          } else if (type.includes("rejected")) {
-            toast.error(n.title, { description: n.message });
-          } else {
-            toast.info(n.title, { description: n.message, icon: "🔔" });
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          supabase
-            .from("notifications")
-            .select("*", { count: "exact", head: true })
-            .eq("user_id", user.id)
-            .eq("is_read", false)
-            .then(({ count }) => setUnreadNotifications(count || 0));
-        }
-      )
+      .channel(`header_notif_${user.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      }, (payload) => {
+        const n = payload.new as Notification;
+        setUnreadNotifications((p) => p + 1);
+        setNotifications((p) => [n, ...p].slice(0, 5));
+        const t = n.type || "";
+        if (t.includes("approved"))
+          toast.success(n.title, { description: n.message, icon: "✅" });
+        else if (t.includes("offer") || t === "new_offer")
+          toast.success(n.title, { description: n.message, icon: "🎯" });
+        else if (t.includes("payment") || t === "payout")
+          toast.success(n.title, { description: n.message, icon: "💰" });
+        else if (t.includes("rejected"))
+          toast.error(n.title, { description: n.message });
+        else if (t === "new_application")
+          toast.info(n.title, { description: n.message, icon: "👤" });
+        else
+          toast.info(n.title, { description: n.message, icon: "🔔" });
+      })
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        supabase.from("notifications")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id).eq("is_read", false)
+          .then(({ count }) => setUnreadNotifications(count || 0));
+      })
       .subscribe();
 
-    // ── Realtime: messages ──
+    // Realtime: new message
     const msgSub = supabase
-      .channel(`header_messages_${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
-        async () => { await fetchConversations(); }
-      )
+      .channel(`header_msg_${user.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "messages",
+      }, () => { loadConversations(); })
       .subscribe();
 
-    return () => {
-      notifSub.unsubscribe();
-      msgSub.unsubscribe();
-    };
+    return () => { notifSub.unsubscribe(); msgSub.unsubscribe(); };
   }, [isAuthenticated, user]);
 
-  // ─── CONVERSATIONS ────────────────────────────────────────────────────
+  // ─── LOAD CONVERSATIONS ───────────────────────────────────────────────
 
-  const fetchConversations = async () => {
+  const loadConversations = async () => {
     if (!user) return;
     try {
       const { data: convs } = await supabase
-        .from("conversations")
-        .select("*")
+        .from("conversations").select("*")
         .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`)
-        .order("last_message_at", { ascending: false })
-        .limit(5);
-
+        .order("last_message_at", { ascending: false }).limit(5);
       if (!convs) return;
 
-      const previews = await Promise.all(
-        convs.map(async (conv) => {
-          const otherId   = conv.participant1_id === user.id ? conv.participant2_id   : conv.participant1_id;
-          const otherType = conv.participant1_id === user.id ? conv.participant2_type : conv.participant1_type;
+      const previews = await Promise.all(convs.map(async (conv) => {
+        const otherId   = conv.participant1_id === user.id ? conv.participant2_id   : conv.participant1_id;
+        const otherType = conv.participant1_id === user.id ? conv.participant2_type : conv.participant1_type;
 
-          const { data: lastMsg } = await supabase
-            .from("messages")
-            .select("content, created_at, sender_id")
-            .eq("conversation_id", conv.id)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        const { data: lastMsg } = await supabase
+          .from("messages").select("content, created_at, sender_id")
+          .eq("conversation_id", conv.id)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
-          const { count } = await supabase
-            .from("messages")
-            .select("*", { count: "exact", head: true })
-            .eq("conversation_id", conv.id)
-            .eq("sender_id", otherId)
-            .eq("is_read", false);
+        const { count } = await supabase
+          .from("messages").select("*", { count: "exact", head: true })
+          .eq("conversation_id", conv.id).eq("sender_id", otherId).eq("is_read", false);
 
-          let name   = "Unknown";
-          let avatar: string | null = null;
+        let name = "Unknown";
+        let avatar: string | null = null;
 
-          if (otherType === "creator") {
-            const { data: p } = await supabase
-              .from("creator_profiles")
-              .select("full_name, avatar_url")
-              .eq("user_id", otherId)
-              .maybeSingle();
-            if (p) { name = p.full_name || "Creator"; avatar = p.avatar_url || null; }
-          } else if (otherType === "business") {
-            const { data: p } = await supabase
-              .from("businesses")
-              .select("business_name, logo_url")
-              .eq("user_id", otherId)
-              .maybeSingle();
-            if (p) { name = p.business_name || "Business"; avatar = p.logo_url || null; }
-          } else if (otherType === "admin") {
-            name = "LiveLink Support";
-          }
+        if (otherType === "creator") {
+          const { data: p } = await supabase
+            .from("creator_profiles").select("full_name, avatar_url")
+            .eq("user_id", otherId).maybeSingle();
+          if (p) { name = p.full_name || "Creator"; avatar = p.avatar_url || null; }
+        } else if (otherType === "business") {
+          const { data: p } = await supabase
+            .from("businesses").select("business_name, logo_url")
+            .eq("user_id", otherId).maybeSingle();
+          if (p) { name = p.business_name || "Business"; avatar = p.logo_url || null; }
+        } else if (otherType === "admin") {
+          name = "LiveLink Support";
+        }
 
-          return {
-            id:                       conv.id,
-            other_participant_name:   name,
-            other_participant_avatar: avatar,
-            last_message:             lastMsg?.content || "No messages yet",
-            last_message_time:        lastMsg?.created_at || conv.last_message_at || conv.created_at,
-            is_read:                  (count || 0) === 0,
-            participant_id:           otherId,
-          };
-        })
-      );
+        return {
+          id: conv.id,
+          other_participant_name:   name,
+          other_participant_avatar: avatar,
+          last_message:             lastMsg?.content || "No messages yet",
+          last_message_time:        lastMsg?.created_at || conv.last_message_at || conv.created_at,
+          is_read:                  (count || 0) === 0,
+          participant_id:           otherId,
+        };
+      }));
 
       setRecentConversations(previews);
       setUnreadMessages(previews.filter((c) => !c.is_read).length);
     } catch (err) {
-      console.error("fetchConversations error:", err);
+      console.error("loadConversations error:", err);
+    }
+  };
+
+  // ─── NOTIFICATION CLICK → navigate to the right destination ──────────
+
+  const handleNotificationClick = (n: Notification) => {
+    markNotificationAsRead(n.id);
+    setShowNotifications(false);
+
+    const d = n.data || {};
+    const t = n.type || "";
+
+    if (isBusiness) {
+      // Business routing
+      if (d.conversation_id)      return navigate(`/messages/${d.conversation_id}?role=business`);
+      if (t === "message")        return navigate(`/messages?role=business`);
+      if (d.campaign_id && (t.includes("campaign") || t === "new_application"))
+                                  return navigate(`/business/campaign/overview/${d.campaign_id}`);
+      if (t === "new_application") return navigate("/business/campaigns");
+      if (t.includes("campaign")) return navigate("/business/campaigns");
+      if (t.includes("payment") || t === "payout") return navigate("/business/dashboard");
+      if (t.includes("offer") || t === "new_offer") return navigate("/business/campaigns");
+      return navigate("/business/dashboard");
+    } else {
+      // Creator routing
+      if (d.conversation_id)      return navigate(`/messages/${d.conversation_id}?role=creator`);
+      if (t === "message")        return navigate(`/messages?role=creator`);
+      if (d.campaign_id)          return navigate(`/campaigns`);
+      if (t.includes("campaign") || t === "new_offer" || t.includes("offer"))
+                                  return navigate("/campaigns");
+      if (t.includes("payment") || t === "payout" || t.includes("earning"))
+                                  return navigate("/dashboard");
+      if (t.includes("approved") || t.includes("rejected"))
+                                  return navigate("/dashboard");
+      return navigate("/dashboard");
     }
   };
 
@@ -303,29 +290,22 @@ export function AppHeader({
       setShowProfileMenu(false);
       navigate("/");
       toast.success("Logged out successfully");
-    } catch {
-      toast.error("Failed to logout");
-    }
+    } catch { toast.error("Failed to logout"); }
   };
 
   const markNotificationAsRead = async (id: string) => {
     if (!user) return;
     await supabase.from("notifications").update({ is_read: true }).eq("id", id);
-    setUnreadNotifications((prev) => Math.max(0, prev - 1));
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-    );
+    setUnreadNotifications((p) => Math.max(0, p - 1));
+    setNotifications((p) => p.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
   };
 
   const markAllNotificationsAsRead = async () => {
     if (!user) return;
-    await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("user_id", user.id)
-      .eq("is_read", false);
+    await supabase.from("notifications").update({ is_read: true })
+      .eq("user_id", user.id).eq("is_read", false);
     setUnreadNotifications(0);
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    setNotifications((p) => p.map((n) => ({ ...n, is_read: true })));
     toast.success("All notifications marked as read");
   };
 
@@ -342,6 +322,10 @@ export function AppHeader({
       return <CheckCircle className="w-4 h-4 text-green-500" />;
     if (type.includes("rejected"))
       return <AlertCircle className="w-4 h-4 text-red-500" />;
+    if (type === "new_application")
+      return <User className="w-4 h-4 text-purple-500" />;
+    if (type === "message")
+      return <Mail className="w-4 h-4 text-blue-500" />;
     return <Bell className="w-4 h-4 text-gray-400" />;
   };
 
@@ -360,14 +344,14 @@ export function AppHeader({
 
   // ─── PATHS ────────────────────────────────────────────────────────────
 
-  const settingsPath      = isBusiness ? "/business/settings"      : "/settings";
-  const profilePath       = isBusiness ? "/business/profile"       : `/profile/${creatorId || "me"}`;
-  const messagesPath      = isBusiness ? "/messages?role=business" : "/messages?role=creator";
+  const settingsPath      = isBusiness ? "/business/settings"           : "/settings";
+  const profilePath       = isBusiness ? "/business/profile"            : `/profile/${creatorId || "me"}`;
+  const messagesPath      = isBusiness ? "/messages?role=business"      : "/messages?role=creator";
   const notificationsPath = isBusiness ? "/notifications?role=business" : "/notifications?role=creator";
-  const dashboardPath     = isBusiness ? "/business/dashboard"     : "/dashboard";
+  const dashboardPath     = isBusiness ? "/business/dashboard"          : "/dashboard";
 
-  const isHome     = location.pathname === "/";
-  const isMessages = location.pathname.startsWith("/messages");
+  const isHome      = location.pathname === "/";
+  const isMessages  = location.pathname.startsWith("/messages");
   const showActions = !isHome && !isMessages && isAuthenticated;
 
   // ─── RENDER ───────────────────────────────────────────────────────────
@@ -421,13 +405,14 @@ export function AppHeader({
 
         {/* ── Right ── */}
         <div className="flex items-center gap-1 shrink-0">
+
           {showActions && (
             <>
-              {/* ── Messages Button + Dropdown ── */}
+              {/* ─── Messages button + dropdown ─── */}
               <div className="relative">
                 <button
                   onClick={() => {
-                    setShowMessages(!showMessages);
+                    setShowMessages((v) => !v);
                     setShowNotifications(false);
                     setShowProfileMenu(false);
                   }}
@@ -442,144 +427,11 @@ export function AppHeader({
                   )}
                 </button>
 
-               
-              </div>
-
-              {/* ── Notifications Button + Dropdown ── */}
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    setShowNotifications(!showNotifications);
-                    setShowMessages(false);
-                    setShowProfileMenu(false);
-                  }}
-                  className="relative p-2 hover:bg-[#F0F0F0] transition-colors rounded-lg"
-                  aria-label="Notifications"
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadNotifications > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]/30 rounded-full px-1">
-                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                    </span>
-                  )}
-                </button>
-
-
-              </div>
-            </>
-          )}
-
-          {/* ── Avatar / Profile Menu ── */}
-          <div className="relative ml-1">
-            <button
-              onClick={() => {
-                if (isAuthenticated) {
-                  setShowProfileMenu(!showProfileMenu);
-                  setShowNotifications(false);
-                  setShowMessages(false);
-                } else {
-                  navigate("/login/portal");
-                }
-              }}
-              className="w-9 h-9 rounded-full border-2 border-[#1D1D1D] overflow-hidden bg-white flex items-center justify-center active:scale-95 transition-transform hover:border-[#389C9A]"
-              aria-label="Profile menu"
-            >
-              {userAvatar ? (
-                <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
-              ) : (
-                <User className="w-4 h-4" />
-              )}
-            </button>
-                            <AnimatePresence>
-                  {showNotifications && (
-                    <>
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowNotifications(false)}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                        transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute right-0 top-full mt-2 w-80 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
-                      >
-                        {/* Header */}
-                        <div className="px-4 py-3 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <Bell className="w-4 h-4 text-[#FEDB71]" />
-                            <span className="text-[10px] font-black uppercase tracking-widest italic">Notifications</span>
-                          </div>
-                          {unreadNotifications > 0 && (
-                            <button
-                              onClick={markAllNotificationsAsRead}
-                              className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                            >
-                              Mark All Read
-                            </button>
-                          )}
-                        </div>
-
-                        {/* List */}
-                        <div className="max-h-[360px] overflow-y-auto">
-                          {notifications.length === 0 ? (
-                            <div className="py-10 flex flex-col items-center gap-3">
-                              <Bell className="w-8 h-8 opacity-20" />
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No notifications</p>
-                            </div>
-                          ) : (
-                            notifications.map((n) => (
-                              <div
-                                key={n.id}
-                                onClick={() => markNotificationAsRead(n.id)}
-                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/8 hover:bg-[#F8F8F8] cursor-pointer transition-colors ${
-                                  !n.is_read ? "bg-[#FEDB71]/5" : ""
-                                }`}
-                              >
-                                <div className="mt-0.5 shrink-0">{getNotificationIcon(n.type)}</div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex justify-between items-baseline mb-0.5">
-                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">{n.title}</p>
-                                    <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
-                                      {formatTimestamp(n.created_at)}
-                                    </span>
-                                  </div>
-                                  <p className="text-[9px] opacity-50 line-clamp-2 break-words">{n.message}</p>
-                                </div>
-                                {!n.is_read && (
-                                  <div className="w-2 h-2 rounded-full bg-[#FEDB71] shrink-0 mt-1.5" />
-                                )}
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        {/* Footer */}
-                        {notifications.length > 0 && (
-                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
-                            <Link
-                              to={notificationsPath}
-                              onClick={() => setShowNotifications(false)}
-                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                            >
-                              View All Notifications →
-                            </Link>
-                          </div>
-                        )}
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-                 <AnimatePresence>
+                <AnimatePresence>
                   {showMessages && (
                     <>
                       <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                         className="fixed inset-0 z-40"
                         onClick={() => setShowMessages(false)}
                       />
@@ -603,16 +455,14 @@ export function AppHeader({
                           )}
                         </div>
 
-                        {/* List */}
+                        {/* Conversation list */}
                         <div className="max-h-[360px] overflow-y-auto">
                           {recentConversations.length === 0 ? (
                             <div className="py-10 flex flex-col items-center gap-3">
                               <Send className="w-8 h-8 opacity-20" />
                               <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No messages yet</p>
                               <p className="text-[8px] opacity-30">
-                                {isBusiness
-                                  ? "Start a conversation with a creator"
-                                  : "Start a conversation with a business"}
+                                {isBusiness ? "Start a conversation with a creator" : "Start a conversation with a business"}
                               </p>
                             </div>
                           ) : (
@@ -670,13 +520,139 @@ export function AppHeader({
                     </>
                   )}
                 </AnimatePresence>
+              </div>
+
+              {/* ─── Notifications button + dropdown ─── */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowNotifications((v) => !v);
+                    setShowMessages(false);
+                    setShowProfileMenu(false);
+                  }}
+                  className="relative p-2 hover:bg-[#F0F0F0] transition-colors rounded-lg"
+                  aria-label="Notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]/30 rounded-full px-1">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </span>
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {showNotifications && (
+                    <>
+                      <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowNotifications(false)}
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
+                        className="absolute right-0 top-full mt-2 w-80 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
+                      >
+                        {/* Header */}
+                        <div className="px-4 py-3 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-[#FEDB71]" />
+                            <span className="text-[10px] font-black uppercase tracking-widest italic">Notifications</span>
+                          </div>
+                          {unreadNotifications > 0 && (
+                            <button
+                              onClick={markAllNotificationsAsRead}
+                              className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                            >
+                              Mark All Read
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Notification list — each row navigates on click */}
+                        <div className="max-h-[360px] overflow-y-auto">
+                          {notifications.length === 0 ? (
+                            <div className="py-10 flex flex-col items-center gap-3">
+                              <Bell className="w-8 h-8 opacity-20" />
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No notifications</p>
+                            </div>
+                          ) : (
+                            notifications.map((n) => (
+                              <div
+                                key={n.id}
+                                onClick={() => handleNotificationClick(n)}
+                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/8 hover:bg-[#F8F8F8] cursor-pointer transition-colors ${
+                                  !n.is_read ? "bg-[#FEDB71]/5" : ""
+                                }`}
+                              >
+                                <div className="mt-0.5 shrink-0">{getNotificationIcon(n.type)}</div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-baseline mb-0.5">
+                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">{n.title}</p>
+                                    <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
+                                      {formatTimestamp(n.created_at)}
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] opacity-50 line-clamp-2 break-words">{n.message}</p>
+                                </div>
+                                {!n.is_read && (
+                                  <div className="w-2 h-2 rounded-full bg-[#FEDB71] shrink-0 mt-1.5" />
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Footer */}
+                        {notifications.length > 0 && (
+                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
+                            <Link
+                              to={notificationsPath}
+                              onClick={() => setShowNotifications(false)}
+                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                            >
+                              View All Notifications →
+                            </Link>
+                          </div>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+            </>
+          )}
+
+          {/* ─── Avatar / Profile Menu ─── */}
+          <div className="relative ml-1">
+            <button
+              onClick={() => {
+                if (isAuthenticated) {
+                  setShowProfileMenu((v) => !v);
+                  setShowNotifications(false);
+                  setShowMessages(false);
+                } else {
+                  navigate("/login/portal");
+                }
+              }}
+              className="w-9 h-9 rounded-full border-2 border-[#1D1D1D] overflow-hidden bg-white flex items-center justify-center active:scale-95 transition-transform hover:border-[#389C9A]"
+              aria-label="Profile menu"
+            >
+              {userAvatar ? (
+                <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-4 h-4" />
+              )}
+            </button>
+
             <AnimatePresence>
               {showProfileMenu && isAuthenticated && (
                 <>
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     className="fixed inset-0 z-40"
                     onClick={() => setShowProfileMenu(false)}
                   />
@@ -691,11 +667,8 @@ export function AppHeader({
                     <div className="px-4 py-4 border-b-2 border-[#1D1D1D] bg-[#F8F8F8]">
                       <div className="flex items-center gap-3 mb-3">
                         {userAvatar ? (
-                          <img
-                            src={userAvatar}
-                            alt={userName}
-                            className="w-10 h-10 rounded-full border-2 border-[#1D1D1D]/10 object-cover shrink-0"
-                          />
+                          <img src={userAvatar} alt={userName}
+                            className="w-10 h-10 rounded-full border-2 border-[#1D1D1D]/10 object-cover shrink-0" />
                         ) : (
                           <div className="w-10 h-10 rounded-full bg-[#F0F0F0] border-2 border-[#1D1D1D]/10 flex items-center justify-center shrink-0">
                             <User className="w-5 h-5 opacity-40" />
@@ -761,8 +734,8 @@ export function AppHeader({
               )}
             </AnimatePresence>
           </div>
-        </div>
 
+        </div>
       </div>
     </header>
   );
