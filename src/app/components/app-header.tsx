@@ -93,7 +93,6 @@ export function AppHeader({
 
     const getProfileId = async () => {
       if (isBusiness) {
-        // ✅ correct table: businesses
         const { data } = await supabase
           .from("businesses")
           .select("id, logo_url, business_name")
@@ -104,7 +103,6 @@ export function AppHeader({
           if (data.business_name) setUserName(data.business_name);
         }
       } else {
-        // ✅ correct table: creator_profiles (NOT "creators")
         const { data } = await supabase
           .from("creator_profiles")
           .select("id, avatar_url, full_name")
@@ -127,7 +125,6 @@ export function AppHeader({
 
     const fetchData = async () => {
       try {
-        // Unread count
         const { count: notifCount } = await supabase
           .from("notifications")
           .select("*", { count: "exact", head: true })
@@ -135,7 +132,6 @@ export function AppHeader({
           .eq("is_read", false);
         setUnreadNotifications(notifCount || 0);
 
-        // Recent notifications — only columns that exist
         const { data: notifData } = await supabase
           .from("notifications")
           .select("id, user_id, type, title, message, is_read, created_at")
@@ -263,7 +259,6 @@ export function AppHeader({
           let avatar: string | null = null;
 
           if (otherType === "creator") {
-            // ✅ correct table: creator_profiles
             const { data: p } = await supabase
               .from("creator_profiles")
               .select("full_name, avatar_url")
@@ -271,7 +266,6 @@ export function AppHeader({
               .maybeSingle();
             if (p) { name = p.full_name || "Creator"; avatar = p.avatar_url || null; }
           } else if (otherType === "business") {
-            // ✅ correct table: businesses
             const { data: p } = await supabase
               .from("businesses")
               .select("business_name, logo_url")
@@ -366,11 +360,11 @@ export function AppHeader({
 
   // ─── PATHS ────────────────────────────────────────────────────────────
 
-  const settingsPath      = isBusiness ? "/business/settings"  : "/settings";
-  const profilePath       = isBusiness ? "/business/profile"   : `/profile/${creatorId || "me"}`;
+  const settingsPath      = isBusiness ? "/business/settings"      : "/settings";
+  const profilePath       = isBusiness ? "/business/profile"       : `/profile/${creatorId || "me"}`;
   const messagesPath      = isBusiness ? "/messages?role=business" : "/messages?role=creator";
   const notificationsPath = isBusiness ? "/notifications?role=business" : "/notifications?role=creator";
-  const dashboardPath     = isBusiness ? "/business/dashboard" : "/dashboard";
+  const dashboardPath     = isBusiness ? "/business/dashboard"     : "/dashboard";
 
   const isHome     = location.pathname === "/";
   const isMessages = location.pathname.startsWith("/messages");
@@ -429,7 +423,7 @@ export function AppHeader({
         <div className="flex items-center gap-1 shrink-0">
           {showActions && (
             <>
-              {/* ── Messages Dropdown ── */}
+              {/* ── Messages Button + Dropdown ── */}
               <div className="relative">
                 <button
                   onClick={() => {
@@ -448,10 +442,106 @@ export function AppHeader({
                   )}
                 </button>
 
-                
+                <AnimatePresence>
+                  {showMessages && (
+                    <>
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowMessages(false)}
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
+                        className="absolute right-0 top-full mt-2 w-80 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
+                      >
+                        {/* Header */}
+                        <div className="px-4 py-3 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-[#389C9A]" />
+                            <span className="text-[10px] font-black uppercase tracking-widest italic">Messages</span>
+                          </div>
+                          {unreadMessages > 0 && (
+                            <span className="bg-[#389C9A] text-white text-[8px] font-black px-2 py-0.5 rounded-full">
+                              {unreadMessages} unread
+                            </span>
+                          )}
+                        </div>
+
+                        {/* List */}
+                        <div className="max-h-[360px] overflow-y-auto">
+                          {recentConversations.length === 0 ? (
+                            <div className="py-10 flex flex-col items-center gap-3">
+                              <Send className="w-8 h-8 opacity-20" />
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No messages yet</p>
+                              <p className="text-[8px] opacity-30">
+                                {isBusiness
+                                  ? "Start a conversation with a creator"
+                                  : "Start a conversation with a business"}
+                              </p>
+                            </div>
+                          ) : (
+                            recentConversations.map((conv) => (
+                              <Link
+                                key={conv.id}
+                                to={`/messages/${conv.id}?role=${userType}`}
+                                onClick={() => setShowMessages(false)}
+                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/8 hover:bg-[#F8F8F8] transition-colors ${
+                                  !conv.is_read ? "bg-[#389C9A]/5" : ""
+                                }`}
+                              >
+                                {conv.other_participant_avatar ? (
+                                  <ImageWithFallback
+                                    src={conv.other_participant_avatar}
+                                    className="w-9 h-9 rounded-full border-2 border-[#1D1D1D]/10 object-cover shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-full bg-[#F0F0F0] border-2 border-[#1D1D1D]/10 flex items-center justify-center shrink-0">
+                                    <User className="w-4 h-4 opacity-40" />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-baseline mb-0.5">
+                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">
+                                      {conv.other_participant_name}
+                                    </p>
+                                    <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
+                                      {formatTimestamp(conv.last_message_time)}
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] opacity-50 truncate">{conv.last_message}</p>
+                                </div>
+                                {!conv.is_read && (
+                                  <div className="w-2 h-2 rounded-full bg-[#389C9A] shrink-0 mt-1.5" />
+                                )}
+                              </Link>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Footer */}
+                        {recentConversations.length > 0 && (
+                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
+                            <Link
+                              to={messagesPath}
+                              onClick={() => setShowMessages(false)}
+                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                            >
+                              View All Messages →
+                            </Link>
+                          </div>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {/* ── Notifications Dropdown ── */}
+              {/* ── Notifications Button + Dropdown ── */}
               <div className="relative">
                 <button
                   onClick={() => {
@@ -553,85 +643,6 @@ export function AppHeader({
                     </>
                   )}
                 </AnimatePresence>
-                <AnimatePresence>
-                  {showMessages && (
-                    <>
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowMessages(false)}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                        transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute right-0 top-full mt-2 w-80 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
-                      >
-                        {/* Header */}
-                        <div className="px-4 py-3 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <Mail className="w-4 h-4 text-[#389C9A]" />
-                            <span className="text-[10px] font-black uppercase tracking-widest italic">Messages</span>
-                          </div>
-                          {unreadMessages > 0 && (
-                            <span className="bg-[#389C9A] text-white text-[8px] font-black px-2 py-0.5 rounded-full">
-                              {unreadMessages} unread
-                            </span>
-                          )}
-                        </div>
-
-                        {/* List */}
-                        <div className="max-h-[360px] overflow-y-auto">
-                          {recentConversations.length === 0 ? (
-                            <div className="py-10 flex flex-col items-center gap-3">
-                              <Send className="w-8 h-8 opacity-20" />
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No messages yet</p>
-                              <p className="text-[8px] opacity-30">
-                                {isBusiness
-                                  ? "Start a conversation with a creator"
-                                  : "Start a conversation with a business"}
-                              </p>
-                            </div>
-                          ) : (
-                            recentConversations.map((conv) => (
-                              <Link
-                                key={conv.id}
-                                to={`/messages/${conv.id}?role=${userType}`}
-                                onClick={() => setShowMessages(false)}
-                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/8 hover:bg-[#F8F8F8] transition-colors ${
-                                  !conv.is_read ? "bg-[#389C9A]/5" : ""
-                                }`}
-                              >
-                                {conv.other_participant_avatar ? (
-                                  <ImageWithFallback
-                                    src={conv.other_participant_avatar}
-                                    className="w-9 h-9 rounded-full border-2 border-[#1D1D1D]/10 object-cover shrink-0"
-                                  />
-                                ) : (
-                                  <div className="w-9 h-9 rounded-full bg-[#F0F0F0] border-2 border-[#1D1D1D]/10 flex items-center justify-center shrink-0">
-                                    <User className="w-4 h-4 opacity-40" />
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex justify-between items-baseline mb-0.5">
-                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">
-                                      {conv.other_participant_name}
-                                    </p>
-                                    <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
-                                      {formatTimestamp(conv.last_message_time)}
-                                    </span>
-                                  </div>
-                                  <p className="text-[9px] opacity-50 truncate">{conv.last_message}</p>
-                                </div>
-                                {!conv.is_read && (
-                                  <div className="w-2 h-2 rounded-full bg-[#389C9A] shrink-0 mt-1.5" />
-                                )}
-                              </Link>
-                            ))
-
               </div>
             </>
           )}
@@ -657,25 +668,7 @@ export function AppHeader({
                 <User className="w-4 h-4" />
               )}
             </button>
-                                     )}
-                        </div>
 
-                        {/* Footer */}
-                        {recentConversations.length > 0 && (
-                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
-                            <Link
-                              to={messagesPath}
-                              onClick={() => setShowMessages(false)}
-                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                            >
-                              View All Messages →
-                            </Link>
-                          </div>
-                        )}
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
             <AnimatePresence>
               {showProfileMenu && isAuthenticated && (
                 <>
@@ -768,6 +761,7 @@ export function AppHeader({
             </AnimatePresence>
           </div>
         </div>
+
       </div>
     </header>
   );
