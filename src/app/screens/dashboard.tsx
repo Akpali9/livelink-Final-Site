@@ -188,6 +188,10 @@ export function Dashboard() {
   };
 
   const refreshLiveCampaign = async (cid: string) => {
+    // FIX 2: Added "Active" (mixed case) to the status filter to handle any
+    // casing inconsistencies written to the database.
+    // FIX 4: Added .limit(1) before .maybeSingle() to prevent a PGRST116 error
+    // if multiple active rows exist for a creator.
     const { data } = await supabase
       .from("campaign_creators")
       .select(`
@@ -198,7 +202,8 @@ export function Dashboard() {
         )
       `)
       .eq("creator_id", cid)
-      .in("status", ["active", "ACTIVE"])
+      .in("status", ["active", "ACTIVE", "Active"])
+      .limit(1)
       .maybeSingle();
 
     if (data && data.campaigns) {
@@ -325,9 +330,9 @@ export function Dashboard() {
   const handleAcceptOffer = async (req: IncomingRequest) => {
     try {
       const { error } = await supabase
-  .from("campaign_creators")
-  .update({ status: "ACTIVE", accepted_at: new Date().toISOString() })
-  .eq("id", req.id);
+        .from("campaign_creators")
+        .update({ status: "ACTIVE", accepted_at: new Date().toISOString() })
+        .eq("id", req.id);
       if (error) throw error;
 
       toast.success("Offer accepted! 🎉");
@@ -337,7 +342,12 @@ export function Dashboard() {
         requestedCount: prev.requestedCount - 1,
         activeCount:    prev.activeCount + 1,
       }));
-      
+
+      // FIX 3: Immediately refresh the live campaign after accepting so the
+      // "Live Now" section populates without waiting for the realtime subscription,
+      // which has a race condition against the DB write propagating.
+      await refreshLiveCampaign(creatorProfile.id);
+
     } catch (error) {
       console.error("Accept error:", error);
       toast.error("Failed to accept offer");
@@ -630,8 +640,8 @@ export function Dashboard() {
                   {liveCampaign.remainingMins} mins to next payment
                 </p>
               </div>
-                </div>
-              ) : (
+            </div>
+          ) : (
             <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
               <Monitor className="w-12 h-12 mx-auto mb-4 opacity-20" />
               <p className="text-xs text-[#1D1D1D]/40 mb-4">No active campaign right now</p>
@@ -654,7 +664,8 @@ export function Dashboard() {
                 <div key={app.id} onClick={() => navigate(`/campaign/${app.campaign_id}/summary`)}
                   className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl">
                   <div className="flex items-center gap-3">
-                    <div clasName="bg-gray-100/10 rounded-lg overflow-hidden">
+                    {/* FIX 1: corrected `clasName` typo → `className` so the logo wrapper renders correctly */}
+                    <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden">
                       <ImageWithFallback src={app.logo} className="w-full h-full object-cover" />
                     </div>
                     <div>
