@@ -71,28 +71,28 @@ function formatTime(dateString: string): string {
 // ─────────────────────────────────────────────
 
 const ICON_MAP: Record<string, { icon: React.ReactNode; bg: string }> = {
-  earnings:          { icon: <DollarSign  className="w-5 h-5 text-green-600" />,   bg: "bg-green-100"  },
-  payment:           { icon: <CreditCard  className="w-5 h-5 text-green-600" />,   bg: "bg-green-100"  },
-  payout:            { icon: <DollarSign  className="w-5 h-5 text-green-600" />,   bg: "bg-green-100"  },
-  message:           { icon: <MessageSquare className="w-5 h-5 text-blue-500" />,  bg: "bg-blue-100"   },
-  confirmed:         { icon: <CheckCircle2  className="w-5 h-5 text-green-500" />, bg: "bg-green-100"  },
-  business_approved: { icon: <CheckCircle2  className="w-5 h-5 text-green-500" />, bg: "bg-green-100"  },
-  creator_approved:  { icon: <CheckCircle2  className="w-5 h-5 text-green-500" />, bg: "bg-green-100"  },
-  campaign_approved: { icon: <CheckCircle2  className="w-5 h-5 text-green-500" />, bg: "bg-green-100"  },
-  business_rejected: { icon: <XCircle       className="w-5 h-5 text-red-500" />,   bg: "bg-red-100"    },
-  creator_rejected:  { icon: <XCircle       className="w-5 h-5 text-red-500" />,   bg: "bg-red-100"    },
-  campaign_rejected: { icon: <XCircle       className="w-5 h-5 text-red-500" />,   bg: "bg-red-100"    },
-  warning:           { icon: <AlertTriangle className="w-5 h-5 text-orange-500" />,bg: "bg-orange-100" },
-  action:            { icon: <Zap           className="w-5 h-5 text-yellow-600" />,bg: "bg-yellow-100" },
-  offer:             { icon: <Zap           className="w-5 h-5 text-yellow-600" />,bg: "bg-yellow-100" },
-  new_offer:         { icon: <Zap           className="w-5 h-5 text-yellow-600" />,bg: "bg-yellow-100" },
-  new_application:   { icon: <Users         className="w-5 h-5 text-purple-500" />,bg: "bg-purple-100" },
-  campaign:          { icon: <Megaphone     className="w-5 h-5 text-purple-500" />,bg: "bg-purple-100" },
-  campaign_invite:   { icon: <Mail          className="w-5 h-5 text-purple-500" />,bg: "bg-purple-100" },
-  match:             { icon: <Target        className="w-5 h-5 text-indigo-500" />,bg: "bg-indigo-100" },
-  welcome:           { icon: <ShieldCheck   className="w-5 h-5 text-teal-500" />,  bg: "bg-teal-100"   },
-  announcement:      { icon: <Bell          className="w-5 h-5 text-gray-500" />,  bg: "bg-gray-100"   },
-  system:            { icon: <Info          className="w-5 h-5 text-gray-400" />,  bg: "bg-gray-100"   },
+  earnings:          { icon: <DollarSign   className="w-5 h-5 text-green-600" />,   bg: "bg-green-100"  },
+  payment:           { icon: <CreditCard   className="w-5 h-5 text-green-600" />,   bg: "bg-green-100"  },
+  payout:            { icon: <DollarSign   className="w-5 h-5 text-green-600" />,   bg: "bg-green-100"  },
+  message:           { icon: <MessageSquare className="w-5 h-5 text-blue-500" />,   bg: "bg-blue-100"   },
+  confirmed:         { icon: <CheckCircle2  className="w-5 h-5 text-green-500" />,  bg: "bg-green-100"  },
+  business_approved: { icon: <CheckCircle2  className="w-5 h-5 text-green-500" />,  bg: "bg-green-100"  },
+  creator_approved:  { icon: <CheckCircle2  className="w-5 h-5 text-green-500" />,  bg: "bg-green-100"  },
+  campaign_approved: { icon: <CheckCircle2  className="w-5 h-5 text-green-500" />,  bg: "bg-green-100"  },
+  business_rejected: { icon: <XCircle       className="w-5 h-5 text-red-500" />,    bg: "bg-red-100"    },
+  creator_rejected:  { icon: <XCircle       className="w-5 h-5 text-red-500" />,    bg: "bg-red-100"    },
+  campaign_rejected: { icon: <XCircle       className="w-5 h-5 text-red-500" />,    bg: "bg-red-100"    },
+  warning:           { icon: <AlertTriangle className="w-5 h-5 text-orange-500" />, bg: "bg-orange-100" },
+  action:            { icon: <Zap           className="w-5 h-5 text-yellow-600" />, bg: "bg-yellow-100" },
+  offer:             { icon: <Zap           className="w-5 h-5 text-yellow-600" />, bg: "bg-yellow-100" },
+  new_offer:         { icon: <Zap           className="w-5 h-5 text-yellow-600" />, bg: "bg-yellow-100" },
+  new_application:   { icon: <Users         className="w-5 h-5 text-purple-500" />, bg: "bg-purple-100" },
+  campaign:          { icon: <Megaphone     className="w-5 h-5 text-purple-500" />, bg: "bg-purple-100" },
+  campaign_invite:   { icon: <Mail          className="w-5 h-5 text-purple-500" />, bg: "bg-purple-100" },
+  match:             { icon: <Target        className="w-5 h-5 text-indigo-500" />, bg: "bg-indigo-100" },
+  welcome:           { icon: <ShieldCheck   className="w-5 h-5 text-teal-500" />,   bg: "bg-teal-100"   },
+  announcement:      { icon: <Bell          className="w-5 h-5 text-gray-500" />,   bg: "bg-gray-100"   },
+  system:            { icon: <Info          className="w-5 h-5 text-gray-400" />,   bg: "bg-gray-100"   },
 };
 function getIconData(type: string) {
   return ICON_MAP[type] || { icon: <Bell className="w-5 h-5 text-gray-400" />, bg: "bg-gray-100" };
@@ -103,13 +103,13 @@ function getIconData(type: string) {
 // ─────────────────────────────────────────────
 
 const BIZ_TABS = [
-  { value: "all",          label: "All",         icon: Bell,          types: [] },
-  { value: "campaign",     label: "Campaigns",   icon: Megaphone,     types: ["campaign", "campaign_approved", "campaign_rejected", "campaign_invite"] },
-  { value: "offer",        label: "Offers",      icon: Zap,           types: ["offer", "new_offer", "action"] },
-  { value: "application",  label: "Applications",icon: Users,         types: ["new_application"] },
-  { value: "message",      label: "Messages",    icon: MessageSquare, types: ["message"] },
-  { value: "payment",      label: "Payments",    icon: DollarSign,    types: ["payment", "earnings", "payout"] },
-  { value: "system",       label: "System",      icon: Info,          types: ["system", "announcement", "welcome"] },
+  { value: "all",         label: "All",          icon: Bell,          types: [] },
+  { value: "campaign",    label: "Campaigns",    icon: Megaphone,     types: ["campaign", "campaign_approved", "campaign_rejected", "campaign_invite"] },
+  { value: "offer",       label: "Offers",       icon: Zap,           types: ["offer", "new_offer", "action"] },
+  { value: "application", label: "Applications", icon: Users,         types: ["new_application"] },
+  { value: "message",     label: "Messages",     icon: MessageSquare, types: ["message"] },
+  { value: "payment",     label: "Payments",     icon: DollarSign,    types: ["payment", "earnings", "payout"] },
+  { value: "system",      label: "System",       icon: Info,          types: ["system", "announcement", "welcome"] },
 ];
 
 const CREATOR_TABS = [
@@ -148,8 +148,7 @@ export function Notifications() {
     if (showToast) setRefreshing(true);
     try {
       const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
+        .from("notifications").select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -180,7 +179,9 @@ export function Notifications() {
         filter: `user_id=eq.${user.id}`,
       }, (payload) => {
         const n = {
-          ...payload.new, grouping: getGrouping(payload.new.created_at), data: payload.new.data || {},
+          ...payload.new,
+          grouping: getGrouping(payload.new.created_at),
+          data: payload.new.data || {},
         } as Notification;
         setNotifications((prev) => [n, ...prev]);
         if (!n.is_read) toast.info(n.title, { description: n.message, duration: 4000 });
@@ -221,7 +222,7 @@ export function Notifications() {
     toast.success("All marked as read");
   };
 
-  // Toast-based confirm instead of window.confirm
+  // Toast-based confirm — no window.confirm
   const clearAll = () => {
     if (!user) return;
     toast("Clear all notifications?", {
@@ -251,7 +252,7 @@ export function Notifications() {
     }
   };
 
-  // ─── NAVIGATION ON CLICK — same routing table as app-header ─────────────
+  // ─── NAVIGATION ON CLICK ─────────────────────────────────────────────────
 
   const handleClick = (n: Notification) => {
     if (!n.is_read) markAsRead(n.id);
@@ -406,7 +407,6 @@ export function Notifications() {
               if (!items?.length) return null;
               return (
                 <div key={group}>
-                  {/* Group header */}
                   <div className="px-5 py-2.5 bg-[#F8F8F8] border-b border-[#1D1D1D]/5">
                     <p className="text-[8px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/30">
                       {GROUP_LABELS[group]}
@@ -427,12 +427,10 @@ export function Notifications() {
                             !n.is_read ? "bg-[#389C9A]/5" : "bg-white"
                           }`}
                         >
-                          {/* Icon */}
                           <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${bg}`}>
                             {icon}
                           </div>
 
-                          {/* Content */}
                           <div className="flex-1 min-w-0 pr-8">
                             <div className="flex justify-between items-start mb-0.5">
                               <h4 className={`text-[11px] font-black uppercase tracking-wide leading-tight ${
@@ -455,12 +453,10 @@ export function Notifications() {
                             )}
                           </div>
 
-                          {/* Unread dot */}
                           {!n.is_read && (
                             <div className="absolute right-10 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#389C9A] rounded-full shrink-0" />
                           )}
 
-                          {/* Delete — shows on hover */}
                           <button
                             onClick={(e) => deleteOne(n.id, e)}
                             disabled={isDeleting === n.id}
@@ -479,7 +475,6 @@ export function Notifications() {
             })}
           </div>
         ) : (
-          /* ── Empty state ── */
           <div className="flex flex-col items-center justify-center pt-24 px-10 text-center">
             <div className="w-20 h-20 bg-[#F8F8F8] rounded-2xl flex items-center justify-center mb-6 border-2 border-[#1D1D1D]/10">
               <Bell className="w-9 h-9 text-[#1D1D1D]/20" />
