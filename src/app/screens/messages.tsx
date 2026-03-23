@@ -275,29 +275,28 @@ export function Messages() {
     setSubmittingReport(true);
     try {
       // 1. Create support ticket for admin
+      // Build a message body that captures all the context we need
+      const ticketMessage = [
+        `Reason: ${reportReason}`,
+        reportDetails.trim() ? `Details: ${reportDetails.trim()}` : null,
+        `Reported user: ${selectedConversation.participant_name} (${selectedConversation.participant_type})`,
+        `Reported user ID: ${selectedConversation.participant_id}`,
+        `Conversation ID: ${selectedConversation.id}`,
+        `Reporter type: ${role}`,
+      ].filter(Boolean).join("\n");
+
       const { error } = await supabase.from("support_tickets").insert({
-        reporter_id:      user.id,
-        reported_user_id: selectedConversation.participant_id,
-        conversation_id:  selectedConversation.id,
-        subject:          `Reported conversation: ${selectedConversation.participant_name}`,
-        reason:           reportReason,
-        details:          reportDetails.trim() || null,
-        status:           "open",
-        reporter_type:    role,   // "creator" | "business"
-        created_at:       new Date().toISOString(),
+        user_id:    user.id,
+        subject:    `Report: ${reportReason} — ${selectedConversation.participant_name}`,
+        message:    ticketMessage,
+        status:     "open",
+        created_at: new Date().toISOString(),
       });
       if (error) throw error;
 
-      // 2. Notify the admin (look up any admin user)
-      const { data: adminProfile } = await supabase
-        .from("creator_profiles")
-        .select("user_id")
-        .eq("user_id", (await supabase.auth.getUser()).data.user?.id)
-        .maybeSingle();
-
-      // Fallback: insert a generic admin notification regardless
+      // Notify the reporter that their report was received
       await supabase.from("notifications").insert({
-        user_id:    user.id,           // notify the reporter that it was received
+        user_id:    user.id,
         type:       "system",
         title:      "Report Submitted ✅",
         message:    `Your report against ${selectedConversation.participant_name} has been received. We'll review it within 24 hours.`,
@@ -396,7 +395,7 @@ export function Messages() {
         <div className={`border-r border-[#1D1D1D]/10 flex flex-col ${
           selectedConversation ? "hidden md:flex w-72" : "flex w-full"
         }`}>
-          <div className="p-2 border-b border-[#1D1D1D]/10 shrink-0">
+          <div className="p-4 border-b border-[#1D1D1D]/10 shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
@@ -641,14 +640,16 @@ export function Messages() {
             <motion.div
               initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 26, stiffness: 220 }}
-              className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto bg-white border-t-4 border-[#1D1D1D] z-50 rounded-t-3xl"
+              className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto bg-white border-t-4 border-[#1D1D1D] z-50 rounded-t-3xl flex flex-col"
+              style={{ maxHeight: "90vh" }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="w-12 h-1 bg-[#1D1D1D]/10 rounded-full mx-auto my-4" />
+              {/* Drag handle */}
+              <div className="w-12 h-1 bg-[#1D1D1D]/10 rounded-full mx-auto my-4 shrink-0" />
 
-              <div className="px-6 pb-8">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6">
+              {/* Sticky header */}
+              <div className="px-6 pb-4 shrink-0">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
                       <Flag className="w-5 h-5 text-red-500" />
@@ -663,6 +664,10 @@ export function Messages() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
+              </div>
+
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto px-6">
 
                 {/* Reason selector */}
                 <div className="mb-4">
@@ -701,18 +706,23 @@ export function Messages() {
                 </div>
 
                 {/* Warning note */}
-                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-6">
+                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
                   <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                   <p className="text-[9px] text-amber-700 leading-relaxed">
                     False reports may result in account suspension. Our team reviews every report within 24 hours.
                   </p>
                 </div>
 
-                {/* Submit */}
+                {/* Spacer so last item isn't hidden behind sticky footer */}
+                <div className="h-2" />
+              </div>{/* end overflow-y-auto scrollable area */}
+
+              {/* Sticky submit footer */}
+              <div className="px-6 py-4 border-t border-[#1D1D1D]/10 bg-white shrink-0">
                 <button
                   onClick={submitReport}
                   disabled={!reportReason || submittingReport}
-                  className="w-full bg-red-500 text-white py-4 font-black text-[10px] uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-12"
+                  className="w-full bg-red-500 text-white py-4 font-black text-[10px] uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submittingReport
                     ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</>
