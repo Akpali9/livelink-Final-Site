@@ -442,7 +442,138 @@ export function AppHeader({
                   )}
                 </button>
 
-                <AnimatePresence>
+               
+              </div>
+
+              {/* ── Notifications Button + Dropdown ── */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowNotifications(!showNotifications);
+                    setShowMessages(false);
+                    setShowProfileMenu(false);
+                  }}
+                  className="relative p-2 hover:bg-[#F0F0F0] transition-colors rounded-lg"
+                  aria-label="Notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]/30 rounded-full px-1">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </span>
+                  )}
+                </button>
+
+
+              </div>
+            </>
+          )}
+
+          {/* ── Avatar / Profile Menu ── */}
+          <div className="relative ml-1">
+            <button
+              onClick={() => {
+                if (isAuthenticated) {
+                  setShowProfileMenu(!showProfileMenu);
+                  setShowNotifications(false);
+                  setShowMessages(false);
+                } else {
+                  navigate("/login/portal");
+                }
+              }}
+              className="w-9 h-9 rounded-full border-2 border-[#1D1D1D] overflow-hidden bg-white flex items-center justify-center active:scale-95 transition-transform hover:border-[#389C9A]"
+              aria-label="Profile menu"
+            >
+              {userAvatar ? (
+                <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-4 h-4" />
+              )}
+            </button>
+                            <AnimatePresence>
+                  {showNotifications && (
+                    <>
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowNotifications(false)}
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
+                        className="absolute right-0 top-full mt-2 w-80 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
+                      >
+                        {/* Header */}
+                        <div className="px-4 py-3 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-[#FEDB71]" />
+                            <span className="text-[10px] font-black uppercase tracking-widest italic">Notifications</span>
+                          </div>
+                          {unreadNotifications > 0 && (
+                            <button
+                              onClick={markAllNotificationsAsRead}
+                              className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                            >
+                              Mark All Read
+                            </button>
+                          )}
+                        </div>
+
+                        {/* List */}
+                        <div className="max-h-[360px] overflow-y-auto">
+                          {notifications.length === 0 ? (
+                            <div className="py-10 flex flex-col items-center gap-3">
+                              <Bell className="w-8 h-8 opacity-20" />
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No notifications</p>
+                            </div>
+                          ) : (
+                            notifications.map((n) => (
+                              <div
+                                key={n.id}
+                                onClick={() => markNotificationAsRead(n.id)}
+                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/8 hover:bg-[#F8F8F8] cursor-pointer transition-colors ${
+                                  !n.is_read ? "bg-[#FEDB71]/5" : ""
+                                }`}
+                              >
+                                <div className="mt-0.5 shrink-0">{getNotificationIcon(n.type)}</div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-baseline mb-0.5">
+                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">{n.title}</p>
+                                    <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
+                                      {formatTimestamp(n.created_at)}
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] opacity-50 line-clamp-2 break-words">{n.message}</p>
+                                </div>
+                                {!n.is_read && (
+                                  <div className="w-2 h-2 rounded-full bg-[#FEDB71] shrink-0 mt-1.5" />
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Footer */}
+                        {notifications.length > 0 && (
+                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
+                            <Link
+                              to={notificationsPath}
+                              onClick={() => setShowNotifications(false)}
+                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                            >
+                              View All Notifications →
+                            </Link>
+                          </div>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+                 <AnimatePresence>
                   {showMessages && (
                     <>
                       <motion.div
@@ -539,136 +670,6 @@ export function AppHeader({
                     </>
                   )}
                 </AnimatePresence>
-              </div>
-
-              {/* ── Notifications Button + Dropdown ── */}
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    setShowNotifications(!showNotifications);
-                    setShowMessages(false);
-                    setShowProfileMenu(false);
-                  }}
-                  className="relative p-2 hover:bg-[#F0F0F0] transition-colors rounded-lg"
-                  aria-label="Notifications"
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadNotifications > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]/30 rounded-full px-1">
-                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                    </span>
-                  )}
-                </button>
-
-                <AnimatePresence>
-                  {showNotifications && (
-                    <>
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowNotifications(false)}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                        transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute right-0 top-full mt-2 w-80 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
-                      >
-                        {/* Header */}
-                        <div className="px-4 py-3 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <Bell className="w-4 h-4 text-[#FEDB71]" />
-                            <span className="text-[10px] font-black uppercase tracking-widest italic">Notifications</span>
-                          </div>
-                          {unreadNotifications > 0 && (
-                            <button
-                              onClick={markAllNotificationsAsRead}
-                              className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                            >
-                              Mark All Read
-                            </button>
-                          )}
-                        </div>
-
-                        {/* List */}
-                        <div className="max-h-[360px] overflow-y-auto">
-                          {notifications.length === 0 ? (
-                            <div className="py-10 flex flex-col items-center gap-3">
-                              <Bell className="w-8 h-8 opacity-20" />
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No notifications</p>
-                            </div>
-                          ) : (
-                            notifications.map((n) => (
-                              <div
-                                key={n.id}
-                                onClick={() => markNotificationAsRead(n.id)}
-                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/8 hover:bg-[#F8F8F8] cursor-pointer transition-colors ${
-                                  !n.is_read ? "bg-[#FEDB71]/5" : ""
-                                }`}
-                              >
-                                <div className="mt-0.5 shrink-0">{getNotificationIcon(n.type)}</div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex justify-between items-baseline mb-0.5">
-                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">{n.title}</p>
-                                    <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
-                                      {formatTimestamp(n.created_at)}
-                                    </span>
-                                  </div>
-                                  <p className="text-[9px] opacity-50 line-clamp-2 break-words">{n.message}</p>
-                                </div>
-                                {!n.is_read && (
-                                  <div className="w-2 h-2 rounded-full bg-[#FEDB71] shrink-0 mt-1.5" />
-                                )}
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        {/* Footer */}
-                        {notifications.length > 0 && (
-                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
-                            <Link
-                              to={notificationsPath}
-                              onClick={() => setShowNotifications(false)}
-                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                            >
-                              View All Notifications →
-                            </Link>
-                          </div>
-                        )}
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
-            </>
-          )}
-
-          {/* ── Avatar / Profile Menu ── */}
-          <div className="relative ml-1">
-            <button
-              onClick={() => {
-                if (isAuthenticated) {
-                  setShowProfileMenu(!showProfileMenu);
-                  setShowNotifications(false);
-                  setShowMessages(false);
-                } else {
-                  navigate("/login/portal");
-                }
-              }}
-              className="w-9 h-9 rounded-full border-2 border-[#1D1D1D] overflow-hidden bg-white flex items-center justify-center active:scale-95 transition-transform hover:border-[#389C9A]"
-              aria-label="Profile menu"
-            >
-              {userAvatar ? (
-                <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
-              ) : (
-                <User className="w-4 h-4" />
-              )}
-            </button>
-
             <AnimatePresence>
               {showProfileMenu && isAuthenticated && (
                 <>
