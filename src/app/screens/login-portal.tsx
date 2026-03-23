@@ -374,7 +374,7 @@ export function LoginPortal() {
                 onClick={() => setShowAdminEntry(true)}
                 className="text-[10px] text-gray-300 hover:text-gray-500 uppercase tracking-widest transition-colors"
               >
-                Admin Access
+                 © LIVELINK
               </button>
             ) : (
               <motion.button
