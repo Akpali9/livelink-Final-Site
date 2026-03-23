@@ -14,6 +14,7 @@ import { BottomNav } from "../components/bottom-nav";
 import { AppHeader } from "../components/app-header";
 import { DeclineOfferModal } from "../components/decline-offer-modal";
 
+
 // ─────────────────────────────────────────────
 // INTERFACES
 // ─────────────────────────────────────────────
