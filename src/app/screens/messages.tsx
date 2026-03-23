@@ -396,7 +396,7 @@ export function Messages() {
         <div className={`border-r border-[#1D1D1D]/10 flex flex-col ${
           selectedConversation ? "hidden md:flex w-72" : "flex w-full"
         }`}>
-          <div className="p-4 border-b border-[#1D1D1D]/10 shrink-0">
+          <div className="p-2 border-b border-[#1D1D1D]/10 shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
