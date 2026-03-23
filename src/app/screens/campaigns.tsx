@@ -416,7 +416,7 @@ export function Campaigns() {
                       )}
                       
                       <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest underline underline-offset-4 decoration-[#389C9A] text-[#1D1D1D]">
-                        Manage <ChevronRight className="w-3 h-3 text-[#FEDB71]" />
+                        
                       </div>
                     </div>
                   </div>
