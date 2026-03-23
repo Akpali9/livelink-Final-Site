@@ -11,11 +11,32 @@ import {
   EyeOff, Check, AlertCircle, CheckSquare, Square,
   MessageSquare, Send, Paperclip, Image as ImageIcon,
   FileText, Download as DownloadIcon, Reply, MoreVertical,
-  CheckCheck, ChevronRight, AtSign, Loader2,
+  CheckCheck, ChevronRight, AtSign, Loader2, UserX, UserCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast, Toaster } from "sonner";
 import { supabase } from "../lib/supabase";
+
+// ─────────────────────────────────────────────
+// CONFIRM TOAST HELPER
+// ─────────────────────────────────────────────
+
+function confirmToast(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    toast(message, {
+      duration: 10000,
+      action: {
+        label: "Confirm",
+        onClick: () => resolve(true),
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => resolve(false),
+      },
+      onDismiss: () => resolve(false),
+    });
+  });
+}
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -89,12 +110,12 @@ type AdminTab =
 export function AdminDashboard() {
   const navigate = useNavigate();
 
-  const [loading, setLoading]           = useState(true);
+  const [loading, setLoading]             = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [refreshing, setRefreshing]     = useState(false);
-  const [sidebarOpen, setSidebarOpen]   = useState(false);
-  const [activeTab, setActiveTab]       = useState<AdminTab>("overview");
-  const [adminUser, setAdminUser]       = useState<any>(null);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [sidebarOpen, setSidebarOpen]     = useState(false);
+  const [activeTab, setActiveTab]         = useState<AdminTab>("overview");
+  const [adminUser, setAdminUser]         = useState<any>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
   const [creators, setCreators]     = useState<any[]>([]);
@@ -166,12 +187,10 @@ export function AdminDashboard() {
         safeCount("campaigns", { status: "pending_review" }),
       ]);
 
-      // Pending businesses (multiple possible statuses)
       const { count: pendingBusinesses } = await supabase
         .from("businesses").select("*", { count: "exact", head: true })
         .or("application_status.eq.pending,status.eq.pending_verification,status.eq.pending");
 
-      // Revenue
       let totalRevenue = 0;
       try {
         const { data: txRows } = await supabase
@@ -179,7 +198,6 @@ export function AdminDashboard() {
         totalRevenue = (txRows || []).reduce((s: number, r: any) => s + (r.amount || 0), 0);
       } catch (_) {}
 
-      // Pending payouts
       let pendingPayouts = 0;
       try {
         const { data: ccRows } = await supabase
@@ -189,7 +207,6 @@ export function AdminDashboard() {
         pendingPayouts = earned - paid;
       } catch (_) {}
 
-      // Support tickets
       let openSupportTickets = 0;
       try {
         const { count } = await supabase
@@ -203,9 +220,7 @@ export function AdminDashboard() {
         totalCampaigns, activeCampaigns, completedCampaigns, pendingCampaigns,
         totalRevenue, pendingPayouts,
         totalUsers: totalCreators + totalBusinesses,
-        reportedContent: 0,
-        openSupportTickets,
-        platformFee: 10,
+        reportedContent: 0, openSupportTickets, platformFee: 10,
       });
     } catch (e) {
       console.error("fetchDashboardData:", e);
@@ -302,7 +317,8 @@ export function AdminDashboard() {
   // ─── BULK APPROVE CREATORS ───────────────────────────────────────────
 
   const approveAllCreators = async () => {
-    if (!confirm(`Approve ${stats.pendingCreators} pending creators?`)) return;
+    const ok = await confirmToast(`Approve all ${stats.pendingCreators} pending creators?`);
+    if (!ok) return;
     setActionLoading(true);
     try {
       const { data: pending, error } = await supabase
@@ -338,7 +354,8 @@ export function AdminDashboard() {
   // ─── BULK APPROVE BUSINESSES ─────────────────────────────────────────
 
   const approveAllBusinesses = async () => {
-    if (!confirm(`Approve ${stats.pendingBusinesses} pending businesses?`)) return;
+    const ok = await confirmToast(`Approve all ${stats.pendingBusinesses} pending businesses?`);
+    if (!ok) return;
     setActionLoading(true);
     try {
       const { data: pending, error } = await supabase
@@ -379,7 +396,8 @@ export function AdminDashboard() {
   // ─── BULK APPROVE CAMPAIGNS ──────────────────────────────────────────
 
   const approveAllCampaigns = async () => {
-    if (!confirm(`Approve ${stats.pendingCampaigns} pending campaigns?`)) return;
+    const ok = await confirmToast(`Approve all ${stats.pendingCampaigns} pending campaigns?`);
+    if (!ok) return;
     setActionLoading(true);
     try {
       const { data: pending, error } = await supabase
@@ -420,7 +438,8 @@ export function AdminDashboard() {
 
   const approveSelected = async (type: "creator" | "business" | "campaign") => {
     if (!selectedItems.length) { toast.error("No items selected"); return; }
-    if (!confirm(`Approve ${selectedItems.length} ${type}s?`)) return;
+    const ok = await confirmToast(`Approve ${selectedItems.length} ${type}(s)?`);
+    if (!ok) return;
     setActionLoading(true);
     try {
       const table = type === "creator" ? "creator_profiles" : type === "business" ? "businesses" : "campaigns";
@@ -434,7 +453,6 @@ export function AdminDashboard() {
       const { error } = await supabase.from(table).update(updates).in("id", selectedItems);
       if (error) throw error;
 
-      // Notifications
       if (type === "campaign") {
         const { data: items } = await supabase.from("campaigns").select("id, business_id, name").in("id", selectedItems);
         for (const item of items || []) {
@@ -450,7 +468,7 @@ export function AdminDashboard() {
       }
 
       await logAdminAction("SELECT_APPROVE", `${type}s`, { count: selectedItems.length, ids: selectedItems });
-      toast.success(`✅ Approved ${selectedItems.length} ${type}s`);
+      toast.success(`✅ Approved ${selectedItems.length} ${type}(s)`);
       setSelectedItems([]);
       await Promise.all([fetchDashboardData(), type === "creator" ? fetchCreators() : type === "business" ? fetchBusinesses() : fetchCampaigns()]);
     } catch (e: any) {
@@ -460,7 +478,8 @@ export function AdminDashboard() {
 
   const rejectSelected = async (type: "creator" | "business" | "campaign") => {
     if (!selectedItems.length) { toast.error("No items selected"); return; }
-    if (!confirm(`Reject ${selectedItems.length} ${type}s?`)) return;
+    const ok = await confirmToast(`Reject ${selectedItems.length} ${type}(s)?`);
+    if (!ok) return;
     setActionLoading(true);
     try {
       const table = type === "creator" ? "creator_profiles" : type === "business" ? "businesses" : "campaigns";
@@ -473,7 +492,7 @@ export function AdminDashboard() {
       if (error) throw error;
 
       await logAdminAction("SELECT_REJECT", `${type}s`, { count: selectedItems.length, ids: selectedItems });
-      toast.success(`Rejected ${selectedItems.length} ${type}s`);
+      toast.success(`Rejected ${selectedItems.length} ${type}(s)`);
       setSelectedItems([]);
       await fetchDashboardData();
     } catch (e: any) {
@@ -502,15 +521,15 @@ export function AdminDashboard() {
   };
 
   const navItems = [
-    { icon: BarChart3, label: "Overview",     tab: "overview",      badge: 0 },
-    { icon: Users,     label: "Creators",     tab: "creators",      badge: stats.pendingCreators },
-    { icon: Building2, label: "Businesses",   tab: "businesses",    badge: stats.pendingBusinesses },
-    { icon: Megaphone, label: "Campaigns",    tab: "campaigns",     badge: stats.pendingCampaigns },
-    { icon: MessageSquare, label: "Messages", tab: "messages",      badge: 0 },
-    { icon: MessageCircle, label: "Support",  tab: "support",       badge: stats.openSupportTickets },
-    { icon: Flag,      label: "Reports",      tab: "reports",       badge: stats.reportedContent },
-    { icon: CreditCard, label: "Transactions",tab: "transactions",  badge: 0 },
-    { icon: Settings,  label: "Settings",     tab: "settings",      badge: 0 },
+    { icon: BarChart3,     label: "Overview",      tab: "overview",      badge: 0 },
+    { icon: Users,         label: "Creators",       tab: "creators",      badge: stats.pendingCreators },
+    { icon: Building2,     label: "Businesses",     tab: "businesses",    badge: stats.pendingBusinesses },
+    { icon: Megaphone,     label: "Campaigns",      tab: "campaigns",     badge: stats.pendingCampaigns },
+    { icon: MessageSquare, label: "Messages",       tab: "messages",      badge: 0 },
+    { icon: MessageCircle, label: "Support",        tab: "support",       badge: stats.openSupportTickets },
+    { icon: Flag,          label: "Reports",        tab: "reports",       badge: stats.reportedContent },
+    { icon: CreditCard,    label: "Transactions",   tab: "transactions",  badge: 0 },
+    { icon: Settings,      label: "Settings",       tab: "settings",      badge: 0 },
   ] as const;
 
   if (loading) {
@@ -526,7 +545,7 @@ export function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F0F0F0]">
-      <Toaster position="top-center" richColors />
+      <Toaster position="top-center" richColors closeButton />
 
       {/* Mobile Header */}
       <div className="bg-white border-b border-[#1D1D1D]/10 px-4 py-3 flex justify-between items-center sticky top-0 z-30 lg:hidden">
@@ -624,7 +643,7 @@ export function AdminDashboard() {
           </h2>
           <p className="text-[10px] opacity-40 uppercase tracking-widest mt-0.5">
             {activeTab === "overview"      && "Dashboard overview and statistics"}
-            {activeTab === "creators"      && "Manage creator applications and profiles"}
+            {activeTab === "creators"      && "View and manage all creator accounts"}
             {activeTab === "businesses"    && "Review and manage business accounts"}
             {activeTab === "campaigns"     && "Oversee all platform campaigns"}
             {activeTab === "messages"      && "Message creators and businesses"}
@@ -655,6 +674,7 @@ export function AdminDashboard() {
             onRejectSelected={() => rejectSelected("creator")}
             actionLoading={actionLoading}
             onRefresh={fetchCreators}
+            adminUser={adminUser}
           />
         )}
         {activeTab === "businesses" && (
@@ -706,7 +726,6 @@ function AdminOverview({ stats, onTabChange, onApproveAllBusinesses, onApproveAl
 }) {
   return (
     <div className="space-y-4">
-      {/* Action Banner */}
       {(stats.pendingCreators > 0 || stats.pendingBusinesses > 0 || stats.pendingCampaigns > 0) && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           className="bg-[#1D1D1D] text-white p-5 rounded-xl flex flex-col gap-3">
@@ -740,7 +759,6 @@ function AdminOverview({ stats, onTabChange, onApproveAllBusinesses, onApproveAl
         </motion.div>
       )}
 
-      {/* Stats cards */}
       <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Total Creators",   value: stats.totalCreators,   icon: Users,     color: "text-blue-500",    bg: "bg-blue-50",    sub: `${stats.pendingCreators} pending` },
@@ -760,7 +778,6 @@ function AdminOverview({ stats, onTabChange, onApproveAllBusinesses, onApproveAl
         ))}
       </div>
 
-      {/* Finance cards */}
       <div className="grid grid-cols-1 gap-3">
         {[
           { label: "Total Revenue",   value: `₦${stats.totalRevenue.toLocaleString()}`,   icon: DollarSign, sub: "Completed payments", bg: "bg-[#389C9A]/10", color: "text-[#389C9A]" },
@@ -780,15 +797,14 @@ function AdminOverview({ stats, onTabChange, onApproveAllBusinesses, onApproveAl
         ))}
       </div>
 
-      {/* Action required */}
       <div>
         <h3 className="font-black uppercase tracking-tight text-sm mb-3">Action Required</h3>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Pending Creators",   value: stats.pendingCreators,  action: () => onTabChange("creators"),  accent: "border-[#FEDB71]", icon: Users,     bg: "bg-[#FEDB71]/10" },
-            { label: "Pending Businesses", value: stats.pendingBusinesses,action: () => onTabChange("businesses"),accent: "border-[#389C9A]", icon: Building2, bg: "bg-[#389C9A]/10" },
-            { label: "Pending Campaigns",  value: stats.pendingCampaigns, action: () => onTabChange("campaigns"), accent: "border-violet-400", icon: Megaphone, bg: "bg-violet-50" },
-            { label: "Support Tickets",    value: stats.openSupportTickets,action: () => onTabChange("support"),  accent: "border-red-400",   icon: Flag,      bg: "bg-red-50" },
+            { label: "Pending Creators",   value: stats.pendingCreators,   action: () => onTabChange("creators"),   accent: "border-[#FEDB71]", icon: Users,     bg: "bg-[#FEDB71]/10" },
+            { label: "Pending Businesses", value: stats.pendingBusinesses, action: () => onTabChange("businesses"), accent: "border-[#389C9A]", icon: Building2, bg: "bg-[#389C9A]/10" },
+            { label: "Pending Campaigns",  value: stats.pendingCampaigns,  action: () => onTabChange("campaigns"),  accent: "border-violet-400", icon: Megaphone, bg: "bg-violet-50" },
+            { label: "Support Tickets",    value: stats.openSupportTickets,action: () => onTabChange("support"),    accent: "border-red-400",   icon: Flag,      bg: "bg-red-50" },
           ].map((item, i) => (
             <button key={i} onClick={item.action}
               className={`bg-white border-2 ${item.accent} p-4 text-left hover:shadow-md transition-all rounded-xl`}>
@@ -802,15 +818,14 @@ function AdminOverview({ stats, onTabChange, onApproveAllBusinesses, onApproveAl
         </div>
       </div>
 
-      {/* Quick actions */}
       <div>
         <h3 className="font-black uppercase tracking-tight text-sm mb-3">Quick Actions</h3>
         <div className="grid grid-cols-2 gap-2">
           {[
-            { label: "Review Creators",    icon: Users,          action: () => onTabChange("creators"),     color: "bg-blue-500" },
-            { label: "Review Businesses",  icon: Building2,      action: () => onTabChange("businesses"),   color: "bg-emerald-500" },
-            { label: "Messages",           icon: MessageSquare,  action: () => onTabChange("messages"),     color: "bg-[#389C9A]" },
-            { label: "Transactions",       icon: CreditCard,     action: () => onTabChange("transactions"), color: "bg-violet-500" },
+            { label: "All Creators",      icon: Users,         action: () => onTabChange("creators"),     color: "bg-blue-500" },
+            { label: "Review Businesses", icon: Building2,     action: () => onTabChange("businesses"),   color: "bg-emerald-500" },
+            { label: "Messages",          icon: MessageSquare, action: () => onTabChange("messages"),     color: "bg-[#389C9A]" },
+            { label: "Transactions",      icon: CreditCard,    action: () => onTabChange("transactions"), color: "bg-violet-500" },
           ].map((item, i) => (
             <button key={i} onClick={item.action}
               className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center gap-3 hover:shadow-md transition-all rounded-xl">
@@ -827,33 +842,75 @@ function AdminOverview({ stats, onTabChange, onApproveAllBusinesses, onApproveAl
 }
 
 // ─────────────────────────────────────────────
-// CREATORS TAB
+// CREATORS TAB — shows ALL creators, actions:
+//   deactivate/reactivate, message, delete
 // ─────────────────────────────────────────────
 
-function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelectAll, onApproveSelected, onRejectSelected, actionLoading, onRefresh }: {
+function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelectAll, onApproveSelected, onRejectSelected, actionLoading, onRefresh, adminUser }: {
   creators: any[]; selectedItems: string[];
   onToggleSelect: (id: string) => void; onToggleSelectAll: (items: any[]) => void;
   onApproveSelected: () => Promise<void>; onRejectSelected: () => Promise<void>;
   actionLoading: boolean; onRefresh: () => Promise<void>;
+  adminUser: any;
 }) {
-  const [filter, setFilter]         = useState<"pending_review" | "active" | "suspended" | "all">("pending_review");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [filter, setFilter]           = useState<"all" | "active" | "suspended" | "pending_review">("all");
+  const [searchTerm, setSearchTerm]   = useState("");
   const [selectedCreator, setSelectedCreator] = useState<any>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters]  = useState(false);
+  const [actionId, setActionId]        = useState<string | null>(null);
 
-  const updateStatus = async (id: string, status: "active" | "suspended" | "rejected") => {
-    const { error } = await supabase.from("creator_profiles").update({ status }).eq("id", id);
-    if (error) { toast.error("Failed to update"); return; }
-    toast.success(`Creator ${status}`);
-    onRefresh();
+  // ── Toggle active / suspended ──
+  const toggleStatus = async (creator: any) => {
+    const newStatus = creator.status === "active" ? "suspended" : "active";
+    const label     = newStatus === "active" ? "reactivate" : "deactivate";
+    const ok = await confirmToast(`${label.charAt(0).toUpperCase() + label.slice(1)} ${creator.full_name || "this creator"}?`);
+    if (!ok) return;
+    setActionId(creator.id);
+    try {
+      const { error } = await supabase.from("creator_profiles").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", creator.id);
+      if (error) throw error;
+      toast.success(`Creator ${newStatus === "active" ? "reactivated ✅" : "deactivated"}`);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(`Failed: ${e.message}`);
+    } finally { setActionId(null); }
   };
 
-  const deleteCreator = async (id: string) => {
-    if (!confirm("Delete this creator? Cannot be undone.")) return;
-    const { error } = await supabase.from("creator_profiles").delete().eq("id", id);
-    if (error) { toast.error("Failed to delete"); return; }
-    toast.success("Creator deleted");
-    onRefresh();
+  // ── Open DM with this creator ──
+  const messageCreator = async (creator: any) => {
+    if (!adminUser?.id || !creator.user_id) { toast.error("Cannot open chat"); return; }
+    try {
+      const { data: existing } = await supabase
+        .from("conversations").select("id")
+        .or(`and(participant1_id.eq.${adminUser.id},participant2_id.eq.${creator.user_id}),and(participant1_id.eq.${creator.user_id},participant2_id.eq.${adminUser.id})`)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from("conversations").insert({
+          participant1_id: adminUser.id, participant2_id: creator.user_id,
+          participant1_type: "admin", participant2_type: "creator",
+          last_message_at: new Date().toISOString(), created_at: new Date().toISOString(),
+        });
+      }
+      toast.success(`Opening chat with ${creator.full_name || "creator"} — go to Messages tab`);
+    } catch (e: any) {
+      toast.error("Failed to open conversation");
+    }
+  };
+
+  // ── Delete creator ──
+  const deleteCreator = async (creator: any) => {
+    const ok = await confirmToast(`Permanently delete ${creator.full_name || "this creator"}? This cannot be undone.`);
+    if (!ok) return;
+    setActionId(creator.id);
+    try {
+      const { error } = await supabase.from("creator_profiles").delete().eq("id", creator.id);
+      if (error) throw error;
+      toast.success("Creator deleted");
+      onRefresh();
+    } catch (e: any) {
+      toast.error(`Failed: ${e.message}`);
+    } finally { setActionId(null); }
   };
 
   const getName  = (c: any) => c.full_name || c.username || c.email || "Unnamed";
@@ -868,28 +925,42 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
 
   const statusBadge = (s: string) => {
     const base = "text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full whitespace-nowrap";
-    if (s === "active")       return `${base} bg-green-100 text-green-700`;
-    if (s === "suspended")    return `${base} bg-red-100 text-red-700`;
-    if (s === "rejected")     return `${base} bg-red-100 text-red-700`;
-    return `${base} bg-yellow-100 text-yellow-700`;
+    if (s === "active")        return `${base} bg-green-100 text-green-700`;
+    if (s === "suspended")     return `${base} bg-red-100 text-red-700`;
+    if (s === "rejected")      return `${base} bg-gray-100 text-gray-500`;
+    if (s === "pending_review") return `${base} bg-yellow-100 text-yellow-700`;
+    return `${base} bg-gray-100 text-gray-500`;
+  };
+
+  const filterCounts = {
+    all:            creators.length,
+    active:         creators.filter(c => c.status === "active").length,
+    suspended:      creators.filter(c => c.status === "suspended").length,
+    pending_review: creators.filter(c => c.status === "pending_review").length,
   };
 
   return (
     <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
       <div className="flex flex-col gap-3 mb-4">
-        <h3 className="font-black uppercase tracking-tight text-lg">Creator Applications</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-black uppercase tracking-tight text-lg">All Creators</h3>
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] bg-[#389C9A]/10 px-3 py-1 rounded-full">
+            {creators.length} total
+          </span>
+        </div>
 
+        {/* Bulk action bar */}
         {selectedItems.length > 0 && (
           <div className="bg-[#1D1D1D] text-white p-3 rounded-xl flex items-center justify-between">
             <span className="text-xs font-black">{selectedItems.length} selected</span>
             <div className="flex gap-2">
               <button onClick={onApproveSelected} disabled={actionLoading}
                 className="px-3 py-1.5 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" /> Approve
+                <CheckCircle className="w-3 h-3" /> Activate
               </button>
               <button onClick={onRejectSelected} disabled={actionLoading}
                 className="px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center gap-1">
-                <XCircle className="w-3 h-3" /> Reject
+                <XCircle className="w-3 h-3" /> Suspend
               </button>
               <button onClick={() => onToggleSelectAll([])}
                 className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase rounded-lg hover:bg-white/10">Clear</button>
@@ -909,31 +980,20 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
           </button>
         </div>
 
-        {showFilters ? (
-          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
-            {(["pending_review", "active", "suspended", "all"] as const).map(tab => (
-              <button key={tab} onClick={() => setFilter(tab)}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg flex-1 transition-colors ${
-                  filter === tab ? "bg-[#1D1D1D] text-white" : "bg-white border-2 border-[#1D1D1D]/10"
-                }`}>
-                {tab === "all" ? "All" : tab.replace("_", " ")}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">
-              {filter === "all" ? "All" : filter.replace("_", " ")}
-            </span>
-            <span className="text-xs text-gray-400">({filtered.length})</span>
-            {filter === "pending_review" && filtered.length > 0 && (
-              <button onClick={() => onToggleSelectAll(filtered)}
-                className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] underline">
-                Select all
-              </button>
-            )}
-          </div>
-        )}
+        {/* Filter tabs */}
+        <div className="flex gap-2 flex-wrap">
+          {(["all", "active", "suspended", "pending_review"] as const).map(tab => (
+            <button key={tab} onClick={() => setFilter(tab)}
+              className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 ${
+                filter === tab ? "bg-[#1D1D1D] text-white" : "bg-[#F8F8F8] text-gray-500 hover:bg-gray-200"
+              }`}>
+              {tab === "all" ? "All" : tab.replace("_", " ")}
+              <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black ${
+                filter === tab ? "bg-white/20 text-white" : "bg-gray-200 text-gray-500"
+              }`}>{filterCounts[tab]}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -948,6 +1008,8 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
               className={`border-2 p-4 rounded-xl transition-all ${
                 selectedItems.includes(creator.id) ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
               }`}>
+
+              {/* Top row */}
               <div className="flex items-start gap-3 mb-3">
                 <button onClick={() => onToggleSelect(creator.id)} className="mt-1 shrink-0">
                   {selectedItems.includes(creator.id)
@@ -976,12 +1038,21 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                 </span>
               </div>
 
-              {creator.verification_document_url && (
-                <div className="ml-8 mb-3">
-                  <a href={creator.verification_document_url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline">
-                    <Eye className="w-3 h-3" /> View Verification Doc
-                  </a>
+              {/* Stats row */}
+              {(creator.avg_viewers || creator.rating) && (
+                <div className="flex gap-3 ml-8 mb-3">
+                  {creator.avg_viewers && (
+                    <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                      <Eye className="w-3 h-3" />
+                      <span>{Number(creator.avg_viewers).toLocaleString()} avg viewers</span>
+                    </div>
+                  )}
+                  {creator.rating && (
+                    <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                      <Star className="w-3 h-3 text-[#FEDB71]" />
+                      <span>{creator.rating} rating</span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -993,22 +1064,39 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                 </div>
               )}
 
+              {/* Action buttons */}
               <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
+                {/* View */}
                 <button onClick={() => setSelectedCreator(creator)}
-                  className="px-3 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
+                  className="py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
                   <Eye className="w-3 h-3" /> View
                 </button>
-                
-                {creator.status === "active" && (<>
-                  <button onClick={() => updateStatus(creator.id, "suspended")}
-                    className="col-span-2 border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
-                    <XCircle className="w-3 h-3" /> Suspend
-                  </button>
-                  <button onClick={() => deleteCreator(creator.id)}
-                    className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </>)}
+
+                {/* Message */}
+                <button onClick={() => messageCreator(creator)} disabled={actionId === creator.id}
+                  className="py-2 border-2 border-[#389C9A] text-[#389C9A] text-[9px] font-black uppercase hover:bg-[#389C9A] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                  <MessageSquare className="w-3 h-3" /> Message
+                </button>
+
+                {/* Deactivate / Reactivate */}
+                <button onClick={() => toggleStatus(creator)} disabled={actionId === creator.id}
+                  className={`py-2 border-2 text-[9px] font-black uppercase transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50 ${
+                    creator.status === "active"
+                      ? "border-orange-400 text-orange-500 hover:bg-orange-500 hover:text-white"
+                      : "border-green-500 text-green-600 hover:bg-green-500 hover:text-white"
+                  }`}>
+                  {actionId === creator.id
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : creator.status === "active"
+                      ? <><UserX className="w-3 h-3" /> Deactivate</>
+                      : <><UserCheck className="w-3 h-3" /> Activate</>}
+                </button>
+
+                {/* Delete — full width on its own row */}
+                <button onClick={() => deleteCreator(creator)} disabled={actionId === creator.id}
+                  className="col-span-3 py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                  <Trash2 className="w-3 h-3" /> Delete Account
+                </button>
               </div>
             </motion.div>
           ))}
@@ -1032,12 +1120,16 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
   onApproveSelected: () => Promise<void>; onRejectSelected: () => Promise<void>;
   actionLoading: boolean; onRefresh: () => Promise<void>;
 }) {
-  const [filter, setFilter]         = useState<"pending" | "approved" | "rejected" | "all">("pending");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [filter, setFilter]           = useState<"pending" | "approved" | "rejected" | "all">("pending");
+  const [searchTerm, setSearchTerm]   = useState("");
   const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters]  = useState(false);
 
   const updateStatus = async (id: string, newStatus: "approved" | "rejected") => {
+    const biz = businesses.find(b => b.id === id);
+    const ok  = await confirmToast(`${newStatus === "approved" ? "Approve" : "Reject"} ${biz?.business_name || "this business"}?`);
+    if (!ok) return;
+
     const updates = newStatus === "approved"
       ? { application_status: "approved", status: "approved", verification_status: "verified", approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }
       : { application_status: "rejected", status: "rejected", verification_status: "rejected", rejected_at: new Date().toISOString(), updated_at: new Date().toISOString() };
@@ -1045,8 +1137,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
     const { error } = await supabase.from("businesses").update(updates).eq("id", id);
     if (error) { toast.error(`Failed: ${error.message}`); return; }
 
-    // Notify
-    const biz = businesses.find(b => b.id === id);
     if (biz?.user_id) {
       await supabase.from("notifications").insert({
         user_id: biz.user_id,
@@ -1066,7 +1156,9 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
   };
 
   const deleteBusiness = async (id: string) => {
-    if (!confirm("Delete this business?")) return;
+    const biz = businesses.find(b => b.id === id);
+    const ok  = await confirmToast(`Delete ${biz?.business_name || "this business"}?`);
+    if (!ok) return;
     await supabase.from("businesses").update({ status: "deleted" }).eq("id", id);
     toast.success("Business deleted");
     onRefresh();
@@ -1182,19 +1274,52 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                     <div className="flex items-center gap-1 text-[10px] text-gray-500 mt-0.5">
                       <Mail className="w-3 h-3 shrink-0" /><span className="truncate">{biz.email}</span>
                     </div>
-                    {biz.industry && (
-                      <div className="text-[9px] text-gray-400 mt-0.5">{biz.industry}</div>
-                    )}
+                    {biz.industry && <div className="text-[9px] text-gray-400 mt-0.5">{biz.industry}</div>}
                   </div>
                   <span className={statusBadge(s)}>{s}</span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
                   <button onClick={() => setSelectedBusiness(biz)}
-                    className="px-3 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
+                    className="py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
                     <Eye className="w-3 h-3" /> View
                   </button>
-                  
+                  {s === "pending" && (
+                    <>
+                      <button onClick={() => updateStatus(biz.id, "approved")}
+                        className="py-2 bg-green-500 text-white text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> Approve
+                      </button>
+                      <button onClick={() => updateStatus(biz.id, "rejected")}
+                        className="py-2 bg-red-500 text-white text-[9px] font-black uppercase hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1">
+                        <XCircle className="w-3 h-3" /> Reject
+                      </button>
+                    </>
+                  )}
+                  {s === "approved" && (
+                    <>
+                      <button onClick={() => updateStatus(biz.id, "rejected")}
+                        className="col-span-1 py-2 border-2 border-orange-400 text-orange-500 text-[9px] font-black uppercase hover:bg-orange-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
+                        <XCircle className="w-3 h-3" /> Revoke
+                      </button>
+                      <button onClick={() => deleteBusiness(biz.id)}
+                        className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1">
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </>
+                  )}
+                  {s === "rejected" && (
+                    <>
+                      <button onClick={() => updateStatus(biz.id, "approved")}
+                        className="col-span-1 py-2 border-2 border-green-500 text-green-600 text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> Re-approve
+                      </button>
+                      <button onClick={() => deleteBusiness(biz.id)}
+                        className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1">
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </>
+                  )}
                 </div>
               </motion.div>
             );
@@ -1219,12 +1344,17 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
   onApproveSelected: () => Promise<void>; onRejectSelected: () => Promise<void>;
   actionLoading: boolean; onRefresh: () => Promise<void>;
 }) {
-  const [filter, setFilter]         = useState<"pending_review" | "active" | "completed" | "rejected" | "all">("pending_review");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-  const [updating, setUpdating]     = useState<string | null>(null);
+  const [filter, setFilter]           = useState<"pending_review" | "active" | "completed" | "rejected" | "all">("pending_review");
+  const [searchTerm, setSearchTerm]   = useState("");
+  const [showFilters, setShowFilters]  = useState(false);
+  const [updating, setUpdating]       = useState<string | null>(null);
 
   const updateStatus = async (id: string, newStatus: "active" | "rejected" | "completed") => {
+    const camp  = campaigns.find(c => c.id === id);
+    const label = newStatus === "active" ? "approve" : newStatus === "completed" ? "mark complete" : "reject";
+    const ok    = await confirmToast(`${label.charAt(0).toUpperCase() + label.slice(1)} "${camp?.name || "campaign"}"?`);
+    if (!ok) return;
+
     setUpdating(id);
     try {
       const updates: any = {
@@ -1238,8 +1368,6 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
       const { error } = await supabase.from("campaigns").update(updates).eq("id", id);
       if (error) throw error;
 
-      // Notify business
-      const camp = campaigns.find(c => c.id === id);
       if (camp?.businesses?.id) {
         const { data: biz } = await supabase.from("businesses").select("user_id").eq("id", camp.businesses.id).maybeSingle();
         if (biz?.user_id) {
@@ -1256,7 +1384,7 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
         }
       }
 
-      toast.success(`Campaign ${newStatus === "active" ? "approved" : newStatus}`);
+      toast.success(`Campaign ${newStatus === "active" ? "approved ✅" : newStatus}`);
       onRefresh();
     } catch (e: any) {
       toast.error(`Failed: ${e.message}`);
@@ -1264,7 +1392,9 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
   };
 
   const deleteCampaign = async (id: string) => {
-    if (!confirm("Delete this campaign?")) return;
+    const camp = campaigns.find(c => c.id === id);
+    const ok   = await confirmToast(`Delete "${camp?.name || "campaign"}"? This cannot be undone.`);
+    if (!ok) return;
     const { error } = await supabase.from("campaigns").delete().eq("id", id);
     if (error) { toast.error("Failed"); return; }
     toast.success("Campaign deleted");
@@ -1384,20 +1514,41 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
                 <p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p>
               </div>
 
-
-              {camp.status === "active" && (
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
-                  <button onClick={() => updateStatus(camp.id, "completed")} disabled={updating === camp.id}
-                    className="border-2 border-blue-400 text-blue-500 py-2 text-[9px] font-black uppercase hover:bg-blue-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                    <CheckCircle className="w-3 h-3" />
-                    {updating === camp.id ? "..." : "Complete"}
+              {/* Context-sensitive action buttons */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
+                {camp.status === "pending_review" && (
+                  <>
+                    <button onClick={() => updateStatus(camp.id, "active")} disabled={updating === camp.id}
+                      className="bg-green-500 text-white py-2 text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                      <CheckCircle className="w-3 h-3" />
+                      {updating === camp.id ? "..." : "Approve"}
+                    </button>
+                    <button onClick={() => updateStatus(camp.id, "rejected")} disabled={updating === camp.id}
+                      className="bg-red-500 text-white py-2 text-[9px] font-black uppercase hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                      <XCircle className="w-3 h-3" /> Reject
+                    </button>
+                  </>
+                )}
+                {camp.status === "active" && (
+                  <>
+                    <button onClick={() => updateStatus(camp.id, "completed")} disabled={updating === camp.id}
+                      className="border-2 border-blue-400 text-blue-500 py-2 text-[9px] font-black uppercase hover:bg-blue-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                      <CheckCircle className="w-3 h-3" />
+                      {updating === camp.id ? "..." : "Complete"}
+                    </button>
+                    <button onClick={() => updateStatus(camp.id, "rejected")} disabled={updating === camp.id}
+                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                      <XCircle className="w-3 h-3" /> Reject
+                    </button>
+                  </>
+                )}
+                {(camp.status === "completed" || camp.status === "rejected") && (
+                  <button onClick={() => deleteCampaign(camp.id)} disabled={updating === camp.id}
+                    className="col-span-2 border-2 border-red-200 text-red-400 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                    <Trash2 className="w-3 h-3" /> Delete
                   </button>
-                  <button onClick={() => updateStatus(camp.id, "rejected")} disabled={updating === camp.id}
-                    className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                    <XCircle className="w-3 h-3" /> Reject
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </motion.div>
           ))}
         </div>
@@ -1411,21 +1562,21 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
 // ─────────────────────────────────────────────
 
 function AdminMessages({ adminUser }: { adminUser: any }) {
-  const [loading, setLoading]                     = useState(true);
-  const [conversations, setConversations]         = useState<Conversation[]>([]);
+  const [loading, setLoading]                           = useState(true);
+  const [conversations, setConversations]               = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [messages, setMessages]                   = useState<Message[]>([]);
-  const [messageInput, setMessageInput]           = useState("");
-  const [sending, setSending]                     = useState(false);
-  const [searchQuery, setSearchQuery]             = useState("");
-  const [filter, setFilter]                       = useState<"all" | "unread" | "creators" | "businesses">("all");
-  const [showUserSearch, setShowUserSearch]       = useState(false);
-  const [searchResults, setSearchResults]         = useState<UserProfile[]>([]);
-  const [searching, setSearching]                 = useState(false);
-  const [newMsgSearch, setNewMsgSearch]           = useState("");
-  const [attachments, setAttachments]             = useState<File[]>([]);
-  const messagesEndRef  = useRef<HTMLDivElement>(null);
-  const fileInputRef    = useRef<HTMLInputElement>(null);
+  const [messages, setMessages]                         = useState<Message[]>([]);
+  const [messageInput, setMessageInput]                 = useState("");
+  const [sending, setSending]                           = useState(false);
+  const [searchQuery, setSearchQuery]                   = useState("");
+  const [filter, setFilter]                             = useState<"all" | "unread" | "creators" | "businesses">("all");
+  const [showUserSearch, setShowUserSearch]             = useState(false);
+  const [searchResults, setSearchResults]               = useState<UserProfile[]>([]);
+  const [searching, setSearching]                       = useState(false);
+  const [newMsgSearch, setNewMsgSearch]                 = useState("");
+  const [attachments, setAttachments]                   = useState<File[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef   = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1474,7 +1625,7 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
         const otherId   = conv.participant1_id === adminUser?.id ? conv.participant2_id   : conv.participant1_id;
         const otherType = conv.participant1_id === adminUser?.id ? conv.participant2_type : conv.participant1_type;
 
-        const table = otherType === "creator" ? "creator_profiles" : "businesses";
+        const table  = otherType === "creator" ? "creator_profiles" : "businesses";
         const fields = otherType === "creator" ? "full_name, avatar_url" : "business_name, logo_url";
         const { data: profile } = await supabase.from(table).select(fields).eq("user_id", otherId).maybeSingle();
 
@@ -1646,7 +1797,6 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
   return (
     <div className="bg-white border-2 border-[#1D1D1D] rounded-xl overflow-hidden" style={{ height: "calc(100vh - 160px)", minHeight: 500 }}>
       <div className="flex h-full">
-
         {/* Sidebar */}
         <div className="w-72 border-r border-[#1D1D1D]/10 flex flex-col shrink-0 bg-[#FDFDFD]">
           <div className="p-4 border-b border-[#1D1D1D]/10 bg-white">
@@ -1732,7 +1882,6 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
         <div className="flex-1 flex flex-col min-w-0">
           {selectedConversation ? (
             <>
-              {/* Header */}
               <div className="px-4 py-3 border-b border-[#1D1D1D]/10 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-3">
                   {selectedConversation.participant_avatar ? (
@@ -1752,7 +1901,6 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
                 </button>
               </div>
 
-              {/* Messages */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F9F9F9]">
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center gap-2">
@@ -1780,11 +1928,9 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
                           </div>
                           <div className={`flex items-center gap-1 mt-1 text-[8px] text-gray-400 ${isMe ? "justify-end" : "justify-start"}`}>
                             <span>{formatTime(msg.created_at)}</span>
-                            {isMe && (
-                              msg.is_read
-                                ? <><CheckCheck className="w-3 h-3 text-[#389C9A]" /><span>Read</span></>
-                                : <><CheckCheck className="w-3 h-3" /><span>Sent</span></>
-                            )}
+                            {isMe && (msg.is_read
+                              ? <><CheckCheck className="w-3 h-3 text-[#389C9A]" /><span>Read</span></>
+                              : <><CheckCheck className="w-3 h-3" /><span>Sent</span></>)}
                           </div>
                         </div>
                       </motion.div>
@@ -1794,7 +1940,6 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
               <div className="p-4 border-t border-[#1D1D1D]/10 bg-white">
                 <AnimatePresence>
                   {attachments.length > 0 && (
@@ -1833,13 +1978,11 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
                     className="p-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer transition-colors shrink-0">
                     <Paperclip className="w-5 h-5 text-gray-500" />
                   </label>
-
                   <textarea value={messageInput} onChange={e => setMessageInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                     placeholder="Type a message..."
                     className="flex-1 px-4 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-xl text-sm resize-none max-h-32 transition-colors"
                     rows={Math.min(3, messageInput.split("\n").length || 1)} />
-
                   <button onClick={sendMessage} disabled={(!messageInput.trim() && attachments.length === 0) || sending}
                     className={`p-2.5 rounded-xl transition-all shrink-0 ${
                       messageInput.trim() || attachments.length > 0 ? "bg-[#1D1D1D] text-white hover:bg-[#389C9A]" : "bg-gray-100 text-gray-400 cursor-not-allowed"
@@ -1934,7 +2077,7 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
 }
 
 // ─────────────────────────────────────────────
-// SUPPORT / REPORTS / TRANSACTIONS
+// SUPPORT / REPORTS / TRANSACTIONS / SETTINGS
 // ─────────────────────────────────────────────
 
 function AdminSupport() {
@@ -1958,7 +2101,7 @@ function AdminReports() {
 }
 
 function AdminTransactions() {
-  const [txs, setTxs] = useState<any[]>([]);
+  const [txs, setTxs]       = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -2015,10 +2158,6 @@ function AdminTransactions() {
     </div>
   );
 }
-
-// ─────────────────────────────────────────────
-// SETTINGS
-// ─────────────────────────────────────────────
 
 function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: any }) {
   const [platformFee, setPlatformFee] = useState(stats.platformFee);
@@ -2081,7 +2220,8 @@ function CreatorDetailModal({ creator, onClose }: { creator: any; onClose: () =>
               <h2 className="text-xl font-black uppercase tracking-tight">{creator.full_name || creator.username || "Unknown"}</h2>
               <p className="text-sm text-gray-500">{creator.email}</p>
               <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full mt-1 inline-block ${
-                creator.status === "active" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                creator.status === "active" ? "bg-green-100 text-green-700" :
+                creator.status === "suspended" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
               }`}>{creator.status}</span>
             </div>
           </div>
