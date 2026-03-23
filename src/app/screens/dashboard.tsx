@@ -602,47 +602,36 @@ export function Dashboard() {
               </div>
             )}
           </div>
-{applications.length > 0 && (
-          <div className="px-6 pb-12">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">My Applications</h3>
-              <span className="text-[9px] font-black uppercase text-[#1D1D1D]/40">{applications.length} total</span>
-            </div>
-            <div className="flex flex-col gap-3">
-              {(applicationsExpanded ? applications : applications.slice(0, 3)).map(app => (
-                <div key={app.id} onClick={() => navigate(`/campaign/${app.campaign_id}/summary`)}
-                  className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div clasName="bg-gray-100/10 rounded-lg overflow-hidden">
-                      <ImageWithFallback src={app.logo} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-xs uppercase tracking-tight mb-1">{app.business}</h4>
-                      <span className="text-[7px] font-black uppercase tracking-widest bg-[#1D1D1D]/5 px-2 py-0.5 rounded-full">
-                        {app.type}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {app.amount != null && (
-                      <p className="text-sm font-black italic mb-1 text-[#389C9A]">₦{app.amount}</p>
-                    )}
-                    <div className={`text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                      app.status.toLowerCase() === "pending"       ? "bg-[#FEDB71] text-[#1D1D1D]" :
-                      app.status.toLowerCase() === "not_started"   ? "bg-[#FEDB71] text-[#1D1D1D]" :
-                      app.status.toLowerCase() === "active"        ? "bg-[#389C9A] text-white" :
-                      app.status.toLowerCase() === "completed"     ? "bg-green-500 text-white" :
-                      app.status.toLowerCase() === "declined"      ? "bg-red-100 text-red-600" :
-                      "bg-gray-200 text-gray-500"
-                    }`}>
-                      {app.status}
-                    </div>
-                    <p className="text-[6px] font-medium text-[#1D1D1D]/20 uppercase tracking-widest mt-1">
-                      {app.appliedAt}
-                    </p>
-                  </div>
+          {liveCampaign ? (
+            <div className="bg-[#1D1D1D] p-6 flex flex-col gap-6 relative overflow-hidden border-2 border-[#1D1D1D] rounded-xl">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="w-14 h-14 border-2 border-white/20 rounded-xl overflow-hidden">
+                  <ImageWithFallback src={liveCampaign.logo} className="w-full h-full object-cover grayscale" />
                 </div>
-              )) : (
+                <div className="flex-1 text-white">
+                  <h4 className="font-black text-lg uppercase tracking-tight leading-none mb-1">{liveCampaign.business}</h4>
+                  <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">{liveCampaign.name}</p>
+                </div>
+                <div className="text-right text-white">
+                  <p className="text-xl font-black italic leading-none mb-1 text-[#FEDB71]">₦{liveCampaign.sessionEarnings}</p>
+                  <p className="text-[9px] font-black text-[#389C9A] uppercase tracking-widest italic">{liveCampaign.streamTime}</p>
+                </div>
+              </div>
+              <div className="space-y-2 relative z-10">
+                <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-white/40">
+                  <span>Progress</span>
+                  <span>{liveCampaign.streams_completed}/{liveCampaign.streams_target}</span>
+                </div>
+                <div className="h-1.5 bg-white/10 w-full rounded-full overflow-hidden">
+                  <div className="h-full bg-[#389C9A] rounded-full" style={{ width: `${liveCampaign.progress}%` }} />
+                </div>
+                <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">
+                  {liveCampaign.remainingMins} mins to next payment
+                </p>
+              </div>
+                </div>
+              ) : (
             <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
               <Monitor className="w-12 h-12 mx-auto mb-4 opacity-20" />
               <p className="text-xs text-[#1D1D1D]/40 mb-4">No active campaign right now</p>
