@@ -712,7 +712,7 @@ export function Messages() {
                 <button
                   onClick={submitReport}
                   disabled={!reportReason || submittingReport}
-                  className="w-full bg-red-500 text-white py-4 font-black text-[10px] uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-red-500 text-white py-4 font-black text-[10px] uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-12"
                 >
                   {submittingReport
                     ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</>
