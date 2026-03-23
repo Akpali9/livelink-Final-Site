@@ -718,7 +718,7 @@ export function Messages() {
               </div>{/* end overflow-y-auto scrollable area */}
 
               {/* Sticky submit footer */}
-              <div className="px-6 py-4 border-t border-[#1D1D1D]/10 bg-white shrink-0 mb-12">
+              <div className="px-6 py-4 border-t border-[#1D1D1D]/10 bg-white shrink-0 mb-18">
                 <button
                   onClick={submitReport}
                   disabled={!reportReason || submittingReport}
