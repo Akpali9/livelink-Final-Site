@@ -642,7 +642,7 @@ export function Dashboard() {
                     </p>
                   </div>
                 </div>
-              ) : (
+              )) : (
             <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
               <Monitor className="w-12 h-12 mx-auto mb-4 opacity-20" />
               <p className="text-xs text-[#1D1D1D]/40 mb-4">No active campaign right now</p>
