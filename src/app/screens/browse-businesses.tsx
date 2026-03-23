@@ -786,7 +786,7 @@ export function BrowseBusinesses() {
                 )}
 
                 {/* ── Action buttons ── */}
-                <div className="flex gap-3 mb-6">
+                <div className="flex gap-3 mb-12">
                   {/* Save */}
                   <button
                     onClick={(e) => toggleSave(selectedCampaign.id, e)}
