@@ -644,7 +644,7 @@ export function AdminDashboard() {
           <p className="text-[10px] opacity-40 uppercase tracking-widest mt-0.5">
             {activeTab === "overview"      && "Dashboard overview and statistics"}
             {activeTab === "creators"      && "View and manage all creator accounts"}
-            {activeTab === "businesses"    && "Review and manage business accounts"}
+            {activeTab === "businesses"    && "View and manage all business accounts"}
             {activeTab === "campaigns"     && "Oversee all platform campaigns"}
             {activeTab === "messages"      && "Message creators and businesses"}
             {activeTab === "support"       && "Handle support tickets and inquiries"}
@@ -1120,67 +1120,96 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
   onApproveSelected: () => Promise<void>; onRejectSelected: () => Promise<void>;
   actionLoading: boolean; onRefresh: () => Promise<void>;
 }) {
-  const [filter, setFilter]           = useState<"pending" | "approved" | "rejected" | "all">("pending");
-  const [searchTerm, setSearchTerm]   = useState("");
+  const [filter, setFilter]                     = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [searchTerm, setSearchTerm]             = useState("");
   const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
-  const [showFilters, setShowFilters]  = useState(false);
+  const [actionId, setActionId]                 = useState<string | null>(null);
 
-  const updateStatus = async (id: string, newStatus: "approved" | "rejected") => {
-    const biz = businesses.find(b => b.id === id);
-    const ok  = await confirmToast(`${newStatus === "approved" ? "Approve" : "Reject"} ${biz?.business_name || "this business"}?`);
-    if (!ok) return;
-
-    const updates = newStatus === "approved"
-      ? { application_status: "approved", status: "approved", verification_status: "verified", approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }
-      : { application_status: "rejected", status: "rejected", verification_status: "rejected", rejected_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-
-    const { error } = await supabase.from("businesses").update(updates).eq("id", id);
-    if (error) { toast.error(`Failed: ${error.message}`); return; }
-
-    if (biz?.user_id) {
-      await supabase.from("notifications").insert({
-        user_id: biz.user_id,
-        type: newStatus === "approved" ? "business_approved" : "business_rejected",
-        title: newStatus === "approved" ? "Business Account Approved! ✅" : "Business Application Rejected",
-        message: newStatus === "approved"
-          ? `Your business "${biz.business_name}" has been approved.`
-          : `Your business "${biz.business_name}" application was not approved.`,
-        data: { business_id: id },
-        created_at: new Date().toISOString(),
-      }).catch(console.error);
-    }
-
-    toast.success(`Business ${newStatus}`);
-    onRefresh();
-    onStatsChange?.();
-  };
-
-  const deleteBusiness = async (id: string) => {
-    const biz = businesses.find(b => b.id === id);
-    const ok  = await confirmToast(`Delete ${biz?.business_name || "this business"}?`);
-    if (!ok) return;
-    await supabase.from("businesses").update({ status: "deleted" }).eq("id", id);
-    toast.success("Business deleted");
-    onRefresh();
-    onStatsChange?.();
-  };
-
-  const getStatus = (b: any) => {
+  // ── Derive status the same way throughout ──────────────────────────────
+  const getStatus = (b: any): "approved" | "rejected" | "pending" => {
     if (b.application_status === "approved" || b.status === "approved") return "approved";
     if (b.application_status === "rejected" || b.status === "rejected") return "rejected";
     return "pending";
   };
 
+  // ── Approve / reject single business ──────────────────────────────────
+  const updateStatus = async (id: string, newStatus: "approved" | "rejected") => {
+    const biz    = businesses.find(b => b.id === id);
+    const label  = newStatus === "approved" ? "Approve" : "Reject";
+    const ok     = await confirmToast(`${label} "${biz?.business_name || "this business"}"?`);
+    if (!ok) return;
+
+    setActionId(id);
+    try {
+      const updates = newStatus === "approved"
+        ? { application_status: "approved", status: "approved", verification_status: "verified",
+            approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+        : { application_status: "rejected", status: "rejected", verification_status: "rejected",
+            rejected_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+
+      const { error } = await supabase.from("businesses").update(updates).eq("id", id);
+      if (error) throw error;
+
+      if (biz?.user_id) {
+        await supabase.from("notifications").insert({
+          user_id: biz.user_id,
+          type:    newStatus === "approved" ? "business_approved" : "business_rejected",
+          title:   newStatus === "approved" ? "Business Account Approved! ✅" : "Business Application Rejected",
+          message: newStatus === "approved"
+            ? `Your business "${biz.business_name}" has been approved and is now live.`
+            : `Your business "${biz.business_name}" application was not approved.`,
+          data:       { business_id: id },
+          created_at: new Date().toISOString(),
+        }).catch(console.error);
+      }
+
+      toast.success(`Business ${newStatus === "approved" ? "approved ✅" : "rejected"}`);
+      onRefresh();
+      onStatsChange?.();
+    } catch (e: any) {
+      toast.error(`Failed: ${e.message}`);
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  // ── Delete business ────────────────────────────────────────────────────
+  const deleteBusiness = async (id: string) => {
+    const biz = businesses.find(b => b.id === id);
+    const ok  = await confirmToast(`Permanently delete "${biz?.business_name || "this business"}"? This cannot be undone.`);
+    if (!ok) return;
+    setActionId(id);
+    try {
+      await supabase.from("businesses").update({ status: "deleted" }).eq("id", id);
+      toast.success("Business deleted");
+      onRefresh();
+      onStatsChange?.();
+    } catch (e: any) {
+      toast.error(`Failed: ${e.message}`);
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  // ── Filter counts (same pattern as AdminCreators) ─────────────────────
+  const filterCounts = {
+    all:      businesses.length,
+    pending:  businesses.filter(b => getStatus(b) === "pending").length,
+    approved: businesses.filter(b => getStatus(b) === "approved").length,
+    rejected: businesses.filter(b => getStatus(b) === "rejected").length,
+  };
+
   const filtered = businesses.filter(b => {
-    const s = getStatus(b);
-    const matchFilter = filter === "all" || s === filter;
-    const matchSearch = (b.business_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (b.email || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const matchFilter = filter === "all" || getStatus(b) === filter;
+    const matchSearch =
+      (b.business_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (b.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (b.industry || "").toLowerCase().includes(searchTerm.toLowerCase());
     return matchFilter && matchSearch;
   });
 
   const statusBadge = (s: string) => {
-    const base = "text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full";
+    const base = "text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full whitespace-nowrap";
     if (s === "approved") return `${base} bg-green-100 text-green-700`;
     if (s === "rejected") return `${base} bg-red-100 text-red-700`;
     return `${base} bg-yellow-100 text-yellow-700`;
@@ -1189,8 +1218,16 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
   return (
     <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
       <div className="flex flex-col gap-3 mb-4">
-        <h3 className="font-black uppercase tracking-tight text-lg">Business Applications</h3>
 
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          <h3 className="font-black uppercase tracking-tight text-lg">All Businesses</h3>
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] bg-[#389C9A]/10 px-3 py-1 rounded-full">
+            {businesses.length} total
+          </span>
+        </div>
+
+        {/* Bulk action bar */}
         {selectedItems.length > 0 && (
           <div className="bg-[#1D1D1D] text-white p-3 rounded-xl flex items-center justify-between">
             <span className="text-xs font-black">{selectedItems.length} selected</span>
@@ -1204,46 +1241,57 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                 <XCircle className="w-3 h-3" /> Reject
               </button>
               <button onClick={() => onToggleSelectAll([])}
-                className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase rounded-lg">Clear</button>
+                className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase rounded-lg hover:bg-white/10">
+                Clear
+              </button>
             </div>
           </div>
         )}
 
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            <input type="text" placeholder="Search businesses..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-sm rounded-xl transition-colors" />
-          </div>
-          <button onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 border-2 rounded-xl transition-colors ${showFilters ? "bg-[#1D1D1D] text-white border-[#1D1D1D]" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"}`}>
-            <Filter className="w-5 h-5" />
-          </button>
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search businesses..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-sm rounded-xl transition-colors"
+          />
         </div>
 
-        {showFilters ? (
-          <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
-            {(["pending", "approved", "rejected", "all"] as const).map(tab => (
-              <button key={tab} onClick={() => setFilter(tab)}
-                className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg flex-1 transition-colors ${
-                  filter === tab ? "bg-[#1D1D1D] text-white" : "bg-white border-2 border-[#1D1D1D]/10"
-                }`}>
-                {tab === "all" ? "All" : tab}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">{filter}</span>
-            <span className="text-xs text-gray-400">({filtered.length})</span>
-            {filter === "pending" && filtered.length > 0 && (
-              <button onClick={() => onToggleSelectAll(filtered)}
-                className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] underline">Select all</button>
-            )}
-          </div>
-        )}
+        {/* Filter tabs with live counts — same pill style as AdminCreators */}
+        <div className="flex gap-2 flex-wrap">
+          {(["all", "pending", "approved", "rejected"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 ${
+                filter === tab ? "bg-[#1D1D1D] text-white" : "bg-[#F8F8F8] text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              {tab === "all" ? "All" : tab}
+              <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black ${
+                filter === tab ? "bg-white/20 text-white" : "bg-gray-200 text-gray-500"
+              }`}>
+                {filterCounts[tab]}
+              </span>
+            </button>
+          ))}
+
+          {/* "Select all pending" shortcut */}
+          {filter === "pending" && filtered.length > 0 && (
+            <button
+              onClick={() => onToggleSelectAll(filtered)}
+              className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] underline ml-auto"
+            >
+              Select all
+            </button>
+          )}
+        </div>
       </div>
 
+      {/* List */}
       {filtered.length === 0 ? (
         <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
           <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -1254,73 +1302,146 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
           {filtered.map(biz => {
             const s = getStatus(biz);
             return (
-              <motion.div key={biz.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              <motion.div
+                key={biz.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
                 className={`border-2 p-4 rounded-xl transition-all ${
                   selectedItems.includes(biz.id) ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
-                }`}>
+                }`}
+              >
+                {/* Top info row */}
                 <div className="flex items-start gap-3 mb-3">
                   <button onClick={() => onToggleSelect(biz.id)} className="mt-1 shrink-0">
                     {selectedItems.includes(biz.id)
                       ? <CheckSquare className="w-5 h-5 text-[#389C9A]" />
-                      : <Square className="w-5 h-5 text-gray-400" />}
+                      : <Square      className="w-5 h-5 text-gray-400" />}
                   </button>
+
                   <div className="w-12 h-12 border-2 border-[#1D1D1D]/10 bg-[#F8F8F8] rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
                     {biz.logo_url
                       ? <img src={biz.logo_url} alt={biz.business_name} className="w-full h-full object-cover" />
                       : <Building2 className="w-5 h-5 text-gray-400" />}
                   </div>
+
                   <div className="flex-1 min-w-0">
                     <h4 className="font-black text-sm uppercase tracking-tight truncate">{biz.business_name || "Unnamed"}</h4>
                     <div className="flex items-center gap-1 text-[10px] text-gray-500 mt-0.5">
-                      <Mail className="w-3 h-3 shrink-0" /><span className="truncate">{biz.email}</span>
+                      <Mail className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{biz.email}</span>
                     </div>
-                    {biz.industry && <div className="text-[9px] text-gray-400 mt-0.5">{biz.industry}</div>}
+                    {biz.industry && (
+                      <div className="text-[9px] text-gray-400 mt-0.5">{biz.industry}</div>
+                    )}
+                    {(biz.city || biz.country) && (
+                      <div className="flex items-center gap-1 text-[9px] text-gray-400 mt-0.5">
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        <span>{[biz.city, biz.country].filter(Boolean).join(", ")}</span>
+                      </div>
+                    )}
                   </div>
+
                   <span className={statusBadge(s)}>{s}</span>
                 </div>
 
+                {/* Action buttons — context-sensitive per status */}
                 <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
-                  <button onClick={() => setSelectedBusiness(biz)}
-                    className="py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
+
+                  {/* View — always present */}
+                  <button
+                    onClick={() => setSelectedBusiness(biz)}
+                    className="py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
+                  >
                     <Eye className="w-3 h-3" /> View
                   </button>
+
+                  {/* PENDING → Approve + Reject */}
                   {s === "pending" && (
                     <>
-                      <button onClick={() => updateStatus(biz.id, "approved")}
-                        className="py-2 bg-green-500 text-white text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> Approve
+                      <button
+                        onClick={() => updateStatus(biz.id, "approved")}
+                        disabled={actionId === biz.id}
+                        className="py-2 bg-green-500 text-white text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        {actionId === biz.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><CheckCircle className="w-3 h-3" /> Approve</>}
                       </button>
-                      <button onClick={() => updateStatus(biz.id, "rejected")}
-                        className="py-2 bg-red-500 text-white text-[9px] font-black uppercase hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1">
-                        <XCircle className="w-3 h-3" /> Reject
+                      <button
+                        onClick={() => updateStatus(biz.id, "rejected")}
+                        disabled={actionId === biz.id}
+                        className="py-2 bg-red-500 text-white text-[9px] font-black uppercase hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        {actionId === biz.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><XCircle className="w-3 h-3" /> Reject</>}
                       </button>
                     </>
                   )}
+
+                  {/* APPROVED → Revoke + Delete */}
                   {s === "approved" && (
                     <>
-                      <button onClick={() => updateStatus(biz.id, "rejected")}
-                        className="col-span-1 py-2 border-2 border-orange-400 text-orange-500 text-[9px] font-black uppercase hover:bg-orange-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
-                        <XCircle className="w-3 h-3" /> Revoke
+                      <button
+                        onClick={() => updateStatus(biz.id, "rejected")}
+                        disabled={actionId === biz.id}
+                        className="py-2 border-2 border-orange-400 text-orange-500 text-[9px] font-black uppercase hover:bg-orange-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        {actionId === biz.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><XCircle className="w-3 h-3" /> Revoke</>}
                       </button>
-                      <button onClick={() => deleteBusiness(biz.id)}
-                        className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1">
-                        <Trash2 className="w-3 h-3" /> Delete
+                      <button
+                        onClick={() => deleteBusiness(biz.id)}
+                        disabled={actionId === biz.id}
+                        className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        {actionId === biz.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><Trash2 className="w-3 h-3" /> Delete</>}
                       </button>
                     </>
                   )}
+
+                  {/* REJECTED → Re-approve + Delete */}
                   {s === "rejected" && (
                     <>
-                      <button onClick={() => updateStatus(biz.id, "approved")}
-                        className="col-span-1 py-2 border-2 border-green-500 text-green-600 text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> Re-approve
+                      <button
+                        onClick={() => updateStatus(biz.id, "approved")}
+                        disabled={actionId === biz.id}
+                        className="py-2 border-2 border-green-500 text-green-600 text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        {actionId === biz.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><CheckCircle className="w-3 h-3" /> Re-approve</>}
                       </button>
-                      <button onClick={() => deleteBusiness(biz.id)}
-                        className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1">
-                        <Trash2 className="w-3 h-3" /> Delete
+                      <button
+                        onClick={() => deleteBusiness(biz.id)}
+                        disabled={actionId === biz.id}
+                        className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                      >
+                        {actionId === biz.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><Trash2 className="w-3 h-3" /> Delete</>}
                       </button>
                     </>
                   )}
                 </div>
+
+                {/* Full-width delete row for pending (no delete shown inline) */}
+                {s === "pending" && (
+                  <div className="mt-2 ml-8">
+                    <button
+                      onClick={() => deleteBusiness(biz.id)}
+                      disabled={actionId === biz.id}
+                      className="w-full py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                    >
+                      {actionId === biz.id
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <><Trash2 className="w-3 h-3" /> Delete Account</>}
+                    </button>
+                  </div>
+                )}
               </motion.div>
             );
           })}
