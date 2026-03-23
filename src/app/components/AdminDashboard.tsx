@@ -2587,11 +2587,8 @@ function AdminReports() {
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex-1 min-w-0">
                   <h4 className="font-black text-sm uppercase tracking-tight truncate mb-1">{report.subject}</h4>
-                  <p className="text-[10px] text-gray-500">
-                    <span className="font-bold">Reason:</span> {report.reason}
-                  </p>
-                  {report.details && (
-                    <p className="text-[9px] text-gray-400 mt-1 italic">"{report.details}"</p>
+                  {report.message && (
+                    <p className="text-[10px] text-gray-500 line-clamp-3 whitespace-pre-line mt-1">{report.message}</p>
                   )}
                   <p className="text-[8px] text-gray-400 mt-1.5">
                     {new Date(report.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
