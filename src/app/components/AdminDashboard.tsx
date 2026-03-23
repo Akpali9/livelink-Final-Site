@@ -2219,43 +2219,52 @@ function AdminSupport() {
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      const { data } = await supabase
+      // Only read columns that are guaranteed to exist in a basic support_tickets table
+      const { data, error } = await supabase
         .from("support_tickets")
-        .select("*")
+        .select("id, user_id, subject, message, status, created_at")
         .order("created_at", { ascending: false });
+      if (error) throw error;
       setTickets(data || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
+  // Update only the status column — no updated_at (may not exist)
   const updateStatus = async (id: string, status: string) => {
     setUpdatingId(id);
     try {
-      await supabase.from("support_tickets").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+      const { error } = await supabase
+        .from("support_tickets")
+        .update({ status })
+        .eq("id", id);
+      if (error) throw error;
       setTickets((prev) => prev.map((t) => t.id === id ? { ...t, status } : t));
       if (selected?.id === id) setSelected((prev: any) => prev ? { ...prev, status } : null);
-      toast.success(`Ticket ${status.replace("_", " ")}`);
+      toast.success(`Ticket marked as ${status.replace("_", " ")}`);
     } catch (e: any) { toast.error(e.message); }
     finally { setUpdatingId(null); }
   };
 
+  // Append admin reply to the message field as plain text thread
+  // and send a notification to the reporter via user_id
   const sendReply = async () => {
     if (!adminReply.trim() || !selected) return;
     setSendingReply(true);
     try {
-      // Store reply in ticket
-      const replies = [...(selected.admin_replies || []), {
-        message: adminReply.trim(),
-        sent_at: new Date().toISOString(),
-      }];
-      await supabase.from("support_tickets")
-        .update({ admin_replies: replies, status: "in_progress", updated_at: new Date().toISOString() })
-        .eq("id", selected.id);
+      const timestamp   = new Date().toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      const updatedMsg  = `${selected.message || ""}\n\n--- Admin Reply (${timestamp}) ---\n${adminReply.trim()}`;
 
-      // Notify the reporter
-      if (selected.reporter_id) {
+      const { error } = await supabase
+        .from("support_tickets")
+        .update({ message: updatedMsg, status: "in_progress" })
+        .eq("id", selected.id);
+      if (error) throw error;
+
+      // Notify the user who filed the ticket
+      if (selected.user_id) {
         await supabase.from("notifications").insert({
-          user_id:    selected.reporter_id,
+          user_id:    selected.user_id,
           type:       "system",
           title:      "Support Update",
           message:    `Admin replied to your support ticket: "${adminReply.trim().slice(0, 80)}${adminReply.length > 80 ? "…" : ""}"`,
@@ -2264,8 +2273,9 @@ function AdminSupport() {
         }).catch(console.error);
       }
 
-      setSelected((prev: any) => prev ? { ...prev, admin_replies: replies, status: "in_progress" } : null);
-      setTickets((prev) => prev.map((t) => t.id === selected.id ? { ...t, admin_replies: replies, status: "in_progress" } : t));
+      const updated = { ...selected, message: updatedMsg, status: "in_progress" };
+      setSelected(updated);
+      setTickets((prev) => prev.map((t) => t.id === selected.id ? updated : t));
       setAdminReply("");
       toast.success("Reply sent to user");
     } catch (e: any) { toast.error(e.message); }
@@ -2275,7 +2285,8 @@ function AdminSupport() {
   const deleteTicket = async (id: string) => {
     const ok = await confirmToast("Delete this ticket permanently?");
     if (!ok) return;
-    await supabase.from("support_tickets").delete().eq("id", id);
+    const { error } = await supabase.from("support_tickets").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
     setTickets((prev) => prev.filter((t) => t.id !== id));
     if (selected?.id === id) setSelected(null);
     toast.success("Ticket deleted");
@@ -2299,7 +2310,21 @@ function AdminSupport() {
     return `${base} bg-gray-100 text-gray-500`;
   };
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  // Parse the message field into original + reply thread segments
+  const parseMessage = (msg: string) => {
+    const parts = (msg || "").split(/\n\n--- Admin Reply \(/);
+    const original = parts[0].trim();
+    const replies  = parts.slice(1).map((p) => {
+      const closeParen = p.indexOf(") ---\n");
+      const ts  = closeParen >= 0 ? p.slice(0, closeParen) : "";
+      const txt = closeParen >= 0 ? p.slice(closeParen + 6).trim() : p.trim();
+      return { ts, txt };
+    });
+    return { original, replies };
+  };
 
   if (loading) return (
     <div className="bg-white border-2 border-[#1D1D1D] p-10 flex items-center justify-center rounded-xl">
@@ -2320,7 +2345,6 @@ function AdminSupport() {
           </button>
         </div>
 
-        {/* Filter tabs */}
         <div className="flex gap-2 flex-wrap">
           {(["all", "open", "in_progress", "resolved", "closed"] as const).map((tab) => (
             <button key={tab} onClick={() => setFilter(tab)}
@@ -2344,117 +2368,115 @@ function AdminSupport() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((ticket) => (
-            <motion.div key={ticket.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className={`bg-white border-2 rounded-xl overflow-hidden transition-all ${
-                selected?.id === ticket.id ? "border-[#389C9A]" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
-              }`}>
-              {/* Ticket summary row */}
-              <div
-                className="p-4 cursor-pointer"
-                onClick={() => setSelected(selected?.id === ticket.id ? null : ticket)}
-              >
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Flag className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                      <h4 className="font-black text-sm uppercase tracking-tight truncate">{ticket.subject}</h4>
+          {filtered.map((ticket) => {
+            const { original, replies } = parseMessage(ticket.message);
+            return (
+              <motion.div key={ticket.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                className={`bg-white border-2 rounded-xl overflow-hidden transition-all ${
+                  selected?.id === ticket.id ? "border-[#389C9A]" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
+                }`}>
+
+                {/* Summary row */}
+                <div className="p-4 cursor-pointer"
+                  onClick={() => setSelected(selected?.id === ticket.id ? null : ticket)}>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Flag className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                        <h4 className="font-black text-sm uppercase tracking-tight truncate">{ticket.subject || "Support Ticket"}</h4>
+                      </div>
+                      <p className="text-[9px] text-gray-400">{formatDate(ticket.created_at)}</p>
                     </div>
-                    <p className="text-[10px] text-gray-500 mb-1">
-                      <span className="font-bold">Reason:</span> {ticket.reason}
-                    </p>
-                    <p className="text-[9px] text-gray-400">{formatDate(ticket.created_at)}</p>
+                    <span className={statusBadge(ticket.status || "open")}>{(ticket.status || "open").replace("_", " ")}</span>
                   </div>
-                  <div className="flex flex-col items-end gap-2 shrink-0">
-                    <span className={statusBadge(ticket.status)}>{ticket.status?.replace("_", " ")}</span>
-                    <span className="text-[8px] text-gray-400 uppercase tracking-widest">{ticket.reporter_type}</span>
-                  </div>
+                  <p className="text-[10px] text-gray-500 line-clamp-2">{original}</p>
                 </div>
 
-                {ticket.details && (
-                  <p className="text-[10px] text-gray-500 line-clamp-2 italic">"{ticket.details}"</p>
-                )}
-              </div>
+                {/* Expanded detail */}
+                <AnimatePresence>
+                  {selected?.id === ticket.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="border-t-2 border-[#1D1D1D]/10 overflow-hidden"
+                    >
+                      <div className="p-4 space-y-4 bg-[#F8F8F8]">
 
-              {/* Expanded ticket detail */}
-              <AnimatePresence>
-                {selected?.id === ticket.id && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="border-t-2 border-[#1D1D1D]/10 overflow-hidden"
-                  >
-                    <div className="p-4 space-y-4 bg-[#F8F8F8]">
-
-                      {/* Admin replies thread */}
-                      {ticket.admin_replies?.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Admin Replies</p>
-                          {ticket.admin_replies.map((r: any, i: number) => (
-                            <div key={i} className="bg-white border-2 border-[#1D1D1D]/10 rounded-xl p-3">
-                              <p className="text-[10px] text-[#1D1D1D]/70 leading-relaxed">{r.message}</p>
-                              <p className="text-[8px] text-gray-400 mt-1">{formatDate(r.sent_at)}</p>
-                            </div>
-                          ))}
+                        {/* Original message */}
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-1">Ticket Details</p>
+                          <div className="bg-white border-2 border-[#1D1D1D]/10 rounded-xl p-3">
+                            <p className="text-[10px] text-[#1D1D1D]/70 leading-relaxed whitespace-pre-line">{original}</p>
+                          </div>
                         </div>
-                      )}
 
-                      {/* Reply input */}
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Reply to User</p>
-                        <textarea
-                          value={adminReply}
-                          onChange={(e) => setAdminReply(e.target.value)}
-                          placeholder="Write a reply..."
-                          rows={3}
-                          className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm resize-none transition-colors bg-white"
-                        />
-                        <button
-                          onClick={sendReply}
-                          disabled={!adminReply.trim() || sendingReply}
-                          className="mt-2 w-full bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:bg-[#389C9A] transition-colors disabled:opacity-50"
-                        >
-                          {sendingReply
-                            ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending...</>
-                            : <><Send className="w-3 h-3" /> Send Reply</>}
-                        </button>
-                      </div>
+                        {/* Admin reply thread */}
+                        {replies.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Admin Replies</p>
+                            {replies.map((r, i) => (
+                              <div key={i} className="bg-[#389C9A]/10 border-2 border-[#389C9A]/20 rounded-xl p-3">
+                                <p className="text-[10px] text-[#1D1D1D]/70 leading-relaxed whitespace-pre-line">{r.txt}</p>
+                                {r.ts && <p className="text-[8px] text-gray-400 mt-1">{r.ts}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
-                      {/* Status actions */}
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Update Status</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {ticket.status !== "in_progress" && (
-                            <button onClick={() => updateStatus(ticket.id, "in_progress")} disabled={updatingId === ticket.id}
-                              className="py-2 border-2 border-yellow-400 text-yellow-600 text-[9px] font-black uppercase hover:bg-yellow-400 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                              {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "In Progress"}
-                            </button>
-                          )}
-                          {ticket.status !== "resolved" && (
-                            <button onClick={() => updateStatus(ticket.id, "resolved")} disabled={updatingId === ticket.id}
-                              className="py-2 border-2 border-green-500 text-green-600 text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                              {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Resolve"}
-                            </button>
-                          )}
-                          {ticket.status !== "closed" && (
-                            <button onClick={() => updateStatus(ticket.id, "closed")} disabled={updatingId === ticket.id}
-                              className="py-2 border-2 border-gray-400 text-gray-500 text-[9px] font-black uppercase hover:bg-gray-400 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                              {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Close"}
-                            </button>
-                          )}
-                          <button onClick={() => deleteTicket(ticket.id)}
-                            className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1">
-                            <Trash2 className="w-3 h-3" /> Delete
+                        {/* Reply input */}
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Reply to User</p>
+                          <textarea
+                            value={adminReply}
+                            onChange={(e) => setAdminReply(e.target.value)}
+                            placeholder="Write a reply to send to the user..."
+                            rows={3}
+                            className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm resize-none transition-colors bg-white"
+                          />
+                          <button onClick={sendReply} disabled={!adminReply.trim() || sendingReply}
+                            className="mt-2 w-full bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:bg-[#389C9A] transition-colors disabled:opacity-50">
+                            {sendingReply
+                              ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending...</>
+                              : <><Send className="w-3 h-3" /> Send Reply</>}
                           </button>
                         </div>
+
+                        {/* Status actions */}
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Update Status</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {ticket.status !== "in_progress" && (
+                              <button onClick={() => updateStatus(ticket.id, "in_progress")} disabled={updatingId === ticket.id}
+                                className="py-2 border-2 border-yellow-400 text-yellow-600 text-[9px] font-black uppercase hover:bg-yellow-400 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                                {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "In Progress"}
+                              </button>
+                            )}
+                            {ticket.status !== "resolved" && (
+                              <button onClick={() => updateStatus(ticket.id, "resolved")} disabled={updatingId === ticket.id}
+                                className="py-2 border-2 border-green-500 text-green-600 text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                                {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Resolve"}
+                              </button>
+                            )}
+                            {ticket.status !== "closed" && (
+                              <button onClick={() => updateStatus(ticket.id, "closed")} disabled={updatingId === ticket.id}
+                                className="py-2 border-2 border-gray-400 text-gray-500 text-[9px] font-black uppercase hover:bg-gray-400 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                                {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Close"}
+                              </button>
+                            )}
+                            <button onClick={() => deleteTicket(ticket.id)}
+                              className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1">
+                              <Trash2 className="w-3 h-3" /> Delete
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -2476,11 +2498,11 @@ function AdminReports() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      // Reports come from support_tickets that have a conversation_id (they were filed via the chat report button)
+      // Reports filed via the chat report button have subjects starting with "Report:"
       const { data } = await supabase
         .from("support_tickets")
-        .select("*")
-        .not("conversation_id", "is", null)
+        .select("id, user_id, subject, message, status, created_at")
+        .ilike("subject", "Report:%")
         .order("created_at", { ascending: false });
       setReports(data || []);
     } catch (e) { console.error(e); }
@@ -2490,7 +2512,7 @@ function AdminReports() {
   const resolve = async (id: string) => {
     setUpdatingId(id);
     try {
-      await supabase.from("support_tickets").update({ status: "resolved", updated_at: new Date().toISOString() }).eq("id", id);
+      await supabase.from("support_tickets").update({ status: "resolved" }).eq("id", id);
       setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: "resolved" } : r));
       toast.success("Report resolved");
     } catch (e: any) { toast.error(e.message); }
@@ -2502,7 +2524,7 @@ function AdminReports() {
     if (!ok) return;
     setUpdatingId(id);
     try {
-      await supabase.from("support_tickets").update({ status: "closed", updated_at: new Date().toISOString() }).eq("id", id);
+      await supabase.from("support_tickets").update({ status: "closed" }).eq("id", id);
       setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: "closed" } : r));
       toast.success("Report dismissed");
     } catch (e: any) { toast.error(e.message); }
