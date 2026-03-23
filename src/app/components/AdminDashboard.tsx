@@ -2201,22 +2201,399 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
 // SUPPORT / REPORTS / TRANSACTIONS / SETTINGS
 // ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
+// SUPPORT TICKETS
+// ─────────────────────────────────────────────
+
 function AdminSupport() {
+  const [tickets, setTickets]           = useState<any[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [filter, setFilter]             = useState<"all" | "open" | "in_progress" | "resolved" | "closed">("open");
+  const [selected, setSelected]         = useState<any | null>(null);
+  const [adminReply, setAdminReply]     = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [updatingId, setUpdatingId]     = useState<string | null>(null);
+
+  useEffect(() => { fetchTickets(); }, []);
+
+  const fetchTickets = async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase
+        .from("support_tickets")
+        .select("*")
+        .order("created_at", { ascending: false });
+      setTickets(data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const updateStatus = async (id: string, status: string) => {
+    setUpdatingId(id);
+    try {
+      await supabase.from("support_tickets").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+      setTickets((prev) => prev.map((t) => t.id === id ? { ...t, status } : t));
+      if (selected?.id === id) setSelected((prev: any) => prev ? { ...prev, status } : null);
+      toast.success(`Ticket ${status.replace("_", " ")}`);
+    } catch (e: any) { toast.error(e.message); }
+    finally { setUpdatingId(null); }
+  };
+
+  const sendReply = async () => {
+    if (!adminReply.trim() || !selected) return;
+    setSendingReply(true);
+    try {
+      // Store reply in ticket
+      const replies = [...(selected.admin_replies || []), {
+        message: adminReply.trim(),
+        sent_at: new Date().toISOString(),
+      }];
+      await supabase.from("support_tickets")
+        .update({ admin_replies: replies, status: "in_progress", updated_at: new Date().toISOString() })
+        .eq("id", selected.id);
+
+      // Notify the reporter
+      if (selected.reporter_id) {
+        await supabase.from("notifications").insert({
+          user_id:    selected.reporter_id,
+          type:       "system",
+          title:      "Support Update",
+          message:    `Admin replied to your support ticket: "${adminReply.trim().slice(0, 80)}${adminReply.length > 80 ? "…" : ""}"`,
+          data:       { ticket_id: selected.id },
+          created_at: new Date().toISOString(),
+        }).catch(console.error);
+      }
+
+      setSelected((prev: any) => prev ? { ...prev, admin_replies: replies, status: "in_progress" } : null);
+      setTickets((prev) => prev.map((t) => t.id === selected.id ? { ...t, admin_replies: replies, status: "in_progress" } : t));
+      setAdminReply("");
+      toast.success("Reply sent to user");
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSendingReply(false); }
+  };
+
+  const deleteTicket = async (id: string) => {
+    const ok = await confirmToast("Delete this ticket permanently?");
+    if (!ok) return;
+    await supabase.from("support_tickets").delete().eq("id", id);
+    setTickets((prev) => prev.filter((t) => t.id !== id));
+    if (selected?.id === id) setSelected(null);
+    toast.success("Ticket deleted");
+  };
+
+  const filtered = filter === "all" ? tickets : tickets.filter((t) => t.status === filter);
+
+  const filterCounts = {
+    all:         tickets.length,
+    open:        tickets.filter((t) => t.status === "open").length,
+    in_progress: tickets.filter((t) => t.status === "in_progress").length,
+    resolved:    tickets.filter((t) => t.status === "resolved").length,
+    closed:      tickets.filter((t) => t.status === "closed").length,
+  };
+
+  const statusBadge = (s: string) => {
+    const base = "text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full";
+    if (s === "open")        return `${base} bg-red-100 text-red-700`;
+    if (s === "in_progress") return `${base} bg-yellow-100 text-yellow-700`;
+    if (s === "resolved")    return `${base} bg-green-100 text-green-700`;
+    return `${base} bg-gray-100 text-gray-500`;
+  };
+
+  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  if (loading) return (
+    <div className="bg-white border-2 border-[#1D1D1D] p-10 flex items-center justify-center rounded-xl">
+      <Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" />
+    </div>
+  );
+
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-10 text-center rounded-xl">
-      <MessageCircle className="w-16 h-16 text-gray-200 mx-auto mb-4" />
-      <h3 className="text-lg font-black uppercase tracking-tight mb-2">Support Tickets</h3>
-      <p className="text-gray-400 text-sm">Support ticket management coming soon</p>
+    <div className="space-y-4">
+      {/* Header + filter tabs */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black uppercase tracking-tight text-lg flex items-center gap-2">
+            <MessageCircle className="w-5 h-5 text-[#389C9A]" /> Support Tickets
+          </h3>
+          <button onClick={fetchTickets} className="p-2 hover:bg-[#F8F8F8] rounded-lg transition-colors">
+            <RefreshCw className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex gap-2 flex-wrap">
+          {(["all", "open", "in_progress", "resolved", "closed"] as const).map((tab) => (
+            <button key={tab} onClick={() => setFilter(tab)}
+              className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 ${
+                filter === tab ? "bg-[#1D1D1D] text-white" : "bg-[#F8F8F8] text-gray-500 hover:bg-gray-200"
+              }`}>
+              {tab.replace("_", " ")}
+              <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black ${
+                filter === tab ? "bg-white/20 text-white" : "bg-gray-200 text-gray-500"
+              }`}>{filterCounts[tab]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Ticket list */}
+      {filtered.length === 0 ? (
+        <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
+          <MessageCircle className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">No {filter === "all" ? "" : filter.replace("_", " ")} tickets</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((ticket) => (
+            <motion.div key={ticket.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              className={`bg-white border-2 rounded-xl overflow-hidden transition-all ${
+                selected?.id === ticket.id ? "border-[#389C9A]" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
+              }`}>
+              {/* Ticket summary row */}
+              <div
+                className="p-4 cursor-pointer"
+                onClick={() => setSelected(selected?.id === ticket.id ? null : ticket)}
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Flag className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                      <h4 className="font-black text-sm uppercase tracking-tight truncate">{ticket.subject}</h4>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mb-1">
+                      <span className="font-bold">Reason:</span> {ticket.reason}
+                    </p>
+                    <p className="text-[9px] text-gray-400">{formatDate(ticket.created_at)}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <span className={statusBadge(ticket.status)}>{ticket.status?.replace("_", " ")}</span>
+                    <span className="text-[8px] text-gray-400 uppercase tracking-widest">{ticket.reporter_type}</span>
+                  </div>
+                </div>
+
+                {ticket.details && (
+                  <p className="text-[10px] text-gray-500 line-clamp-2 italic">"{ticket.details}"</p>
+                )}
+              </div>
+
+              {/* Expanded ticket detail */}
+              <AnimatePresence>
+                {selected?.id === ticket.id && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="border-t-2 border-[#1D1D1D]/10 overflow-hidden"
+                  >
+                    <div className="p-4 space-y-4 bg-[#F8F8F8]">
+
+                      {/* Admin replies thread */}
+                      {ticket.admin_replies?.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Admin Replies</p>
+                          {ticket.admin_replies.map((r: any, i: number) => (
+                            <div key={i} className="bg-white border-2 border-[#1D1D1D]/10 rounded-xl p-3">
+                              <p className="text-[10px] text-[#1D1D1D]/70 leading-relaxed">{r.message}</p>
+                              <p className="text-[8px] text-gray-400 mt-1">{formatDate(r.sent_at)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Reply input */}
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Reply to User</p>
+                        <textarea
+                          value={adminReply}
+                          onChange={(e) => setAdminReply(e.target.value)}
+                          placeholder="Write a reply..."
+                          rows={3}
+                          className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm resize-none transition-colors bg-white"
+                        />
+                        <button
+                          onClick={sendReply}
+                          disabled={!adminReply.trim() || sendingReply}
+                          className="mt-2 w-full bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:bg-[#389C9A] transition-colors disabled:opacity-50"
+                        >
+                          {sendingReply
+                            ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending...</>
+                            : <><Send className="w-3 h-3" /> Send Reply</>}
+                        </button>
+                      </div>
+
+                      {/* Status actions */}
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Update Status</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {ticket.status !== "in_progress" && (
+                            <button onClick={() => updateStatus(ticket.id, "in_progress")} disabled={updatingId === ticket.id}
+                              className="py-2 border-2 border-yellow-400 text-yellow-600 text-[9px] font-black uppercase hover:bg-yellow-400 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                              {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "In Progress"}
+                            </button>
+                          )}
+                          {ticket.status !== "resolved" && (
+                            <button onClick={() => updateStatus(ticket.id, "resolved")} disabled={updatingId === ticket.id}
+                              className="py-2 border-2 border-green-500 text-green-600 text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                              {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Resolve"}
+                            </button>
+                          )}
+                          {ticket.status !== "closed" && (
+                            <button onClick={() => updateStatus(ticket.id, "closed")} disabled={updatingId === ticket.id}
+                              className="py-2 border-2 border-gray-400 text-gray-500 text-[9px] font-black uppercase hover:bg-gray-400 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                              {updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Close"}
+                            </button>
+                          )}
+                          <button onClick={() => deleteTicket(ticket.id)}
+                            className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1">
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
+// ─────────────────────────────────────────────
+// REPORTED CONTENT
+// ─────────────────────────────────────────────
+
 function AdminReports() {
+  const [reports, setReports]   = useState<any[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState<"all" | "open" | "resolved">("all");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  useEffect(() => { fetchReports(); }, []);
+
+  const fetchReports = async () => {
+    setLoading(true);
+    try {
+      // Reports come from support_tickets that have a conversation_id (they were filed via the chat report button)
+      const { data } = await supabase
+        .from("support_tickets")
+        .select("*")
+        .not("conversation_id", "is", null)
+        .order("created_at", { ascending: false });
+      setReports(data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const resolve = async (id: string) => {
+    setUpdatingId(id);
+    try {
+      await supabase.from("support_tickets").update({ status: "resolved", updated_at: new Date().toISOString() }).eq("id", id);
+      setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: "resolved" } : r));
+      toast.success("Report resolved");
+    } catch (e: any) { toast.error(e.message); }
+    finally { setUpdatingId(null); }
+  };
+
+  const dismiss = async (id: string) => {
+    const ok = await confirmToast("Dismiss this report?");
+    if (!ok) return;
+    setUpdatingId(id);
+    try {
+      await supabase.from("support_tickets").update({ status: "closed", updated_at: new Date().toISOString() }).eq("id", id);
+      setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: "closed" } : r));
+      toast.success("Report dismissed");
+    } catch (e: any) { toast.error(e.message); }
+    finally { setUpdatingId(null); }
+  };
+
+  const filtered = filter === "all" ? reports : reports.filter((r) => {
+    if (filter === "open")     return r.status === "open" || r.status === "in_progress";
+    if (filter === "resolved") return r.status === "resolved" || r.status === "closed";
+    return true;
+  });
+
+  const statusBadge = (s: string) => {
+    const base = "text-[8px] font-black uppercase px-2 py-1 rounded-full";
+    if (s === "open")        return `${base} bg-red-100 text-red-700`;
+    if (s === "in_progress") return `${base} bg-yellow-100 text-yellow-700`;
+    if (s === "resolved")    return `${base} bg-green-100 text-green-700`;
+    return `${base} bg-gray-100 text-gray-500`;
+  };
+
+  if (loading) return (
+    <div className="bg-white border-2 border-[#1D1D1D] p-10 flex items-center justify-center rounded-xl">
+      <Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" />
+    </div>
+  );
+
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-10 text-center rounded-xl">
-      <Flag className="w-16 h-16 text-gray-200 mx-auto mb-4" />
-      <h3 className="text-lg font-black uppercase tracking-tight mb-2">Reported Content</h3>
-      <p className="text-gray-400 text-sm">Content moderation coming soon</p>
+    <div className="space-y-4">
+      <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black uppercase tracking-tight text-lg flex items-center gap-2">
+            <Flag className="w-5 h-5 text-red-400" /> Reported Content
+          </h3>
+          <button onClick={fetchReports} className="p-2 hover:bg-[#F8F8F8] rounded-lg transition-colors">
+            <RefreshCw className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
+        <div className="flex gap-2">
+          {(["all", "open", "resolved"] as const).map((tab) => (
+            <button key={tab} onClick={() => setFilter(tab)}
+              className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors ${
+                filter === tab ? "bg-[#1D1D1D] text-white" : "bg-[#F8F8F8] text-gray-500 hover:bg-gray-200"
+              }`}>
+              {tab}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
+          <Flag className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">No reports found</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((report) => (
+            <motion.div key={report.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              className="bg-white border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 rounded-xl transition-all">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-black text-sm uppercase tracking-tight truncate mb-1">{report.subject}</h4>
+                  <p className="text-[10px] text-gray-500">
+                    <span className="font-bold">Reason:</span> {report.reason}
+                  </p>
+                  {report.details && (
+                    <p className="text-[9px] text-gray-400 mt-1 italic">"{report.details}"</p>
+                  )}
+                  <p className="text-[8px] text-gray-400 mt-1.5">
+                    {new Date(report.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+                <span className={statusBadge(report.status)}>{report.status?.replace("_", " ")}</span>
+              </div>
+
+              {(report.status === "open" || report.status === "in_progress") && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                  <button onClick={() => resolve(report.id)} disabled={updatingId === report.id}
+                    className="py-2 bg-green-500 text-white text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                    {updatingId === report.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><CheckCircle className="w-3 h-3" /> Resolve</>}
+                  </button>
+                  <button onClick={() => dismiss(report.id)} disabled={updatingId === report.id}
+                    className="py-2 border-2 border-gray-300 text-gray-500 text-[9px] font-black uppercase hover:bg-gray-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
+                    {updatingId === report.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><XCircle className="w-3 h-3" /> Dismiss</>}
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
