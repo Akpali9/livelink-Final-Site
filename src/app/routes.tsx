@@ -29,7 +29,7 @@ const protectAdmin = (Component: React.ComponentType) => <Component />;
 
 export const routes: RouteObject[] = [
   // Public routes
-  { path: "/", element: <LoginPortal /> },
+  { path: "/", element: <Home /> },
   { path: "/login/portal", element: <LoginPortal /> },
   { path: "/become-creator", element: <BecomeCreator /> },
   { path: "/become-business", element: <BecomeBusiness /> },
