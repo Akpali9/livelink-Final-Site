@@ -5,7 +5,7 @@ import { Zap, Shield, BadgePoundSterling, ArrowRight } from "lucide-react";
 
 export function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-white">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       {/* Hero Section */}
       <div className="flex-1 flex flex-col items-start justify-center px-8 pt-20 pb-12">
         <motion.div
