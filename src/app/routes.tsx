@@ -1,4 +1,5 @@
 import { createBrowserRouter, RouteObject } from "react-router";
+import { Home } from "./screens/home";
 import { Dashboard } from "./screens/dashboard";
 import { Profile } from "./screens/profile";
 import { CampaignSummary } from "./screens/CampaignSummary";
@@ -29,7 +30,7 @@ const protectAdmin = (Component: React.ComponentType) => <Component />;
 
 export const routes: RouteObject[] = [
   // Public routes
-  { path: "/", element: <Home /> },
+  { path: "/", element: Home  },
   { path: "/login/portal", element: <LoginPortal /> },
   { path: "/become-creator", element: <BecomeCreator /> },
   { path: "/become-business", element: <BecomeBusiness /> },
