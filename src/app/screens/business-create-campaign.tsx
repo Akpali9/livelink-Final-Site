@@ -4,33 +4,25 @@ import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
-import { CampaignTypeStep } from "./campaign-type-step";
-import { CampaignBriefStep } from "./campaign-brief-step";
-import { CampaignConfirmPayStep } from "./campaign-confirm-pay-step";
+import { CampaignBasicInfo } from "./campaign-basic-info";
+import { CampaignCreatorSelection } from "./campaign-creator-selection";
+import { CampaignOfferDetails } from "./campaign-offer-details";
+import { CampaignConfirmation } from "./campaign-confirmation";
 
 export interface CampaignFormData {
-  // Step 1
-  campaignType: "banner" | "banner_promo" | "promo_only" | "";
-  // Step 2
-  promotingCategory: "product" | "service" | "event" | "app" | "physical_location" | "brand_awareness" | "";
-  businessName: string;
-  description: string;
-  websiteUrl: string;
-  promoCode: string;
-  discountType: "%" | "£";
-  discountValue: string;
-  keyMessage: string;
-  mustMention: string;
-  mustAvoid: string;
-  bannerFile: File | null;
-  bannerUrl: string;
-  agreedToPolicy: boolean;
-  // Meta
   name: string;
+  type: string;
+  description: string;
   budget: number;
   start_date: string;
   end_date: string;
   creatorIds: string[];
+  promoCode: string;
+  discountType: "percentage" | "fixed_amount" | "bogo" | "free_shipping";
+  discountValue: number;
+  usageLimit: number | null;
+  expiryDate: string | null;
+  instructions: string;
 }
 
 export function BusinessCreateCampaign() {
@@ -39,95 +31,79 @@ export function BusinessCreateCampaign() {
   const { user } = useAuth();
 
   const [step, setStep] = useState(1);
-  const [businessId, setBusinessId] = useState<string | null>(null);
-  const [businessName, setBusinessName] = useState("");
-  const [loading, setLoading] = useState(false);
-
   const [formData, setFormData] = useState<CampaignFormData>({
-    campaignType: "",
-    promotingCategory: "",
-    businessName: "",
-    description: "",
-    websiteUrl: "",
-    promoCode: "",
-    discountType: "%",
-    discountValue: "",
-    keyMessage: "",
-    mustMention: "",
-    mustAvoid: "",
-    bannerFile: null,
-    bannerUrl: "",
-    agreedToPolicy: false,
     name: "",
+    type: "",
+    description: "",
     budget: 0,
     start_date: "",
     end_date: "",
     creatorIds: [],
+    promoCode: "",
+    discountType: "percentage",
+    discountValue: 0,
+    usageLimit: null,
+    expiryDate: null,
+    instructions: "",
   });
+  const [loading, setLoading] = useState(false);
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [businessName, setBusinessName] = useState("");
 
   useEffect(() => {
     const fetchBusiness = async () => {
       if (!user) return;
       const { data, error } = await supabase
         .from("businesses")
-        .select("id, name")
+        .select("id, name")           // ✅ "name" not "business_name"
         .eq("user_id", user.id)
         .maybeSingle();
-      if (error) { toast.error("Failed to load business profile"); return; }
+
+      if (error) {
+        console.error("Business fetch error:", error);
+        toast.error("Failed to load business profile");
+        return;
+      }
+
       if (data) {
         setBusinessId(data.id);
-        setBusinessName(data.name || "Your Business");
-        setFormData(prev => ({ ...prev, businessName: data.name || "" }));
+        setBusinessName(data.name || "Your Business");  // ✅ "name" not "business_name"
       } else {
+        toast.error("No business profile found. Please register your business first.");
         navigate("/become-business");
       }
     };
     fetchBusiness();
-  }, [user]);
+  }, [user, navigate]);
 
-  const update = (updates: Partial<CampaignFormData>) =>
-    setFormData(prev => ({ ...prev, ...updates }));
+  const updateFormData = (updates: Partial<CampaignFormData>) => {
+    setFormData((prev) => ({ ...prev, ...updates }));
+  };
 
-  const handleSubmit = async (): Promise<string | undefined> => {
-    if (!businessId) { toast.error("Business profile not found"); return; }
+  const handleNext = () => setStep((s) => s + 1);
+  const handleBack = () => setStep((s) => s - 1);
+
+  const handleSubmit = async () => {
+    if (!businessId) {
+      toast.error("Business profile not found");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Upload banner if provided
-      let bannerUrl = formData.bannerUrl;
-      if (formData.bannerFile) {
-        const ext = formData.bannerFile.name.split(".").pop();
-        const path = `banners/${businessId}-${Date.now()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage
-          .from("campaign-assets")
-          .upload(path, formData.bannerFile);
-        if (!uploadErr) {
-          const { data: urlData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
-          bannerUrl = urlData.publicUrl;
-        }
-      }
-
-      const campaignName = formData.businessName
-        ? `${formData.businessName} — ${formData.campaignType}`
-        : businessName;
-
+      // 1. Insert campaign
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
           business_id: businessId,
-          name: campaignName,
-          type: formData.campaignType,
+          name: formData.name,
+          type: formData.type,
           description: formData.description,
           budget: formData.budget,
           status: "pending_review",
           start_date: formData.start_date || null,
           end_date: formData.end_date || null,
           streams_required: 4,
-          banner_url: bannerUrl || null,
-          instructions: [
-            formData.keyMessage && `Key message: ${formData.keyMessage}`,
-            formData.mustMention && `Must mention: ${formData.mustMention}`,
-            formData.mustAvoid && `Must avoid: ${formData.mustAvoid}`,
-          ].filter(Boolean).join("\n") || null,
           created_at: new Date().toISOString(),
         })
         .select()
@@ -135,32 +111,54 @@ export function BusinessCreateCampaign() {
 
       if (campaignError) throw campaignError;
 
+      // 2. Insert promo code if provided
       if (formData.promoCode) {
         const { error: promoError } = await supabase
           .from("promo_codes")
           .insert({
             campaign_id: campaign.id,
-            business_id: businessId,
+            business_id: businessId,  // ✅ now correctly set
             code: formData.promoCode.toUpperCase(),
-            discount_type: formData.discountType === "%" ? "percentage" : "fixed_amount",
-            discount_value: parseFloat(formData.discountValue) || 0,
-            usage_limit: null,
-            expires_at: null,
-            instructions: formData.keyMessage,
+            discount_type: formData.discountType,
+            discount_value: formData.discountValue,
+            usage_limit: formData.usageLimit,
+            expires_at: formData.expiryDate,
+            instructions: formData.instructions,
             goal: "sales",
+            offer_duration: "30",
           });
         if (promoError) throw promoError;
       }
 
-      // Notify admins
-      const { data: adminRows } = await supabase.from("admins").select("user_id");
-      if (adminRows?.length) {
+      // 3. Insert campaign_creators entries
+      if (formData.creatorIds.length > 0) {
+        const { error: creatorsError } = await supabase
+          .from("campaign_creators")
+          .insert(
+            formData.creatorIds.map((creatorId) => ({
+              campaign_id: campaign.id,
+              creator_id: creatorId,
+              status: "NOT STARTED",
+              streams_target: 4,
+              streams_completed: 0,
+              created_at: new Date().toISOString(),
+            }))
+          );
+        if (creatorsError) throw creatorsError;
+      }
+
+      // 4. Notify admins
+      const { data: adminRows } = await supabase
+        .from("admins")
+        .select("user_id");
+
+      if (adminRows && adminRows.length > 0) {
         await supabase.from("notifications").insert(
-          adminRows.map(admin => ({
+          adminRows.map((admin) => ({
             user_id: admin.user_id,
             type: "campaign_pending",
             title: "New Campaign Pending Approval",
-            message: `${campaignName} by ${businessName} needs review.`,
+            message: `${formData.name} by ${businessName} needs review.`,
             data: { campaign_id: campaign.id },
             is_read: false,
             created_at: new Date().toISOString(),
@@ -168,70 +166,66 @@ export function BusinessCreateCampaign() {
         );
       }
 
-      toast.success("Campaign submitted for review!");
-      navigate("/business/dashboard");
       return campaign.id;
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create campaign");
-      throw err;
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Failed to create campaign");
+      throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  const stepTitles = ["Campaign Type", "Campaign Brief", "Confirm & Pay"];
+  const steps = [
+    { number: 1, title: "Basic Info",        component: CampaignBasicInfo },
+    { number: 2, title: "Select Creators",   component: CampaignCreatorSelection },
+    { number: 3, title: "Offer Details",     component: CampaignOfferDetails },
+    { number: 4, title: "Confirm",           component: CampaignConfirmation },
+  ];
+
+  const CurrentStepComponent = steps[step - 1].component;
 
   return (
-    <div className="min-h-screen bg-white pb-24 max-w-[480px] mx-auto">
+    <div className="min-h-screen bg-white pb-24 max-w-md mx-auto">
       <AppHeader
         showBack
-        backPath={step === 1 ? "/business/dashboard" : undefined}
-        onBack={step > 1 ? () => setStep(s => s - 1) : undefined}
-        title={step === 3 ? "Confirm & Pay" : step === 2 ? "Campaign Brief" : "Create Campaign"}
+        backPath="/business/dashboard"
+        title={editCampaignId ? "Edit Campaign" : "Create Campaign"}
         userType="business"
       />
 
       {/* Step indicator */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex gap-1 mb-1.5">
-          {stepTitles.map((_, i) => (
+      <div className="px-4 py-6">
+        <div className="flex gap-1.5 mb-2">
+          {steps.map((s) => (
             <div
-              key={i}
-              className={`h-1 flex-1 transition-colors ${
-                step > i ? "bg-[#1D1D1D]" : step === i + 1 ? "bg-[#1D1D1D]" : "bg-[#1D1D1D]/15"
+              key={s.number}
+              className={`h-1.5 flex-1 transition-colors ${
+                step >= s.number ? "bg-[#1D1D1D]" : "bg-[#1D1D1D]/20"
               }`}
             />
           ))}
         </div>
-        <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#1D1D1D]/40 text-right italic">
-          Step {step} of {stepTitles.length}
+        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#1D1D1D]/40 text-center italic">
+          Step {step} of {steps.length}: {steps[step - 1].title}
         </p>
       </div>
 
-      {step === 1 && (
-        <CampaignTypeStep
-          selected={formData.campaignType}
-          onSelect={type => update({ campaignType: type })}
-          onNext={() => setStep(2)}
-        />
-      )}
-      {step === 2 && (
-        <CampaignBriefStep
-          data={formData}
-          update={update}
-          onBack={() => setStep(1)}
-          onNext={() => setStep(3)}
-        />
-      )}
-      {step === 3 && (
-        <CampaignConfirmPayStep
-          data={formData}
-          businessName={businessName}
-          loading={loading}
-          onBack={() => setStep(2)}
-          onSubmit={handleSubmit}
-        />
-      )}
+      <div className="w-full h-px bg-[#1D1D1D]/10 mb-6" />
+
+      <CurrentStepComponent
+        data={formData}
+        updateData={updateFormData}
+        onNext={handleNext}
+        onBack={handleBack}
+        onSubmit={handleSubmit}
+        loading={loading}
+        isLastStep={step === steps.length}
+      />
     </div>
   );
 }
+
+
+
+
