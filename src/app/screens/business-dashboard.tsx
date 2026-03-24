@@ -19,8 +19,17 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-// ── Normalise status so comparisons work regardless of case/format ──
 const normaliseStatus = (s: string = "") => s.toLowerCase().replace(/[\s_]+/g, "_");
+
+const formatTimeAgo = (dateStr: string) => {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days  = Math.floor(diff / 86400000);
+  if (days > 0)  return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  return `${mins}m ago`;
+};
 
 export function BusinessDashboard() {
   const navigate = useNavigate();
@@ -77,7 +86,6 @@ export function BusinessDashboard() {
 
       if (campErr) console.error("Campaign fetch error:", campErr);
 
-      // Fetch offers with creator profile and campaign name joined
       const { data: offerData, error: offerErr } = await supabase
         .from("offers")
         .select(`
@@ -97,14 +105,13 @@ export function BusinessDashboard() {
     fetchData();
   }, [businessId]);
 
-  /* ── Stats — normalised so "active" / "ACTIVE" / "Active" all match ── */
+  /* ── Stats ── */
   const active    = campaigns.filter(c => normaliseStatus(c.status) === "active").length;
   const pending   = campaigns.filter(c =>
     ["pending_review", "not_started", "pending"].includes(normaliseStatus(c.status))
   ).length;
   const completed = campaigns.filter(c => normaliseStatus(c.status) === "completed").length;
 
-  // Accept budget / pay_rate / price — handles number or formatted string
   const totalSpent = campaigns.reduce((sum, c) => {
     const raw = c.budget ?? c.pay_rate ?? c.price ?? 0;
     const num = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[^\d.]/g, "")) || 0;
@@ -125,7 +132,7 @@ export function BusinessDashboard() {
         .from("campaign_creators")
         .insert({
           campaign_id: offer.campaign_id,
-          creator_id: offer.creator_id,   // FK → creator_profiles.id
+          creator_id: offer.creator_id,
           status: "NOT STARTED",
           streams_target: offer.streams ?? 4,
         });
@@ -151,7 +158,7 @@ export function BusinessDashboard() {
     setOffers(prev => prev.filter(o => o.id !== offerId));
   };
 
-  /* ── Filter campaigns for list ── */
+  /* ── Filter campaigns ── */
   const filteredCampaigns = campaigns.filter(c => {
     const s = normaliseStatus(c.status);
     if (campaignFilter === "LIVE")      return s === "active";
@@ -160,7 +167,7 @@ export function BusinessDashboard() {
     return false;
   });
 
-  /* ── Status dot + badge colour helpers ── */
+  /* ── Status helpers ── */
   const statusDot = (status: string) => {
     const s = normaliseStatus(status);
     if (s === "active") return "bg-[#389C9A]";
@@ -232,72 +239,6 @@ export function BusinessDashboard() {
             </motion.div>
           ))}
         </div>
-
-        {/* ── Incoming Offers ── */}
-        <AnimatePresence>
-          {offers.length > 0 && (
-            <motion.section
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="px-6 mt-8"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic">
-                  Incoming Offers
-                </h2>
-                <span className="bg-[#FEDB71] border border-[#1D1D1D] px-2 py-0.5 text-[8px] font-black uppercase">
-                  {offers.length} new
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                {offers.map((o, i) => (
-                  <motion.div
-                    key={o.id}
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 12 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="border-2 border-[#1D1D1D] p-5 bg-white"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <p className="text-[11px] font-black uppercase tracking-tight italic">
-                          {o.campaigns?.name ?? "Campaign"}
-                        </p>
-                        <p className="text-[9px] font-bold text-[#389C9A] uppercase tracking-widest">
-                          {o.creator_profiles?.full_name ?? "Creator"}
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-black italic">
-                        {o.rate ? `₦${Number(o.rate).toLocaleString()}` : ""}
-                      </span>
-                    </div>
-                    {o.message && (
-                      <p className="text-[9px] text-[#1D1D1D]/50 mb-3 italic border-l-2 border-[#1D1D1D]/10 pl-2">
-                        {o.message}
-                      </p>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => acceptOffer(o)}
-                        className="flex-1 flex items-center justify-center gap-1.5 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest italic hover:bg-[#389C9A] transition-colors"
-                      >
-                        <CheckCircle2 className="w-3 h-3" /> Accept
-                      </button>
-                      <button
-                        onClick={() => rejectOffer(o.id)}
-                        className="flex-1 flex items-center justify-center gap-1.5 border-2 border-[#1D1D1D] py-2.5 text-[9px] font-black uppercase tracking-widest italic hover:bg-red-50 hover:border-red-400 hover:text-red-500 transition-colors"
-                      >
-                        <X className="w-3 h-3" /> Reject
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
 
         {/* ── Campaigns ── */}
         <section className="px-6 mt-8">
@@ -391,14 +332,95 @@ export function BusinessDashboard() {
           </div>
         </section>
 
+        {/* ── Incoming Offers ── */}
+        <AnimatePresence>
+          {offers.length > 0 && (
+            <motion.section
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="px-6 mt-10"
+            >
+              {/* Section Header */}
+              <div className="flex items-center gap-2 mb-5">
+                <Clock className="w-5 h-5 text-[#389C9A]" />
+                <h2 className="text-xl font-black uppercase tracking-tight">
+                  Incoming Offers
+                </h2>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                {offers.map((o, i) => (
+                  <motion.div
+                    key={o.id}
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 12 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="border-2 border-[#1D1D1D] bg-white overflow-hidden"
+                  >
+                    {/* Card Body */}
+                    <div className="p-5">
+                      {/* Row 1: Campaign name + status badge */}
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className="text-[15px] font-black uppercase tracking-tight leading-tight flex-1">
+                          {o.campaigns?.name ?? "Campaign"}
+                        </h3>
+                        <span className="flex-shrink-0 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-[#FEDB71] border border-[#FEDB71] text-[#1D1D1D]">
+                          {o.status}
+                        </span>
+                      </div>
+
+                      {/* Row 2: Creator name */}
+                      <p className="text-[11px] font-black uppercase tracking-widest text-[#389C9A] mb-4">
+                        {o.creator_profiles?.full_name ?? "Creator"}
+                      </p>
+
+                      {/* Row 3: Requested time + rate */}
+                      <div className="flex items-center justify-between">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">
+                          {o.created_at
+                            ? `Requested ${formatTimeAgo(o.created_at)}`
+                            : "Requested recently"}
+                        </p>
+                        <p className="text-[15px] font-black italic">
+                          {o.rate ? `₦${Number(o.rate).toLocaleString()}` : "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons — flush to card bottom, full width */}
+                    <div className="flex border-t-2 border-[#1D1D1D]">
+                      <button
+                        onClick={() => acceptOffer(o)}
+                        className="flex-1 flex items-center justify-center gap-2 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Accept Offer
+                      </button>
+                      <div className="w-[2px] bg-[#1D1D1D]" />
+                      <button
+                        onClick={() => rejectOffer(o.id)}
+                        className="flex-1 flex items-center justify-center gap-2 bg-white text-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        Reject
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+
         {/* ── Quick Actions ── */}
         <section className="px-6 mt-8 mb-4">
           <h2 className="text-[11px] font-black uppercase tracking-[0.25em] italic mb-4">Quick Actions</h2>
           <div className="flex flex-col gap-2">
             {[
-              { label: "Browse Creators",   path: "/browse",            icon: Users },
+              { label: "Browse Creators",   path: "/browse",                       icon: Users },
               { label: "Create Campaign",   path: "/business/create-campaign",     icon: Megaphone },
-              { label: "Business Settings", path: "/business/settings", icon: ArrowRight },
+              { label: "Business Settings", path: "/business/settings",            icon: ArrowRight },
             ].map((action) => (
               <button
                 key={action.path}
