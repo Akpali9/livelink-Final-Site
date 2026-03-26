@@ -149,6 +149,12 @@ export function BusinessSettings() {
   const [ownerTitle, setOwnerTitle]       = useState("");
   const [ownerPassword, setOwnerPassword] = useState("");
 
+  // Payment details
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentAccount, setPaymentAccount] = useState("");
+  const [showPaymentEdit, setShowPaymentEdit] = useState(false);
+  const [paymentPassword, setPaymentPassword] = useState("");
+
   // Campaign prefs
   const [campaignType, setCampaignType]   = useState("banner");
   const [targetGender, setTargetGender]   = useState("All Genders");
@@ -186,6 +192,9 @@ export function BusinessSettings() {
       if (p.target_age_max)       setAgeMax(p.target_age_max);
       if (p.preferred_niches)     setNiches(p.preferred_niches);
       if (p.default_campaign_type) setCampaignType(p.default_campaign_type);
+      // Payment details
+      setPaymentMethod(p.payment_method || "");
+      setPaymentAccount(p.payment_account || "");
     } catch (err) {
       toast.error("Failed to load profile");
     } finally {
@@ -258,6 +267,19 @@ export function BusinessSettings() {
     await patch({ full_name: ownerName, job_title: ownerTitle });
     await supabase.auth.updateUser({ data: { full_name: ownerName, job_title: ownerTitle } });
     setShowOwnerEdit(false);
+  };
+
+  // ── Payment update ────────────────────────────────────────────────────────
+
+  const handlePaymentUpdate = async () => {
+    // Optional: verify password with Supabase
+    // For now, just save
+    await patch({
+      payment_method: paymentMethod,
+      payment_account: paymentAccount,
+    });
+    setShowPaymentEdit(false);
+    setPaymentPassword("");
   };
 
   if (loading) {
@@ -412,6 +434,109 @@ export function BusinessSettings() {
                   </button>
                   <button onClick={() => setShowOwnerEdit(false)}
                     className="px-4 border-2 border-[#1D1D1D]/10 text-[9px] font-black uppercase tracking-widest rounded-xl">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </Row>
+        </Card>
+
+        {/* ── PAYMENT DETAILS ─────────────────────────────────────────── */}
+        <SectionLabel>Payment Details</SectionLabel>
+
+        <Card title="Payment Details">
+          <Row>
+            {!showPaymentEdit ? (
+              <>
+                {paymentMethod && paymentAccount ? (
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Method</p>
+                      <p className="text-sm font-medium">{paymentMethod}</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Account</p>
+                      <p className="text-sm font-medium">
+                        {paymentMethod === "PayPal"
+                          ? paymentAccount
+                          : `****${paymentAccount.slice(-4)}`}
+                      </p>
+                    </div>
+                    <span className="inline-block mt-1 text-[8px] font-black px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                      ACTIVE
+                    </span>
+                  </div>
+                ) : (
+                  <div className="py-2">
+                    <p className="text-sm text-gray-500">No payment method set.</p>
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowPaymentEdit(true)}
+                  className="mt-2 text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1"
+                >
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+              </>
+            ) : (
+              <div className="space-y-3 mt-1">
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm bg-white"
+                  >
+                    <option value="">Select method</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="PayPal">PayPal</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">
+                    {paymentMethod === "PayPal" ? "PayPal Email" : "Bank Account Number"}
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentAccount}
+                    onChange={(e) => setPaymentAccount(e.target.value)}
+                    placeholder={
+                      paymentMethod === "PayPal"
+                        ? "your@email.com"
+                        : "Last 4 digits visible"
+                    }
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">
+                    Current Password
+                  </label>
+                  <input
+                    type="password"
+                    value={paymentPassword}
+                    onChange={(e) => setPaymentPassword(e.target.value)}
+                    placeholder="Verify your identity"
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm"
+                  />
+                </div>
+
+                <div className="flex gap-2 pb-2">
+                  <button
+                    onClick={handlePaymentUpdate}
+                    className="flex-1 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
+                  >
+                    Save Payment Details
+                  </button>
+                  <button
+                    onClick={() => setShowPaymentEdit(false)}
+                    className="px-4 border-2 border-[#1D1D1D]/10 text-[9px] font-black uppercase tracking-widest rounded-xl"
+                  >
                     Cancel
                   </button>
                 </div>
