@@ -12,13 +12,13 @@ export function BottomNav() {
 
   const navItems = isBusiness
     ? [
-        { icon: Home,         label: "Home",         path: "/business/dashboard" },
+        { icon: Home,         label: "Home",         path: "/business/settings" },
         { icon: Search,       label: "Browse",       path: "/browse" },
         { icon: Briefcase,    label: "My Campaigns", path: "/business/campaigns" },
         { icon: User,        label: "Profile",  path: "/business/dashboard" },
       ]
     : [
-        { icon: Home,         label: "Home",         path: "/dashboard" },
+        { icon: Home,         label: "Home",         path: "/settings" },
         { icon: Search,       label: "Browse",       path: "/browse" },
         { icon: Briefcase,    label: "Campaigns",    path: "/campaigns" },
         { icon: User,          label: "Profile", path: "/dashboard" },
