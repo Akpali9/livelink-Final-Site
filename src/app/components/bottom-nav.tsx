@@ -15,13 +15,13 @@ export function BottomNav() {
         { icon: Home,         label: "Home",         path: "/business/dashboard" },
         { icon: Search,       label: "Browse",       path: "/browse" },
         { icon: Briefcase,    label: "My Campaigns", path: "/business/campaigns" },
-        { icon: User,        label: "Profile",  path: "/notifications?role=business" },
+        { icon: User,        label: "Profile",  path: "/business/dashboard" },
       ]
     : [
         { icon: Home,         label: "Home",         path: "/dashboard" },
         { icon: Search,       label: "Browse",       path: "/browse" },
         { icon: Briefcase,    label: "Campaigns",    path: "/campaigns" },
-        { icon: User,          label: "Profile", path: "/notifications?role=creator" },
+        { icon: User,          label: "Profile", path: "/dashboard" },
       ];
 
   const isActive = (path: string, label: string) => {
