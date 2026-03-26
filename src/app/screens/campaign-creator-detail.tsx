@@ -18,6 +18,7 @@ import {
   ArrowRight,
   Loader2,
   Eye,
+  CheckCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
@@ -37,6 +38,7 @@ interface Campaign {
   streams_required: number;
   business_id: string;
   banner_url?: string;
+  pay_per_stream?: number; // added
 }
 
 interface CampaignCreator {
@@ -55,6 +57,7 @@ interface CreatorProfile {
   full_name: string;
   username: string;
   avatar_url: string;
+  user_id?: string;
 }
 
 interface StreamProof {
@@ -65,6 +68,24 @@ interface StreamProof {
   status: string; // 'pending' or 'verified'
   submitted_at: string;
   verified_at?: string;
+}
+
+// Helper confirm toast
+function confirmToast(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    toast(message, {
+      duration: 10000,
+      action: {
+        label: "Confirm",
+        onClick: () => resolve(true),
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => resolve(false),
+      },
+      onDismiss: () => resolve(false),
+    });
+  });
 }
 
 export function CampaignCreatorDetail() {
@@ -80,6 +101,7 @@ export function CampaignCreatorDetail() {
   const [refreshing, setRefreshing] = useState(false);
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
   const [selectedProof, setSelectedProof] = useState<{ url: string; streamNum: number } | null>(null);
+  const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
 
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
@@ -117,7 +139,7 @@ export function CampaignCreatorDetail() {
       // Fetch creator profile
       const { data: profileData, error: profileError } = await supabase
         .from("creator_profiles")
-        .select("id, full_name, username, avatar_url")
+        .select("id, full_name, username, avatar_url, user_id")
         .eq("id", creatorId)
         .single();
       if (profileError) throw profileError;
@@ -189,6 +211,62 @@ export function CampaignCreatorDetail() {
     };
   }, [campaignId, creatorId, creatorLink?.id, fetchData]);
 
+  const verifyProof = async (proofId: string, streamNum: number) => {
+    const ok = await confirmToast(`Verify stream ${streamNum}? This will mark the stream as completed and add earnings.`);
+    if (!ok) return;
+
+    setVerifyingProofId(proofId);
+    try {
+      // 1. Update the proof status
+      const { error: proofError } = await supabase
+        .from("stream_proofs")
+        .update({ status: "verified", verified_at: new Date().toISOString() })
+        .eq("id", proofId);
+      if (proofError) throw proofError;
+
+      // 2. Calculate per‑stream earning (if not stored)
+      let perStreamEarning = campaign?.pay_per_stream;
+      if (!perStreamEarning && campaign) {
+        perStreamEarning = campaign.budget / campaign.streams_required;
+        // Optional: store it for future use
+        await supabase
+          .from("campaigns")
+          .update({ pay_per_stream: perStreamEarning })
+          .eq("id", campaign.id);
+      }
+
+      // 3. Increment streams_completed and total_earnings in campaign_creators
+      const { error: updateError } = await supabase
+        .from("campaign_creators")
+        .update({
+          streams_completed: (creatorLink?.streams_completed || 0) + 1,
+          total_earnings: (creatorLink?.total_earnings || 0) + perStreamEarning,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", creatorLink?.id);
+      if (updateError) throw updateError;
+
+      // 4. Notify the creator
+      if (creatorProfile?.user_id) {
+        await supabase.from("notifications").insert({
+          user_id: creatorProfile.user_id,
+          type: "stream_verified",
+          title: "Stream Verified! 🎉",
+          message: `Stream ${streamNum} for campaign "${campaign?.name}" has been verified. ₦${perStreamEarning?.toLocaleString()} added to your earnings.`,
+          data: { campaign_id: campaign?.id, stream_number: streamNum },
+          created_at: new Date().toISOString(),
+        }).catch(console.error);
+      }
+
+      toast.success(`Stream ${streamNum} verified!`);
+      fetchData(true); // refresh all data
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setVerifyingProofId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -231,11 +309,11 @@ export function CampaignCreatorDetail() {
     if (proof) {
       const status = proof.status === 'verified' ? 'Verified' : 'Pending Verification';
       const date = proof.submitted_at ? new Date(proof.submitted_at).toLocaleDateString() : 'TBC';
-      return { num: streamNum, status, proofUrl: proof.proof_url, date, duration: 'TBC' };
+      return { num: streamNum, status, proofUrl: proof.proof_url, date, duration: 'TBC', proofId: proof.id };
     } else if (streamNum <= completedStreams) {
-      return { num: streamNum, status: 'No Proof Uploaded', proofUrl: null, date: 'TBC', duration: 'TBC' };
+      return { num: streamNum, status: 'No Proof Uploaded', proofUrl: null, date: 'TBC', duration: 'TBC', proofId: null };
     } else {
-      return { num: streamNum, status: 'Upcoming', proofUrl: null, date: 'TBC', duration: 'TBC' };
+      return { num: streamNum, status: 'Upcoming', proofUrl: null, date: 'TBC', duration: 'TBC', proofId: null };
     }
   });
 
@@ -338,12 +416,28 @@ export function CampaignCreatorDetail() {
                     {stream.status === 'Upcoming' && 'UPCOMING'}
                   </div>
                   {stream.proofUrl && (
-                    <button
-                      onClick={() => handleViewProof(stream.proofUrl, stream.num)}
-                      className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] underline italic flex items-center gap-1"
-                    >
-                      <Eye className="w-3 h-3" /> View Proof
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleViewProof(stream.proofUrl, stream.num)}
+                        className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] underline italic flex items-center gap-1"
+                      >
+                        <Eye className="w-3 h-3" /> View Proof
+                      </button>
+                      {stream.status === 'Pending Verification' && (
+                        <button
+                          onClick={() => stream.proofId && verifyProof(stream.proofId, stream.num)}
+                          disabled={verifyingProofId === stream.proofId}
+                          className="text-[8px] font-black uppercase tracking-widest bg-green-500 text-white px-2 py-1 rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {verifyingProofId === stream.proofId ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <CheckCircle className="w-3 h-3" />
+                          )}
+                          Verify
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -357,10 +451,11 @@ export function CampaignCreatorDetail() {
             Communication
           </h3>
           <Link
-  to={`/business/messages/${campaignId}/creator/${creatorId}`}
-  className="...">
-  Message {creatorProfile.full_name}
-</Link>
+            to={`/business/messages/${campaignId}/creator/${creatorId}`}
+            className="w-full flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest border-2 border-[#1D1D1D] bg-white py-6 px-8 hover:bg-[#1D1D1D] hover:text-white transition-all italic active:scale-[0.98]"
+          >
+            <MessageSquare className="w-5 h-5 text-[#389C9A]" /> Message {creatorProfile.full_name}
+          </Link>
         </div>
       </main>
 
