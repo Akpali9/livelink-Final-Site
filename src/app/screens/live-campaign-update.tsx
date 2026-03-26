@@ -540,7 +540,7 @@ export function LiveCampaignUpdate() {
           </div>
         </div>
 
-        {/* Need Help? Section */}
+        {/* Need Help? Section – UPDATED MESSAGE LINK */}
         <div className="px-4 mb-20">
           <div className="bg-[#1D1D1D]/5 p-12 border-2 border-[#1D1D1D] text-center">
             <h4 className="text-xl font-black uppercase italic mb-3 tracking-tighter leading-none">NEED HELP?</h4>
@@ -548,7 +548,7 @@ export function LiveCampaignUpdate() {
               Contact the brand representative directly for any questions regarding assets or technical issues.
             </p>
             <Link
-              to={`/messages/${campaign.id}?role=creator`}
+              to={`/messages/${campaign.id}/creator/${creatorProfileId}`}
               className="w-full flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest border-2 border-[#1D1D1D] bg-white py-6 px-8 hover:bg-[#1D1D1D] hover:text-white transition-all italic active:scale-[0.98]"
             >
               <MessageSquare className="w-5 h-5 text-[#389C9A]" /> MESSAGE {businessName}
