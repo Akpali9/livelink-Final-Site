@@ -57,7 +57,7 @@ interface CreatorProfile {
   full_name: string;
   username: string;
   avatar_url: string;
-  user_id?: string;
+  user_id?: string; // auth user ID
 }
 
 interface StreamProof {
@@ -136,7 +136,7 @@ export function CampaignCreatorDetail() {
       }
       setCreatorLink(linkData);
 
-      // Fetch creator profile
+      // Fetch creator profile (including user_id)
       const { data: profileData, error: profileError } = await supabase
         .from("creator_profiles")
         .select("id, full_name, username, avatar_url, user_id")
@@ -450,8 +450,9 @@ export function CampaignCreatorDetail() {
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
             Communication
           </h3>
+          {/* FIX: Use creator's user_id instead of profile ID */}
           <Link
-            to={`/business/messages/${campaignId}/creator/${creatorId}`}
+            to={`/business/messages/${campaignId}/creator/${creatorProfile.user_id}`}
             className="w-full flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest border-2 border-[#1D1D1D] bg-white py-6 px-8 hover:bg-[#1D1D1D] hover:text-white transition-all italic active:scale-[0.98]"
           >
             <MessageSquare className="w-5 h-5 text-[#389C9A]" /> Message {creatorProfile.full_name}
