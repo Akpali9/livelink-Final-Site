@@ -1027,6 +1027,18 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                     <Mail className="w-3 h-3 shrink-0" />
                     <span className="truncate">{getEmail(creator)}</span>
                   </div>
+                  {/* Payment method display */}
+                  {creator.payment_method && (
+                    <div className="flex items-center gap-1 text-[9px] text-gray-500 mt-0.5">
+                      <CreditCard className="w-3 h-3" />
+                      <span>{creator.payment_method}</span>
+                      {creator.payment_account && (
+                        <span className="ml-1 text-[8px] opacity-60">
+                          (****{creator.payment_account.slice(-4)})
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {creator.location && (
                     <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5">
                       <MapPin className="w-3 h-3 shrink-0" /><span>{creator.location}</span>
@@ -1333,6 +1345,18 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                     {biz.industry && (
                       <div className="text-[9px] text-gray-400 mt-0.5">{biz.industry}</div>
                     )}
+                    {/* Payment method display */}
+                    {biz.payment_method && (
+                      <div className="flex items-center gap-1 text-[9px] text-gray-500 mt-0.5">
+                        <CreditCard className="w-3 h-3" />
+                        <span>{biz.payment_method}</span>
+                        {biz.payment_account && (
+                          <span className="ml-1 text-[8px] opacity-60">
+                            (****{biz.payment_account.slice(-4)})
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {(biz.city || biz.country) && (
                       <div className="flex items-center gap-1 text-[9px] text-gray-400 mt-0.5">
                         <MapPin className="w-3 h-3 shrink-0" />
@@ -1469,6 +1493,50 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
   const [searchTerm, setSearchTerm]   = useState("");
   const [showFilters, setShowFilters]  = useState(false);
   const [updating, setUpdating]       = useState<string | null>(null);
+  // Expanded campaign state
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const [campaignCreators, setCampaignCreators] = useState<Record<string, any[]>>({});
+  const [campaignProofs, setCampaignProofs] = useState<Record<string, any[]>>({});
+  const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
+
+  // Load creators and proofs when a campaign is expanded
+  useEffect(() => {
+    if (!expandedCampaignId) return;
+
+    const loadCreators = async () => {
+      const { data: creators, error } = await supabase
+        .from("campaign_creators")
+        .select(`
+          *,
+          creator_profiles (
+            id, full_name, username, avatar_url, user_id,
+            payment_method, payment_account
+          )
+        `)
+        .eq("campaign_id", expandedCampaignId);
+      if (error) {
+        console.error("Error loading creators:", error);
+        return;
+      }
+      setCampaignCreators(prev => ({ ...prev, [expandedCampaignId]: creators || [] }));
+
+      // Load proofs for each creator
+      for (const creator of creators || []) {
+        const { data: proofs } = await supabase
+          .from("stream_proofs")
+          .select("*")
+          .eq("campaign_creator_id", creator.id)
+          .order("stream_number");
+        if (proofs) {
+          setCampaignProofs(prev => ({
+            ...prev,
+            [creator.id]: proofs,
+          }));
+        }
+      }
+    };
+    loadCreators();
+  }, [expandedCampaignId]);
 
   const updateStatus = async (id: string, newStatus: "active" | "rejected" | "completed") => {
     const camp  = campaigns.find(c => c.id === id);
@@ -1520,6 +1588,73 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
     if (error) { toast.error("Failed"); return; }
     toast.success("Campaign deleted");
     onRefresh();
+  };
+
+  const verifyProof = async (proofId: string, creatorId: string, streamNum: number) => {
+    const ok = await confirmToast(`Verify stream ${streamNum} for this creator?`);
+    if (!ok) return;
+
+    setVerifyingProofId(proofId);
+    try {
+      // 1. Update proof
+      const { error: proofError } = await supabase
+        .from("stream_proofs")
+        .update({ status: "verified", verified_at: new Date().toISOString() })
+        .eq("id", proofId);
+      if (proofError) throw proofError;
+
+      // 2. Get campaign and per‑stream earning
+      const { data: campaign } = await supabase
+        .from("campaigns")
+        .select("budget, streams_required, pay_per_stream")
+        .eq("id", expandedCampaignId)
+        .single();
+
+      const perStream = campaign?.pay_per_stream || (campaign?.budget / campaign?.streams_required);
+
+      // 3. Update campaign_creators
+      const { data: cc } = await supabase
+        .from("campaign_creators")
+        .select("streams_completed, total_earnings")
+        .eq("id", creatorId)
+        .single();
+
+      const { error: updateError } = await supabase
+        .from("campaign_creators")
+        .update({
+          streams_completed: (cc?.streams_completed || 0) + 1,
+          total_earnings: (cc?.total_earnings || 0) + perStream,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", creatorId);
+      if (updateError) throw updateError;
+
+      // 4. Notify creator
+      const { data: profile } = await supabase
+        .from("creator_profiles")
+        .select("user_id")
+        .eq("id", creatorId)
+        .single();
+      if (profile?.user_id) {
+        await supabase.from("notifications").insert({
+          user_id: profile.user_id,
+          type: "stream_verified",
+          title: "Stream Verified! 🎉",
+          message: `Stream ${streamNum} for your campaign has been verified by admin. ₦${perStream.toLocaleString()} added.`,
+          data: { campaign_id: expandedCampaignId, stream_number: streamNum },
+          created_at: new Date().toISOString(),
+        });
+      }
+
+      toast.success(`Stream ${streamNum} verified!`);
+      // Refresh the expanded view
+      setExpandedCampaignId(null);
+      setTimeout(() => setExpandedCampaignId(expandedCampaignId), 100);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setVerifyingProofId(null);
+    }
   };
 
   const getName  = (c: any) => c.name || c.title || "Unnamed Campaign";
@@ -1635,8 +1770,107 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
                 <p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p>
               </div>
 
+              {/* Expand button */}
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() => setExpandedCampaignId(expandedCampaignId === camp.id ? null : camp.id)}
+                  className="p-1 hover:bg-gray-100 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+                >
+                  {expandedCampaignId === camp.id ? (
+                    <ChevronRight className="w-4 h-4 rotate-90" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                  {expandedCampaignId === camp.id ? "Hide Details" : "Show Creators"}
+                </button>
+              </div>
+
+              {/* Expanded section */}
+              {expandedCampaignId === camp.id && (
+                <div className="mt-4 border-t pt-4 space-y-4">
+                  {campaignCreators[expandedCampaignId]?.map(creator => {
+                    const proofs = campaignProofs[creator.id] || [];
+                    const streamStatuses = Array.from({ length: creator.streams_target }, (_, i) => {
+                      const streamNum = i + 1;
+                      const proof = proofs.find(p => p.stream_number === streamNum);
+                      return { streamNum, proof };
+                    });
+
+                    return (
+                      <div key={creator.id} className="border rounded-lg p-3 bg-gray-50">
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center gap-2">
+                            {creator.creator_profiles?.avatar_url ? (
+                              <img src={creator.creator_profiles.avatar_url} className="w-8 h-8 rounded-full" />
+                            ) : (
+                              <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-black text-xs">
+                                {creator.creator_profiles?.full_name?.[0] || "C"}
+                              </div>
+                            )}
+                            <div>
+                              <p className="font-bold text-sm">{creator.creator_profiles?.full_name || "Unknown"}</p>
+                              {creator.creator_profiles?.payment_method && (
+                                <p className="text-[8px] text-gray-500 flex items-center gap-1">
+                                  <CreditCard className="w-3 h-3" />
+                                  {creator.creator_profiles.payment_method}
+                                  {creator.creator_profiles.payment_account && (
+                                    <span className="opacity-60">(****{creator.creator_profiles.payment_account.slice(-4)})</span>
+                                  )}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-xs font-black">
+                            {creator.streams_completed}/{creator.streams_target} streams
+                          </span>
+                        </div>
+
+                        <div className="space-y-2 mt-2">
+                          {streamStatuses.map(({ streamNum, proof }) => (
+                            <div key={streamNum} className="flex items-center justify-between text-sm border-b pb-1">
+                              <span>Stream {streamNum}</span>
+                              {proof ? (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => window.open(proof.proof_url, '_blank')}
+                                    className="text-[#389C9A] text-xs underline flex items-center gap-1"
+                                  >
+                                    <Eye className="w-3 h-3" /> View
+                                  </button>
+                                  {proof.status === 'pending' && (
+                                    <button
+                                      onClick={() => verifyProof(proof.id, creator.id, streamNum)}
+                                      disabled={verifyingProofId === proof.id}
+                                      className="px-2 py-0.5 bg-green-500 text-white text-[9px] font-black rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
+                                    >
+                                      {verifyingProofId === proof.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <CheckCircle className="w-3 h-3" />
+                                      )}
+                                      Verify
+                                    </button>
+                                  )}
+                                  <span className={`text-[8px] font-black uppercase ${
+                                    proof.status === 'verified' ? 'text-green-600' : 'text-yellow-600'
+                                  }`}>
+                                    {proof.status}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-xs">No proof</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Context-sensitive action buttons */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8 mt-2">
                 {camp.status === "pending_review" && (
                   <>
                     <button onClick={() => updateStatus(camp.id, "active")} disabled={updating === camp.id}
@@ -2198,10 +2432,6 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
 }
 
 // ─────────────────────────────────────────────
-// SUPPORT / REPORTS / TRANSACTIONS / SETTINGS
-// ─────────────────────────────────────────────
-
-// ─────────────────────────────────────────────
 // SUPPORT TICKETS
 // ─────────────────────────────────────────────
 
@@ -2219,7 +2449,6 @@ function AdminSupport() {
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      // Only read columns that are guaranteed to exist in a basic support_tickets table
       const { data, error } = await supabase
         .from("support_tickets")
         .select("id, user_id, subject, message, status, created_at")
@@ -2230,7 +2459,6 @@ function AdminSupport() {
     finally { setLoading(false); }
   };
 
-  // Update only the status column — no updated_at (may not exist)
   const updateStatus = async (id: string, status: string) => {
     setUpdatingId(id);
     try {
@@ -2246,8 +2474,6 @@ function AdminSupport() {
     finally { setUpdatingId(null); }
   };
 
-  // Append admin reply to the message field as plain text thread
-  // and send a notification to the reporter via user_id
   const sendReply = async () => {
     if (!adminReply.trim() || !selected) return;
     setSendingReply(true);
@@ -2261,7 +2487,6 @@ function AdminSupport() {
         .eq("id", selected.id);
       if (error) throw error;
 
-      // Notify the user who filed the ticket
       if (selected.user_id) {
         await supabase.from("notifications").insert({
           user_id:    selected.user_id,
@@ -2313,7 +2538,6 @@ function AdminSupport() {
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  // Parse the message field into original + reply thread segments
   const parseMessage = (msg: string) => {
     const parts = (msg || "").split(/\n\n--- Admin Reply \(/);
     const original = parts[0].trim();
@@ -2334,7 +2558,6 @@ function AdminSupport() {
 
   return (
     <div className="space-y-4">
-      {/* Header + filter tabs */}
       <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-black uppercase tracking-tight text-lg flex items-center gap-2">
@@ -2360,7 +2583,6 @@ function AdminSupport() {
         </div>
       </div>
 
-      {/* Ticket list */}
       {filtered.length === 0 ? (
         <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
           <MessageCircle className="w-12 h-12 text-gray-200 mx-auto mb-3" />
@@ -2498,7 +2720,6 @@ function AdminReports() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      // Reports filed via the chat report button have subjects starting with "Report:"
       const { data } = await supabase
         .from("support_tickets")
         .select("id, user_id, subject, message, status, created_at")
@@ -2617,19 +2838,32 @@ function AdminReports() {
   );
 }
 
+// ─────────────────────────────────────────────
+// TRANSACTIONS TAB – includes both business transactions and creator payouts
+// ─────────────────────────────────────────────
+
 function AdminTransactions() {
-  const [txs, setTxs]       = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [txs, setTxs]           = useState<any[]>([]);
+  const [payouts, setPayouts]   = useState<any[]>([]);
+  const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
     const fetch = async () => {
       try {
-        const { data } = await supabase
-          .from("business_transactions")
-          .select("*, businesses(business_name)")
-          .order("created_at", { ascending: false })
-          .limit(50);
-        setTxs(data || []);
+        const [txRes, payoutRes] = await Promise.all([
+          supabase
+            .from("business_transactions")
+            .select("*, businesses(business_name)")
+            .order("created_at", { ascending: false })
+            .limit(50),
+          supabase
+            .from("creator_payouts")
+            .select("*, creator_profiles(full_name, username)")
+            .order("created_at", { ascending: false })
+            .limit(30),
+        ]);
+        setTxs(txRes.data || []);
+        setPayouts(payoutRes.data || []);
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     };
@@ -2642,39 +2876,70 @@ function AdminTransactions() {
     </div>
   );
 
-  if (!txs.length) return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-10 text-center rounded-xl">
-      <CreditCard className="w-16 h-16 text-gray-200 mx-auto mb-4" />
-      <h3 className="text-lg font-black uppercase tracking-tight mb-2">Transactions</h3>
-      <p className="text-gray-400 text-sm">No transactions yet</p>
-    </div>
-  );
-
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
-      <h3 className="font-black uppercase tracking-tight text-lg mb-4 flex items-center gap-2">
-        <CreditCard className="w-5 h-5 text-[#389C9A]" /> Transactions
-      </h3>
-      <div className="space-y-3">
-        {txs.map(tx => (
-          <div key={tx.id} className="border-2 border-[#1D1D1D]/10 p-4 rounded-xl flex items-center justify-between">
-            <div>
-              <p className="font-black text-sm uppercase">{tx.businesses?.business_name || "Unknown"}</p>
-              <p className="text-[9px] text-gray-400">{new Date(tx.created_at).toLocaleDateString()} · {tx.type}</p>
-            </div>
-            <div className="text-right">
-              <p className="font-black text-lg text-[#389C9A]">₦{Number(tx.amount || 0).toLocaleString()}</p>
-              <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
-                tx.status === "completed" ? "bg-green-100 text-green-700" :
-                tx.status === "pending"   ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"
-              }`}>{tx.status}</span>
-            </div>
+    <div className="space-y-4">
+      {/* Business Transactions */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+        <h3 className="font-black uppercase tracking-tight text-lg mb-4 flex items-center gap-2">
+          <CreditCard className="w-5 h-5 text-[#389C9A]" /> Business Transactions
+        </h3>
+        {txs.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-8">No business transactions yet</p>
+        ) : (
+          <div className="space-y-3">
+            {txs.map(tx => (
+              <div key={tx.id} className="border-2 border-[#1D1D1D]/10 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="font-black text-sm uppercase">{tx.businesses?.business_name || "Unknown"}</p>
+                  <p className="text-[9px] text-gray-400">{new Date(tx.created_at).toLocaleDateString()} · {tx.type}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-lg text-[#389C9A]">₦{Number(tx.amount || 0).toLocaleString()}</p>
+                  <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
+                    tx.status === "completed" ? "bg-green-100 text-green-700" :
+                    tx.status === "pending"   ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"
+                  }`}>{tx.status}</span>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
+      </div>
+
+      {/* Creator Payouts */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+        <h3 className="font-black uppercase tracking-tight text-lg mb-4 flex items-center gap-2">
+          <Users className="w-5 h-5 text-[#389C9A]" /> Creator Payouts
+        </h3>
+        {payouts.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-8">No creator payouts yet</p>
+        ) : (
+          <div className="space-y-3">
+            {payouts.map(p => (
+              <div key={p.id} className="border-2 border-[#1D1D1D]/10 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="font-black text-sm uppercase">{p.creator_profiles?.full_name || "Unknown"}</p>
+                  <p className="text-[9px] text-gray-400">{new Date(p.created_at).toLocaleDateString()}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-lg text-[#389C9A]">₦{Number(p.amount || 0).toLocaleString()}</p>
+                  <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
+                    p.status === "completed" ? "bg-green-100 text-green-700" :
+                    p.status === "pending"   ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"
+                  }`}>{p.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+// ─────────────────────────────────────────────
+// SETTINGS
+// ─────────────────────────────────────────────
 
 function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: any }) {
   const [platformFee, setPlatformFee] = useState(stats.platformFee);
