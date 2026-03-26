@@ -1,724 +1,642 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import { 
-  ArrowRight, 
-  Upload, 
-  X, 
-  CheckCircle2, 
-  Calendar, 
-  Clock,
-  Eye,
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useParams, Link } from "react-router";
+import {
+  ArrowLeft,
   Download,
-  AlertTriangle,
-  RefreshCw,
-  Award,
-  TrendingUp,
-  Users,
-  DollarSign,
+  Calendar,
+  Tag,
+  Tv,
+  Clock,
+  CheckCircle2,
   MessageSquare,
-  HelpCircle,
-  Camera,
-  Video,
-  Image as ImageIcon,
-  FileText,
-  Check,
-  AlertCircle
+  AlertTriangle,
+  ChevronRight,
+  X,
+  Upload,
+  ArrowRight,
+  Loader2,
+  Eye,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { ImageWithFallback } from "../components/ImageWithFallback";
 import { AppHeader } from "../components/app-header";
-import { BottomNav } from "../components/bottom-nav";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface Campaign {
   id: string;
-  business_id: string;
   name: string;
   type: string;
-  description?: string;
+  budget: number;
   status: string;
-  total_streams: number;
-  streams_completed: number;
-  budget?: number;
-  earned_so_far?: number;
-  price_per_stream?: number;
   start_date?: string;
   end_date?: string;
+  streams_required: number;
+  business_id: string;
   banner_url?: string;
-  promo_code?: string;
-  requirements?: string[];
-  business: {
-    id: string;
-    business_name: string;
-    logo_url?: string;
-    contact_email?: string;
-  };
 }
 
-interface Stream {
+interface CampaignCreator {
   id: string;
+  campaign_id: string;
+  creator_id: string;
+  status: string;
+  streams_completed: number;
+  streams_target: number;
+  total_earnings: number;
+  paid_out: number;
+}
+
+interface Business {
+  id: string;
+  name: string;
+  logo_url?: string;
+}
+
+interface StreamProof {
+  id: string;
+  campaign_creator_id: string;
   stream_number: number;
-  status: 'Pending' | 'Upload Required' | 'Under Review' | 'Verified' | 'Rejected';
-  stream_date: string;
-  duration: string;
-  proof_url?: string;
-  proof_status?: string;
-  viewer_count?: number;
-  notes?: string;
-  submitted_at?: string;
+  proof_url: string;
+  status: string; // 'pending' or 'verified'
+  submitted_at: string;
   verified_at?: string;
 }
 
 export function LiveCampaignUpdate() {
+  const { id: campaignId } = useParams();
   const navigate = useNavigate();
-  const { id } = useParams();
   const { user } = useAuth();
-  
+
   const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [streams, setStreams] = useState<Stream[]>([]);
+  const [creatorLink, setCreatorLink] = useState<CampaignCreator | null>(null);
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [streamProofs, setStreamProofs] = useState<StreamProof[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [selectedStream, setSelectedStream] = useState<Stream | null>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadType, setUploadType] = useState<'screenshot' | 'video'>('screenshot');
-  const [viewerCount, setViewerCount] = useState('');
-  const [streamNotes, setStreamNotes] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedStreamNumber, setSelectedStreamNumber] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [selectedProof, setSelectedProof] = useState<{ url: string; streamNum: number } | null>(null);
+  const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+  const [creatorProfileId, setCreatorProfileId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // First, fetch the creator's profile ID using the auth user ID
   useEffect(() => {
-    if (id) {
-      fetchCampaignData();
-    }
-  }, [id]);
+    const fetchCreatorProfile = async () => {
+      if (!user) return;
+      const { data, error } = await supabase
+        .from("creator_profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) {
+        console.error("Error fetching creator profile:", error);
+        toast.error("Could not load profile");
+        navigate("/campaigns");
+      } else if (data) {
+        setCreatorProfileId(data.id);
+      } else {
+        toast.error("Creator profile not found");
+        navigate("/campaigns");
+      }
+    };
+    fetchCreatorProfile();
+  }, [user, navigate]);
 
-  useEffect(() => {
-    if (campaign && user) {
-      fetchStreams();
-    }
-  }, [campaign, user]);
+  const fetchData = useCallback(async (silent = false) => {
+    if (!campaignId || !user || !creatorProfileId) return;
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
 
-  const fetchCampaignData = async () => {
     try {
-      setLoading(true);
-
+      // 1. Fetch campaign
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
-        .select(`
-          *,
-          business:businesses (
-            id,
-            business_name,
-            logo_url,
-            contact_email
-          )
-        `)
-        .eq("id", id)
-        .single();
-
-      if (campaignError) throw campaignError;
-
-      // Fetch campaign requirements
-      const { data: requirementsData } = await supabase
-        .from("campaign_requirements")
         .select("*")
-        .eq("campaign_id", id);
+        .eq("id", campaignId)
+        .single();
+      if (campaignError) throw campaignError;
+      setCampaign(campaignData);
 
-      setCampaign({
-        ...campaignData,
-        requirements: requirementsData?.map(r => r.description) || [],
-        earned_so_far: calculateEarned(campaignData.streams_completed, campaignData.price_per_stream)
-      });
+      // 2. Fetch creator's link using creator profile ID
+      const { data: linkData, error: linkError } = await supabase
+        .from("campaign_creators")
+        .select("*")
+        .eq("campaign_id", campaignId)
+        .eq("creator_id", creatorProfileId) // use profile ID, not auth ID
+        .maybeSingle();
+      if (linkError) throw linkError;
+      if (!linkData) {
+        toast.error("You are not assigned to this campaign");
+        navigate("/campaigns");
+        return;
+      }
+      setCreatorLink(linkData);
 
-    } catch (error) {
+      // 3. Fetch business info
+      const { data: businessData, error: businessError } = await supabase
+        .from("businesses")
+        .select("id, name, logo_url")
+        .eq("id", campaignData.business_id)
+        .maybeSingle();
+      if (!businessError && businessData) setBusiness(businessData);
+
+      // 4. Fetch stream proofs
+      const { data: proofsData, error: proofsError } = await supabase
+        .from("stream_proofs")
+        .select("*")
+        .eq("campaign_creator_id", linkData.id)
+        .order("stream_number", { ascending: true });
+      if (!proofsError) setStreamProofs(proofsData || []);
+
+      if (!silent) toast.success("Data refreshed");
+    } catch (error: any) {
       console.error("Error fetching campaign:", error);
-      toast.error("Failed to load campaign data");
+      toast.error(error.message || "Failed to load campaign");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [campaignId, user, creatorProfileId, navigate]);
 
-  const fetchStreams = async () => {
-    if (!user || !campaign) return;
+  useEffect(() => {
+    if (!creatorProfileId) return;
+    fetchData();
 
-    try {
-      const { data, error } = await supabase
-        .from("stream_updates")
-        .select("*")
-        .eq("campaign_id", id)
-        .eq("creator_id", user.id)
-        .order("stream_number", { ascending: true });
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        setStreams(data);
-      } else {
-        // Generate placeholder streams
-        const placeholders: Stream[] = [];
-        for (let i = 1; i <= (campaign.total_streams || 12); i++) {
-          const isCompleted = i <= (campaign.streams_completed || 0);
-          placeholders.push({
-            id: `temp-${i}`,
-            stream_number: i,
-            status: isCompleted ? "Verified" : i === (campaign.streams_completed || 0) + 1 ? "Upload Required" : "Pending",
-            stream_date: isCompleted ? new Date(Date.now() - (i * 86400000)).toLocaleDateString() : "Not scheduled",
-            duration: isCompleted ? `${45 + i} mins` : "--",
-            viewer_count: isCompleted ? Math.floor(Math.random() * 500) + 100 : undefined
-          });
+    // Real‑time subscriptions
+    const campaignChannel = supabase
+      .channel(`campaign-${campaignId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "campaigns", filter: `id=eq.${campaignId}` },
+        (payload) => {
+          setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev));
         }
-        setStreams(placeholders);
-      }
-    } catch (error) {
-      console.error("Error fetching streams:", error);
-    }
+      )
+      .subscribe();
+
+    const creatorChannel = supabase
+      .channel(`creator-link-${creatorProfileId}-${campaignId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "campaign_creators", filter: `creator_id=eq.${creatorProfileId}` },
+        (payload) => {
+          setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev));
+        }
+      )
+      .subscribe();
+
+    const proofsChannel = supabase
+      .channel(`proofs-${campaignId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "stream_proofs", filter: `campaign_creator_id=eq.${creatorLink?.id}` },
+        () => fetchData(true) // refresh proofs
+      )
+      .subscribe();
+
+    return () => {
+      campaignChannel.unsubscribe();
+      creatorChannel.unsubscribe();
+      proofsChannel.unsubscribe();
+    };
+  }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
+
+  const triggerFileInput = (streamNum: number) => {
+    setSelectedStreamNumber(streamNum);
+    setIsUploadModalOpen(true);
   };
 
-  const calculateEarned = (completed: number, pricePerStream: number = 15) => {
-    return completed * pricePerStream;
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await fetchCampaignData();
-    await fetchStreams();
-    setRefreshing(false);
-    toast.success("Campaign data updated");
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || selectedStreamNumber === null) return;
 
-    // Validate file type
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
-    
-    if (!isImage && !isVideo) {
-      toast.error("Please upload an image or video file");
+    // Validate file type and size
+    const allowedTypes = ["image/png", "image/jpeg"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Please upload PNG or JPG images only.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File size must be less than 5MB.");
       return;
     }
 
-    // Validate file size (max 50MB)
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error("File size must be less than 50MB");
-      return;
-    }
-
-    setUploadFile(file);
-    setUploadType(isImage ? 'screenshot' : 'video');
-
-    // Create preview URL
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-  };
-
-  const handleUploadSubmit = async () => {
-    if (!selectedStream || !user || !campaign || !uploadFile) return;
-
+    setUploading(true);
     try {
-      setUploadProgress(0);
-      
-      // Simulate upload progress
-      const interval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(interval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 200);
+      // Generate a unique file path
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${campaignId}_${selectedStreamNumber}_${Date.now()}.${fileExt}`;
+      const filePath = `stream-proofs/${creatorProfileId}/${fileName}`;
 
-      // Upload file to Supabase Storage
-      const fileExt = uploadFile.name.split('.').pop();
-      const fileName = `${user.id}/${campaign.id}/stream-${selectedStream.stream_number}-${Date.now()}.${fileExt}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("stream-proofs")
-        .upload(fileName, uploadFile, {
+      // Upload to Supabase Storage
+      const { data, error: uploadError } = await supabase.storage
+        .from("campaign-assets")
+        .upload(filePath, file, {
           cacheControl: "3600",
-          upsert: false
+          upsert: false,
         });
-
       if (uploadError) throw uploadError;
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from("stream-proofs")
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      clearInterval(interval);
-      setUploadProgress(100);
-
-      // Create stream update record
-      const streamData = {
-        campaign_id: campaign.id,
-        creator_id: user.id,
-        stream_number: selectedStream.stream_number,
-        status: "Under Review",
-        stream_date: new Date().toISOString(),
-        duration: "Stream recorded",
+      // Insert proof record
+      const { error: insertError } = await supabase.from("stream_proofs").insert({
+        campaign_creator_id: creatorLink?.id,
+        stream_number: selectedStreamNumber,
         proof_url: publicUrl,
-        proof_type: uploadType,
-        viewer_count: parseInt(viewerCount) || null,
-        notes: streamNotes,
-        submitted_at: new Date().toISOString()
-      };
-
-      const { error: insertError } = await supabase
-        .from("stream_updates")
-        .upsert(streamData);
-
+        status: "pending",
+        submitted_at: new Date().toISOString(),
+      });
       if (insertError) throw insertError;
 
-      // Update local state
-      setStreams(prev => prev.map(s => 
-        s.stream_number === selectedStream.stream_number 
-          ? { 
-              ...s, 
-              status: "Under Review",
-              proof_url: publicUrl,
-              viewer_count: parseInt(viewerCount) || undefined,
-              notes: streamNotes,
-              submitted_at: new Date().toISOString()
-            }
-          : s
-      ));
-
-      setTimeout(() => {
-        setIsUploadModalOpen(false);
-        setSelectedStream(null);
-        setUploadFile(null);
-        setPreviewUrl(null);
-        setViewerCount('');
-        setStreamNotes('');
-        setUploadProgress(0);
-        toast.success("Stream proof submitted! Verification typically takes 24 hours.");
-      }, 500);
-
-    } catch (error) {
+      toast.success(`Proof for Stream ${selectedStreamNumber} uploaded!`);
+      setIsUploadModalOpen(false);
+      fetchData(true); // refresh
+    } catch (error: any) {
       console.error("Upload error:", error);
-      toast.error("Failed to upload stream proof");
+      toast.error(error.message || "Failed to upload proof");
+    } finally {
+      setUploading(false);
+      setSelectedStreamNumber(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const handleViewProof = (proofUrl: string) => {
-    window.open(proofUrl, '_blank');
+  const handleViewProof = (proofUrl: string, streamNum: number) => {
+    setSelectedProof({ url: proofUrl, streamNum });
+    setIsProofModalOpen(true);
   };
 
-  const handleMessageBusiness = () => {
-    if (campaign?.business_id) {
-      navigate(`/messages/${campaign.business_id}`);
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'Verified': return 'bg-[#389C9A] text-white border-[#389C9A]';
-      case 'Under Review': return 'bg-[#FEDB71] text-[#1D1D1D] border-[#FEDB71]';
-      case 'Upload Required': return 'bg-red-500 text-white border-red-500';
-      case 'Rejected': return 'bg-gray-500 text-white border-gray-500';
-      default: return 'bg-gray-100 text-gray-400 border-gray-200';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch(status) {
-      case 'Verified': return <CheckCircle2 className="w-4 h-4" />;
-      case 'Under Review': return <Clock className="w-4 h-4" />;
-      case 'Upload Required': return <AlertTriangle className="w-4 h-4" />;
-      case 'Rejected': return <AlertCircle className="w-4 h-4" />;
-      default: return <Clock className="w-4 h-4" />;
-    }
-  };
-
-  if (loading) {
+  if (!creatorProfileId || loading) {
     return (
-      <div className="min-h-screen bg-white">
-        <AppHeader showBack title="CAMPAIGN DETAILS" backPath="/dashboard" />
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
+        <AppHeader showBack title="Live Campaign" backPath="/dashboard" />
         <div className="flex items-center justify-center h-[80vh]">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin" />
-            <p className="text-sm text-gray-500">Loading campaign...</p>
-          </div>
+          <Loader2 className="w-12 h-12 animate-spin text-[#389C9A]" />
         </div>
-        <BottomNav />
       </div>
     );
   }
 
-  if (!campaign) {
+  if (!campaign || !creatorLink) {
     return (
-      <div className="min-h-screen bg-white">
-        <AppHeader showBack title="CAMPAIGN DETAILS" backPath="/dashboard" />
-        <div className="flex flex-col items-center justify-center h-[80vh] px-8">
-          <AlertTriangle className="w-16 h-16 text-gray-300 mb-4" />
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
+        <AppHeader showBack title="Live Campaign" backPath="/dashboard" />
+        <div className="flex flex-col items-center justify-center h-[80vh] px-8 text-center">
+          <AlertTriangle className="w-16 h-16 text-gray-200 mb-4" />
           <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Campaign Not Found</h2>
-          <p className="text-gray-400 text-center mb-8">The campaign you're looking for doesn't exist.</p>
+          <p className="text-gray-400 mb-8">You are not part of this campaign.</p>
           <button
-            onClick={() => navigate("/dashboard")}
-            className="bg-[#1D1D1D] text-white px-8 py-4 text-sm font-black uppercase tracking-widest"
+            onClick={() => navigate("/campaigns")}
+            className="bg-[#1D1D1D] text-white px-8 py-4 text-sm font-black uppercase tracking-widest rounded-xl"
           >
-            Back to Dashboard
+            Back to Campaigns
           </button>
         </div>
-        <BottomNav />
       </div>
     );
   }
 
-  const completedStreams = streams.filter(s => s.status === "Verified").length;
-  const pendingStreams = streams.filter(s => s.status === "Under Review").length;
-  const requiredStreams = streams.filter(s => s.status === "Upload Required").length;
-  const progress = (completedStreams / campaign.total_streams) * 100;
-  const earnedSoFar = campaign.earned_so_far || calculateEarned(completedStreams, campaign.price_per_stream);
+  const businessName = business?.name || "Business";
+  const businessLogo = business?.logo_url || "https://via.placeholder.com/100?text=Logo";
+  const totalEarnings = creatorLink.total_earnings;
+  const completedStreams = creatorLink.streams_completed;
+  const totalStreams = campaign.streams_required;
+  const progress = (completedStreams / totalStreams) * 100;
+
+  // Build stream log
+  const streamLog = Array.from({ length: totalStreams }, (_, i) => {
+    const streamNum = i + 1;
+    const proof = streamProofs.find(p => p.stream_number === streamNum);
+    let status: "Verified" | "Under Review" | "Upload Required" | "Upcoming" = "Upcoming";
+    let proofUrl = null;
+    if (proof) {
+      if (proof.status === "verified") {
+        status = "Verified";
+        proofUrl = proof.proof_url;
+      } else if (proof.status === "pending") {
+        status = "Under Review";
+      }
+    } else if (streamNum <= completedStreams) {
+      status = "Verified"; // fallback if missing proof but stream count is high
+    } else if (streamNum === completedStreams + 1) {
+      status = "Upload Required";
+    }
+    return { num: streamNum, status, proofUrl, date: "TBC", duration: "TBC" };
+  });
+
+  const verifiedStreams = streamLog.filter(s => s.status === "Verified").length;
+  const underReview = streamLog.filter(s => s.status === "Under Review").length;
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[80px]">
-      <AppHeader showBack title="CAMPAIGN DETAILS" backPath="/dashboard" />
-      
-      <main className="flex-1 max-w-[480px] mx-auto w-full px-6 pt-6 pb-20">
-        {/* Header with Refresh */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 border-2 border-[#1D1D1D] rounded-xl overflow-hidden">
-              <ImageWithFallback 
-                src={campaign.business.logo_url} 
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div>
-              <h2 className="font-black text-lg uppercase tracking-tight">{campaign.business.business_name}</h2>
-              <p className="text-[8px] font-medium opacity-40 uppercase tracking-widest">{campaign.name}</p>
-            </div>
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
+      <AppHeader showBack title="Live Campaign" backPath="/dashboard" />
+
+      <main className="flex-1 px-6 py-8">
+        {/* Active Campaign Badge */}
+        <div className="flex justify-center mb-10">
+          <div className="bg-[#1D1D1D] text-white px-6 py-2 text-[10px] font-black uppercase tracking-[0.3em] italic">
+            ACTIVE CAMPAIGN
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-2 border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] transition-colors rounded-xl disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
         </div>
 
-        {/* Progress Card */}
-        <div className="bg-white border-2 border-[#1D1D1D] p-8 mb-8 rounded-xl">
+        {/* Brand Header */}
+        <div className="flex flex-col items-center text-center mb-12">
+          <div className="w-24 h-24 border-2 border-[#1D1D1D] bg-white p-2 mb-6 shadow-none">
+            <ImageWithFallback src={businessLogo} className="w-full h-full object-contain grayscale" />
+          </div>
+          <h2 className="text-4xl font-black uppercase tracking-tighter leading-none italic mb-2">
+            {businessName}
+          </h2>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 italic">
+            {campaign.name}
+          </p>
+        </div>
+
+        {/* Streams Progress Card */}
+        <div className="bg-white border-2 border-[#1D1D1D] p-10 mb-10">
           <div className="flex justify-between items-end mb-6">
             <div>
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] opacity-40 mb-2 italic">STREAMS PROGRESS</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-2 italic">STREAMS PROGRESS</p>
               <h3 className="text-4xl font-black italic tracking-tighter leading-none">
-                {completedStreams} / {campaign.total_streams}
+                {completedStreams} / {totalStreams}
               </h3>
             </div>
             <p className="text-2xl font-black italic text-[#389C9A] tracking-tighter">
-              £{earnedSoFar}
+              ₦{totalEarnings.toLocaleString()}
             </p>
           </div>
 
-          {/* Progress Bar */}
-          <div className="h-2.5 bg-[#1D1D1D]/5 w-full rounded-full overflow-hidden mb-3">
-            <motion.div 
-              initial={{ width: 0 }} 
-              animate={{ width: `${progress}%` }} 
-              transition={{ duration: 1, ease: "easeOut" }} 
-              className="h-full bg-[#389C9A] rounded-full"
+          <div className="h-2.5 bg-[#1D1D1D]/5 w-full rounded-none overflow-hidden mb-3">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 1, ease: "easeOut" }}
+              className="h-full bg-[#389C9A]"
             />
           </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-2 mt-6">
-            <div className="text-center">
-              <p className="text-lg font-black text-[#389C9A]">{completedStreams}</p>
-              <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Verified</p>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-black text-[#FEDB71]">{pendingStreams}</p>
-              <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Pending</p>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-black text-red-500">{requiredStreams}</p>
-              <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Required</p>
-            </div>
-          </div>
-
-          <p className="text-[8px] font-black uppercase tracking-[0.1em] opacity-30 text-center italic mt-4">
+          <p className="text-[9px] font-black uppercase tracking-[0.1em] opacity-30 text-center italic">
             {Math.round(progress)}% OF CAMPAIGN COMPLETED
           </p>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 gap-3 mb-8">
-          <button
-            onClick={handleMessageBusiness}
-            className="py-4 border-2 border-[#1D1D1D] rounded-xl text-[8px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#1D1D1D] hover:text-white transition-colors"
-          >
-            <MessageSquare className="w-4 h-4 text-[#389C9A]" /> Message
-          </button>
-          <button
-            onClick={() => navigate(`/campaign/${campaign.id}/analytics`)}
-            className="py-4 border-2 border-[#1D1D1D] rounded-xl text-[8px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#1D1D1D] hover:text-white transition-colors"
-          >
-            <TrendingUp className="w-4 h-4 text-[#FEDB71]" /> Analytics
-          </button>
+        {/* Info Grid */}
+        <div className="grid grid-cols-2 gap-[1px] bg-[#1D1D1D] border-2 border-[#1D1D1D] mb-12">
+          <div className="bg-white p-6">
+            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">TOTAL BUDGET</span>
+            <span className="text-sm font-black italic">₦{campaign.budget?.toLocaleString()}</span>
+          </div>
+          <div className="bg-white p-6">
+            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">PROMO CODE</span>
+            <span className="text-sm font-black italic tracking-tight">WELCOME20</span>
+          </div>
+          <div className="bg-white p-6">
+            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">START DATE</span>
+            <span className="text-sm font-black italic">{campaign.start_date ? new Date(campaign.start_date).toLocaleDateString() : "TBC"}</span>
+          </div>
+          <div className="bg-white p-6">
+            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">TYPE</span>
+            <span className="text-sm font-black italic">{campaign.type || "Banner Only"}</span>
+          </div>
         </div>
 
-        {/* Stream List */}
+        {/* Active Asset Section */}
         <div className="mb-14">
-          <div className="flex justify-between items-center mb-6">
-            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 italic">STREAM UPDATES</h4>
-            <span className="text-[8px] font-black opacity-40">
-              {completedStreams}/{campaign.total_streams} Complete
-            </span>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6 opacity-40 italic">ACTIVE ASSET</h4>
+          <div className="relative group">
+            <div className="aspect-video border-2 border-[#1D1D1D] bg-black overflow-hidden relative">
+              <ImageWithFallback
+                src={campaign.banner_url || "https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&h=400&fit=crop"}
+                className="w-full h-full object-cover opacity-60 grayscale"
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <button
+                  onClick={() => {
+                    if (campaign.banner_url) {
+                      const link = document.createElement("a");
+                      link.href = campaign.banner_url;
+                      link.download = "banner.png";
+                      link.click();
+                    } else {
+                      toast.error("No banner available");
+                    }
+                  }}
+                  className="bg-white p-5 border-2 border-[#1D1D1D] text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all italic"
+                >
+                  <Download className="w-4 h-4 text-[#FEDB71]" /> DOWNLOAD BANNER
+                </button>
+              </div>
+            </div>
           </div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 mt-5 leading-relaxed italic">
+            Note: This banner is dynamic. Our tracking system detects this specific graphic in your stream.
+          </p>
+        </div>
 
-          <div className="flex flex-col gap-4">
-            {streams.map((stream) => (
-              <motion.div 
-                key={stream.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white border-2 border-[#1D1D1D] p-6 rounded-xl flex flex-col gap-4"
-              >
+        {/* Stream Updates Section */}
+        <div className="mb-14">
+          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6 opacity-40 italic">STREAM UPDATES</h4>
+          <div className="flex flex-col gap-6">
+            {streamLog.map((stream) => (
+              <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-8 flex flex-col gap-8">
                 <div className="flex justify-between items-center">
-                  <span className="font-black text-base uppercase italic">Stream {stream.stream_number}</span>
-                  <div className={`px-3 py-1 text-[7px] font-black uppercase tracking-widest border rounded-full flex items-center gap-1 ${getStatusColor(stream.status)}`}>
-                    {getStatusIcon(stream.status)}
-                    {stream.status}
+                  <span className="font-black text-lg uppercase italic tracking-tighter leading-none">STREAM {stream.num}</span>
+                  <div
+                    className={`px-2.5 py-1 text-[7px] font-black uppercase tracking-widest border italic ${
+                      stream.status === "Verified"
+                        ? "bg-[#389C9A]/10 text-[#389C9A] border-[#389C9A]/20"
+                        : stream.status === "Under Review"
+                        ? "bg-[#FEDB71]/10 text-[#D2691E] border-[#FEDB71]/20"
+                        : stream.status === "Upload Required"
+                        ? "bg-[#F8F8F8] text-[#1D1D1D]/40 border-[#1D1D1D]/10"
+                        : "bg-white text-[#1D1D1D]/20 border-[#1D1D1D]/10"
+                    }`}
+                  >
+                    {stream.status === "Verified" && "✓ VERIFIED"}
+                    {stream.status === "Under Review" && "⏳ UNDER REVIEW"}
+                    {stream.status === "Upload Required" && "UPLOAD REQUIRED"}
+                    {stream.status === "Upcoming" && "UPCOMING"}
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-3 h-3" />
-                    <span>{stream.stream_date}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3 h-3" />
-                    <span>{stream.duration}</span>
-                  </div>
-                </div>
-
-                {stream.viewer_count && (
-                  <div className="flex items-center gap-2 text-[8px] font-black uppercase tracking-widest">
-                    <Users className="w-3 h-3 text-[#389C9A]" />
-                    <span>{stream.viewer_count} avg viewers</span>
-                  </div>
-                )}
-
-                {stream.proof_url && (
+                {stream.status === "Verified" && stream.proofUrl && (
                   <button
-                    onClick={() => handleViewProof(stream.proof_url!)}
-                    className="flex items-center gap-2 text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                    onClick={() => handleViewProof(stream.proofUrl, stream.num)}
+                    className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#389C9A]"
                   >
-                    <Eye className="w-3 h-3" /> View Proof
-                  </button>
-                )}
-
-                {stream.status === "Upload Required" && (
-                  <button 
-                    onClick={() => {
-                      setSelectedStream(stream);
-                      setIsUploadModalOpen(true);
-                    }}
-                    className="w-full bg-[#1D1D1D] text-white py-4 px-5 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-[#389C9A] transition-all rounded-xl"
-                  >
-                    <Upload className="w-4 h-4 text-[#FEDB71]" /> UPLOAD STREAM PROOF
+                    <Eye className="w-4 h-4" /> VIEW PROOF
                   </button>
                 )}
 
                 {stream.status === "Under Review" && (
-                  <div className="flex items-center gap-2 text-[8px] font-black uppercase tracking-widest text-[#FEDB71] bg-[#FEDB71]/10 p-3 rounded-lg">
+                  <div className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#D2691E]">
                     <Clock className="w-4 h-4" />
-                    <span>Under review - typically takes 24 hours</span>
+                    <span>PROOF SUBMITTED — AWAITING ADMIN VERIFICATION</span>
                   </div>
                 )}
 
-                {stream.status === "Verified" && (
-                  <div className="flex items-center gap-2 text-[8px] font-black uppercase tracking-widest text-[#389C9A] bg-[#389C9A]/10 p-3 rounded-lg">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Verified and approved! Payment processing</span>
+                {stream.status === "Upload Required" && (
+                  <div className="flex flex-col gap-5">
+                    <button
+                      onClick={() => triggerFileInput(stream.num)}
+                      className="w-full bg-[#1D1D1D] text-white py-5 px-6 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all italic border-2 border-[#1D1D1D]"
+                    >
+                      <Upload className="w-4 h-4 text-[#FEDB71]" /> UPLOAD STREAM PROOF
+                    </button>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/30 text-center italic">
+                      SCREENSHOT OF YOUR ANALYTICS SHOWING VIEWERS AND STREAM DURATION
+                    </p>
                   </div>
                 )}
-              </motion.div>
+              </div>
+            ))}
+
+            {/* Earnings Bar */}
+            <div className="mt-4 bg-[#1D1D1D] p-10 text-white border-b-4 border-[#389C9A]">
+              <div className="grid grid-cols-2 gap-10 mb-8">
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 italic">VERIFIED STREAMS</p>
+                  <p className="text-3xl font-black italic tracking-tighter">{verifiedStreams}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 italic text-[#FEDB71]">EARNINGS UNLOCKED</p>
+                  <p className="text-3xl font-black italic tracking-tighter">₦{totalEarnings.toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="h-[1px] bg-white/10 mb-8" />
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-center italic opacity-80">
+                {underReview > 0
+                  ? `${underReview} STREAMS AWAITING VERIFICATION`
+                  : `NEXT PAYOUT TRIGGERS AFTER STREAM ${Math.min(completedStreams + 1, totalStreams)} IS VERIFIED`}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Partnership Rules */}
+        <div className="mb-14 px-4">
+          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8 opacity-40 italic">PARTNERSHIP RULES</h4>
+          <div className="space-y-4">
+            {[
+              "Minimum stream duration: 45 minutes",
+              "Banner must be clearly visible throughout the stream",
+              "Promo code must be mentioned at least once per hour",
+              "No offensive content during the sponsored stream",
+            ].map((req, i) => (
+              <div key={i} className="flex gap-5 p-6 bg-white border border-[#1D1D1D]/10 items-start italic group hover:border-[#389C9A] transition-colors">
+                <CheckCircle2 className="w-4.5 h-4.5 text-[#389C9A] shrink-0 mt-0.5" />
+                <p className="text-[10px] font-black uppercase tracking-tight leading-relaxed opacity-60 group-hover:opacity-100">
+                  {req}
+                </p>
+              </div>
             ))}
           </div>
         </div>
 
-        {/* Requirements */}
-        {campaign.requirements && campaign.requirements.length > 0 && (
-          <div className="bg-[#F8F8F8] p-6 rounded-xl mb-8">
-            <h5 className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-3 flex items-center gap-2">
-              <HelpCircle className="w-3 h-3 text-[#389C9A]" /> Campaign Requirements
-            </h5>
-            <ul className="space-y-2">
-              {campaign.requirements.map((req, index) => (
-                <li key={index} className="flex items-start gap-2 text-[8px]">
-                  <Check className="w-3 h-3 text-[#389C9A] mt-0.5" />
-                  <span className="opacity-60">{req}</span>
-                </li>
-              ))}
-            </ul>
+        {/* Need Help? Section */}
+        <div className="px-4 mb-20">
+          <div className="bg-[#1D1D1D]/5 p-12 border-2 border-[#1D1D1D] text-center">
+            <h4 className="text-xl font-black uppercase italic mb-3 tracking-tighter leading-none">NEED HELP?</h4>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 mb-10 italic leading-relaxed">
+              Contact the brand representative directly for any questions regarding assets or technical issues.
+            </p>
+            <Link
+              to={`/messages/${campaign.id}?role=creator`}
+              className="w-full flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest border-2 border-[#1D1D1D] bg-white py-6 px-8 hover:bg-[#1D1D1D] hover:text-white transition-all italic active:scale-[0.98]"
+            >
+              <MessageSquare className="w-5 h-5 text-[#389C9A]" /> MESSAGE {businessName}
+            </Link>
           </div>
-        )}
-      </main>
+        </div>
 
-      <BottomNav />
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+      </main>
 
       {/* Upload Modal */}
       <AnimatePresence>
-        {isUploadModalOpen && selectedStream && (
-          <div className="fixed inset-0 z-[100] flex items-end justify-center px-4">
-            <motion.div 
-              onClick={() => setIsUploadModalOpen(false)} 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }} 
-              className="absolute inset-0 bg-[#1D1D1D]/80 backdrop-blur-sm" 
-            />
-            
-            <motion.div 
-              initial={{ y: "100%" }} 
-              animate={{ y: 0 }} 
-              exit={{ y: "100%" }} 
-              transition={{ type: "spring", damping: 25, stiffness: 200 }} 
-              className="relative w-full max-w-[480px] bg-white border-t-4 border-[#1D1D1D] max-h-[95vh] overflow-y-auto rounded-t-3xl"
-            >
-              <div className="w-12 h-1 bg-[#1D1D1D]/10 rounded-full mx-auto my-6" />
-              
-              <div className="px-6 pt-4 pb-8 flex flex-col gap-6">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-2xl font-black uppercase tracking-tighter italic leading-none mb-1">
-                      Submit Proof
-                    </h2>
-                    <p className="text-[8px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 italic">
-                      Stream {selectedStream.stream_number}
-                    </p>
-                  </div>
-                  <button 
-                    onClick={() => setIsUploadModalOpen(false)} 
-                    className="p-2 bg-white border border-[#1D1D1D]/10 rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* File Upload Area */}
-                <div className="relative">
-                  <input
-                    type="file"
-                    id="stream-proof"
-                    accept="image/*,video/*"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  
-                  {!previewUrl ? (
-                    <label
-                      htmlFor="stream-proof"
-                      className="block w-full aspect-video border-2 border-dashed border-[#1D1D1D] bg-[#F8F8F8] flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl p-4"
-                    >
-                      <Upload className="w-8 h-8 text-[#1D1D1D] group-hover:text-[#FEDB71]" />
-                      <p className="text-[9px] font-black uppercase tracking-[0.2em] italic text-center">
-                        Click to upload screenshot or video
-                      </p>
-                      <p className="text-[7px] font-medium opacity-40 uppercase tracking-widest">
-                        PNG, JPG or MP4 (max 50MB)
-                      </p>
-                    </label>
-                  ) : (
-                    <div className="relative aspect-video border-2 border-[#1D1D1D] rounded-xl overflow-hidden">
-                      {uploadType === 'screenshot' ? (
-                        <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <video src={previewUrl} controls className="w-full h-full object-cover" />
-                      )}
-                      <button
-                        onClick={() => {
-                          setUploadFile(null);
-                          setPreviewUrl(null);
-                        }}
-                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Viewer Count */}
-                <div>
-                  <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
-                    Average Viewer Count (optional)
-                  </label>
-                  <input
-                    type="number"
-                    value={viewerCount}
-                    onChange={(e) => setViewerCount(e.target.value)}
-                    placeholder="e.g. 250"
-                    className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
-                  />
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">
-                    Additional Notes (optional)
-                  </label>
-                  <textarea
-                    value={streamNotes}
-                    onChange={(e) => setStreamNotes(e.target.value)}
-                    placeholder="Any additional information about this stream..."
-                    rows={3}
-                    className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl resize-none"
-                  />
-                </div>
-
-                {/* Upload Progress */}
-                {uploadProgress > 0 && (
-                  <div className="space-y-2">
-                    <div className="h-1 bg-[#1D1D1D]/10 w-full rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-[#389C9A] transition-all duration-300 rounded-full"
-                        style={{ width: `${uploadProgress}%` }}
-                      />
-                    </div>
-                    <p className="text-[7px] font-black uppercase tracking-widest text-center opacity-40">
-                      Uploading... {uploadProgress}%
-                    </p>
-                  </div>
-                )}
-
-                {/* Submit Button */}
-                <button 
-                  onClick={handleUploadSubmit}
-                  disabled={!uploadFile || uploadProgress > 0}
-                  className="w-full bg-[#1D1D1D] text-white py-5 text-sm font-black uppercase italic tracking-tighter flex items-center justify-center gap-3 hover:bg-[#389C9A] transition-all disabled:opacity-50 disabled:cursor-not-allowed rounded-xl"
-                >
-                  {uploadProgress > 0 ? 'UPLOADING...' : 'SUBMIT STREAM PROOF'}
-                  {uploadProgress === 0 && <ArrowRight className="w-5 h-5 text-[#FEDB71]" />}
+        {isUploadModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white p-8 max-w-[90%] w-full max-w-[400px] text-center">
+              <div className="flex justify-between items-start mb-6">
+                <h3 className="text-2xl font-black uppercase tracking-tighter italic">
+                  Upload Proof – Stream {selectedStreamNumber}
+                </h3>
+                <button onClick={() => setIsUploadModalOpen(false)} className="p-1">
+                  <X className="w-5 h-5" />
                 </button>
-
-                {/* Requirements */}
-                <div className="bg-[#F8F8F8] p-4 rounded-lg">
-                  <h5 className="text-[7px] font-black uppercase tracking-widest opacity-40 mb-2 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" /> Verification Requirements
-                  </h5>
-                  <ul className="space-y-1 text-[7px] font-medium">
-                    <li>• Screenshot must show viewer count clearly</li>
-                    <li>• Stream duration must be visible</li>
-                    <li>• Campaign banner should be in frame</li>
-                    <li>• No offensive or inappropriate content</li>
-                  </ul>
+              </div>
+              {uploading ? (
+                <div className="flex flex-col items-center py-8">
+                  <Loader2 className="w-12 h-12 animate-spin text-[#389C9A] mb-4" />
+                  <p className="text-[10px] font-black uppercase tracking-widest italic">Uploading...</p>
                 </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-[#1D1D1D] p-8 cursor-pointer hover:bg-[#F8F8F8] transition-colors"
+                >
+                  <Upload className="w-8 h-8 mx-auto mb-4 text-[#389C9A]" />
+                  <p className="text-[10px] font-black uppercase tracking-widest italic">Tap to select screenshot</p>
+                  <p className="text-[8px] font-medium opacity-40 mt-2">PNG or JPG, max 5MB</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Proof Modal */}
+      <AnimatePresence>
+        {isProofModalOpen && selectedProof && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsProofModalOpen(false)}
+              className="fixed inset-0 bg-black/60 z-[60] backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 bg-white z-[70] rounded-t-[32px] max-w-[480px] mx-auto overflow-hidden border-t-4 border-[#1D1D1D]"
+            >
+              <div className="w-12 h-1 bg-[#1D1D1D]/10 mx-auto mt-4 rounded-full" />
+              <div className="p-8 text-center">
+                <h3 className="text-2xl font-black uppercase tracking-tighter italic mb-4">
+                  Stream Proof — Stream {selectedProof.streamNum}
+                </h3>
+                <div className="mb-8 border-2 border-[#1D1D1D] aspect-video bg-black overflow-hidden">
+                  <ImageWithFallback
+                    src={selectedProof.url}
+                    className="w-full h-full object-cover grayscale opacity-80"
+                  />
+                </div>
+                <button
+                  onClick={() => setIsProofModalOpen(false)}
+                  className="w-full py-6 bg-[#1D1D1D] text-white font-black uppercase tracking-widest italic active:scale-[0.98] transition-all"
+                >
+                  Close
+                </button>
               </div>
             </motion.div>
-          </div>
+          </>
         )}
       </AnimatePresence>
     </div>

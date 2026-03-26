@@ -14,7 +14,6 @@ import { BottomNav } from "../components/bottom-nav";
 import { AppHeader } from "../components/app-header";
 import { DeclineOfferModal } from "../components/decline-offer-modal";
 
-
 // ─────────────────────────────────────────────
 // INTERFACES
 // ─────────────────────────────────────────────
@@ -117,7 +116,7 @@ export function Dashboard() {
     return date.toLocaleDateString();
   };
 
-  // ─── FETCH FUNCTIONS (all accept cid so they never rely on stale state) ───
+  // ─── FETCH FUNCTIONS ──────────────────────────────────────────────────────
 
   const fetchDashboardStats = async (cid: string) => {
     try {
@@ -189,11 +188,7 @@ export function Dashboard() {
   };
 
   const refreshLiveCampaign = async (cid: string) => {
-    // FIX 2: Added "Active" (mixed case) to the status filter to handle any
-    // casing inconsistencies written to the database.
-    // FIX 4: Added .limit(1) before .maybeSingle() to prevent a PGRST116 error
-    // if multiple active rows exist for a creator.
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("campaign_creators")
       .select(`
         id, streams_completed, streams_target, total_earnings, status,
@@ -207,9 +202,20 @@ export function Dashboard() {
       .limit(1)
       .maybeSingle();
 
+    if (error) {
+      console.error("Error fetching live campaign:", error);
+      return;
+    }
+
     if (data && data.campaigns) {
       const camp = data.campaigns as any;
       const biz  = camp.businesses as any;
+
+      if (!camp.id) {
+        console.error("Live campaign has no campaign_id", camp);
+        return;
+      }
+
       const progress = data.streams_target > 0
         ? (data.streams_completed / data.streams_target) * 100 : 0;
 
@@ -264,7 +270,7 @@ export function Dashboard() {
     }
   };
 
-  // ─── BOOT: fetch profile then everything else ─────────────────────────────
+  // ─── BOOT ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!user) return;
@@ -291,7 +297,6 @@ export function Dashboard() {
 
       const cid = profile.id;
 
-      // Run all fetches in parallel now that we have the real cid
       await Promise.all([
         fetchDashboardStats(cid),
         fetchIncomingRequests(cid),
@@ -332,7 +337,7 @@ export function Dashboard() {
     try {
       const { error } = await supabase
         .from("campaign_creators")
-        .update({ status: "ACTIVE", accepted_at: new Date().toISOString() })
+        .update({ status: "active", accepted_at: new Date().toISOString() })
         .eq("id", req.id);
       if (error) throw error;
 
@@ -344,9 +349,6 @@ export function Dashboard() {
         activeCount:    prev.activeCount + 1,
       }));
 
-      // FIX 3: Immediately refresh the live campaign after accepting so the
-      // "Live Now" section populates without waiting for the realtime subscription,
-      // which has a race condition against the DB write propagating.
       await refreshLiveCampaign(creatorProfile.id);
 
     } catch (error) {
@@ -365,7 +367,7 @@ export function Dashboard() {
     try {
       const { error } = await supabase
         .from("campaign_creators")
-        .update({ status: "DECLINED" })
+        .update({ status: "declined" })
         .eq("id", selectedRequest.id);
 
       if (error) throw error;
@@ -420,320 +422,196 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+      <AppHeader showLogo subtitle="Creator Hub" />
       <Toaster position="top-center" richColors />
 
       <main className="max-w-[480px] mx-auto w-full">
-        <AppHeader showLogo subtitle="Creator Hub" userType="creator" showHome={false} />
-
-        {/* Welcome */}
-        <div className="px-6 pt-6 pb-2 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-black uppercase tracking-tighter italic">Welcome back,</h1>
-            <p className="text-sm text-gray-500">{creatorProfile?.full_name || "Creator"}!</p>
-          </div>
-          <button
-            onClick={refreshData}
-            disabled={refreshing}
-            className="p-3 border-2 border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white transition-colors disabled:opacity-50 rounded-xl"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-
-        {/* Pending Approval Banner */}
-        {showPendingBanner && (
-          <div className="mx-6 mt-2 mb-2 p-5 bg-[#FEDB71]/20 border-2 border-[#FEDB71] rounded-xl">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 bg-[#FEDB71] rounded-xl flex items-center justify-center shrink-0">
-                <Clock className="w-5 h-5 text-[#1D1D1D]" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-black uppercase tracking-tight mb-1">Application Under Review</h3>
-                <p className="text-xs text-gray-600 mb-2">
-                  Your creator application is being reviewed by our team. You'll be notified at{" "}
-                  <span className="font-bold underline">{creatorProfile?.email || "your email"}</span> once approved.
-                </p>
-                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                  <span className="w-2 h-2 bg-[#FEDB71] rounded-full animate-pulse" />
-                  <span>Estimated review time: 24-48 hours</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Quick Stats */}
-        <div className="px-6 pb-4 grid grid-cols-3 gap-2">
-          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
-            <Star className="w-4 h-4 text-[#FEDB71] mx-auto mb-1" />
-            <p className="text-sm font-black">{stats.averageRating || "—"}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Rating</p>
-          </div>
-          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
-            <Users className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
-            <p className="text-sm font-black">{stats.avgViewers.toLocaleString()}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Avg Viewers</p>
-          </div>
-          <div className="bg-[#F8F8F8] p-3 rounded-xl text-center">
-            <Award className="w-4 h-4 text-[#389C9A] mx-auto mb-1" />
-            <p className="text-sm font-black">{stats.completedCount}</p>
-            <p className="text-[7px] font-black uppercase tracking-widest opacity-40">Completed</p>
-          </div>
-        </div>
 
         {/* Earnings Card */}
         <div className="p-6" ref={earningsRef}>
-          <div className="bg-[#1D1D1D] p-8 text-white relative overflow-hidden border-2 border-[#1D1D1D] rounded-xl">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
-            <div className="flex items-center justify-between mb-2 relative z-10">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">Total Earnings</span>
-              <button className="p-1 hover:bg-white/10 rounded-lg transition-colors">
-                <ArrowUpRight className="w-4 h-4 text-white/40" />
-              </button>
+          <div className="bg-[#1D1D1D] p-8 text-white border-2 border-[#1D1D1D]">
+            <div className="flex justify-between mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+                Total Earnings
+              </span>
+              <ArrowUpRight className="w-4 h-4 text-white/40" />
             </div>
-            <h2 className="text-4xl font-black tracking-tighter leading-none mb-8 text-center italic relative z-10">
+
+            <h2 className="text-4xl font-black italic text-center mb-8">
               ₦{stats.totalEarned.toFixed(2)}
             </h2>
-            <div className="h-[1px] bg-white/10 mb-8 relative z-10" />
-            <div className="grid grid-cols-2 gap-8 mb-8 relative z-10">
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Pending</span>
-                <span className="text-xl font-black text-[#FEDB71]">₦{stats.pendingEarnings.toFixed(2)}</span>
-              </div>
-              <div className="flex flex-col gap-1 text-right">
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Paid Out</span>
-                <span className="text-xl font-black text-[#389C9A]">₦{stats.paidOut.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="space-y-2 relative z-10">
-              <div className="h-1 bg-white/10 w-full rounded-full overflow-hidden">
-                <div className="h-full bg-[#389C9A] rounded-full transition-all duration-1000"
-                  style={{ width: `${earningsRatio}%` }} />
-              </div>
-              <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">
-                {Math.round(earningsRatio)}% of earnings paid out
-              </p>
-            </div>
-          </div>
-        </div>
 
-        {/* Primary CTA */}
-        <div className="px-6 pb-6">
-          <Link to="/browse-businesses"
-            className="w-full bg-[#1D1D1D] text-white py-8 px-8 text-xl font-black uppercase italic tracking-tighter flex items-center justify-between hover:bg-[#389C9A] transition-all rounded-xl">
-            Browse Opportunities
-            <ArrowUpRight className="w-6 h-6 text-[#FEDB71]" />
-          </Link>
-        </div>
-
-        {/* Campaign Status Row */}
-        <div className="px-6 pb-12">
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { icon: Inbox,       count: stats.requestedCount, label: "Requests",  path: "/browse-businesses",       color: "text-[#389C9A]" },
-              { icon: Clock,       count: stats.activeCount,    label: "Active",    path: "/campaigns?status=active",  color: "text-[#FEDB71]" },
-              { icon: CheckCircle2,count: stats.completedCount, label: "Completed", path: "/campaigns?status=completed", color: "text-green-500" },
-            ].map((card, i) => (
-              <button key={i} onClick={() => navigate(card.path)}
-                className="bg-white border-2 border-[#1D1D1D] p-4 flex flex-col items-center gap-2 hover:bg-[#1D1D1D] hover:text-white transition-all cursor-pointer rounded-xl group">
-                <card.icon className={`w-5 h-5 ${card.color} group-hover:text-white`} />
-                <span className="text-xl font-black italic">{card.count}</span>
-                <span className="text-[7px] font-black uppercase tracking-widest text-center leading-tight opacity-40 group-hover:opacity-100">
-                  {card.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Incoming Requests */}
-        {incomingRequests.length > 0 && (
-          <div className="px-6 pb-12">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">Incoming Requests</h3>
-              <span className="bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black uppercase px-3 py-1 tracking-widest italic rounded-full">
-                {incomingRequests.length} new
-              </span>
-            </div>
-            <div className="flex flex-col gap-4">
-              <AnimatePresence mode="popLayout">
-                {(requestsExpanded ? incomingRequests : incomingRequests.slice(0, 2)).map(req => (
-                  <motion.div layout key={req.id}
-                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.3 }}
-                    className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col gap-6 rounded-xl hover:shadow-lg transition-shadow">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 border-2 border-[#1D1D1D]/10 rounded-xl overflow-hidden">
-                          <ImageWithFallback src={req.logo} className="w-full h-full object-cover grayscale" />
-                        </div>
-                        <div>
-                          <h4 className="font-black text-lg uppercase tracking-tight leading-none mb-1">{req.business}</h4>
-                          <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest">{req.type}</p>
-                        </div>
-                      </div>
-                      <p className="text-2xl font-black italic leading-none text-[#389C9A]">₦{req.price}</p>
-                    </div>
-                    <p className="text-[9px] font-medium text-[#1D1D1D]/60 italic">
-                      {req.name} — {req.streams} streams required
-                    </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button onClick={() => handleAcceptOffer(req)}
-                        className="bg-[#1D1D1D] text-white py-4 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#389C9A] transition-all rounded-xl">
-                        <Check className="w-4 h-4" /> Accept
-                      </button>
-                      <button onClick={() => handleDeclineClick(req)}
-                        className="border-2 py-4 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all rounded-xl">
-                        <X className="w-4 h-4" /> Reject
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              {incomingRequests.length > 2 && (
-                <button onClick={() => setRequestsExpanded(!requestsExpanded)}
-                  className="w-full py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 text-[#1D1D1D]/40 hover:text-[#1D1D1D] transition-colors">
-                  {requestsExpanded
-                    ? <><span>Show less</span> <ChevronUp className="w-4 h-4" /></>
-                    : <><span>Show {incomingRequests.length - 2} more requests</span> <ChevronDown className="w-4 h-4" /></>}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Live Now */}
-        <div className="px-6 pb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">Live Now</h3>
-            {liveCampaign && (
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase text-[#1D1D1D]">
-                <span className="w-1.5 h-1.5 bg-[#389C9A] rounded-full animate-pulse" />
-                Active
+            <div className="grid grid-cols-2 gap-6 mb-6">
+              <div>
+                <p className="text-[10px] text-white/40">Pending</p>
+                <p className="text-lg font-bold text-[#FEDB71]">
+                  ₦{stats.pendingEarnings.toFixed(2)}
+                </p>
               </div>
-            )}
-          </div>
-          {liveCampaign ? (
-            <div className="bg-[#1D1D1D] p-6 flex flex-col gap-6 relative overflow-hidden border-2 border-[#1D1D1D] rounded-xl">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
-              <div className="flex items-center gap-4 relative z-10">
-                <div className="w-14 h-14 border-2 border-white/20 rounded-xl overflow-hidden">
-                  <ImageWithFallback src={liveCampaign.logo} className="w-full h-full object-cover grayscale" />
-                </div>
-                <div className="flex-1 text-white">
-                  <h4 className="font-black text-lg uppercase tracking-tight leading-none mb-1">{liveCampaign.business}</h4>
-                  <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">{liveCampaign.name}</p>
-                </div>
-                <div className="text-right text-white">
-                  <p className="text-xl font-black italic leading-none mb-1 text-[#FEDB71]">₦{liveCampaign.sessionEarnings}</p>
-                  <p className="text-[9px] font-black text-[#389C9A] uppercase tracking-widest italic">{liveCampaign.streamTime}</p>
-                </div>
-              </div>
-              <div className="space-y-2 relative z-10">
-                <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-white/40">
-                  <span>Progress</span>
-                  <span>{liveCampaign.streams_completed}/{liveCampaign.streams_target}</span>
-                </div>
-                <div className="h-1.5 bg-white/10 w-full rounded-full overflow-hidden">
-                  <div className="h-full bg-[#389C9A] rounded-full" style={{ width: `${liveCampaign.progress}%` }} />
-                </div>
-                <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">
-                  {liveCampaign.remainingMins} mins to next payment
+              <div className="text-right">
+                <p className="text-[10px] text-white/40">Paid</p>
+                <p className="text-lg font-bold text-[#389C9A]">
+                  ₦{stats.paidOut.toFixed(2)}
                 </p>
               </div>
             </div>
+
+            <div className="h-1 bg-white/10">
+              <div
+                className="h-full bg-[#389C9A]"
+                style={{ width: `${earningsRatio}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="px-6 pb-6">
+          <Link
+            to="/browse-businesses"
+            className="w-full bg-[#1D1D1D] text-white py-6 px-6 flex justify-between"
+          >
+            Browse Opportunities <ArrowUpRight />
+          </Link>
+        </div>
+
+        {/* Status Cards */}
+        <div className="px-6 pb-8 grid grid-cols-3 gap-2">
+          {[
+            { label: "Requests", value: stats.requestedCount },
+            { label: "Active", value: stats.activeCount },
+            { label: "Completed", value: stats.completedCount },
+          ].map((s, i) => (
+            <div key={i} className="border p-4 text-center">
+              <p className="text-xl font-black">{s.value}</p>
+              <p className="text-[9px] uppercase opacity-40">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Incoming Requests */}
+        <div className="px-6 pb-10">
+          <h3 className="text-xs mb-4">Incoming Requests</h3>
+
+          {(requestsExpanded ? incomingRequests : incomingRequests.slice(0, 2)).map(req => (
+            <div key={req.id} className="border p-4 mb-3">
+              <div className="flex justify-between">
+                <div>
+                  <p className="font-bold">{req.business}</p>
+                  <p className="text-xs opacity-50">{req.name}</p>
+                </div>
+                <p className="font-bold text-[#389C9A]">₦{req.price}</p>
+              </div>
+
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => handleAcceptOffer(req)}
+                  className="flex-1 bg-black text-white py-2"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => handleDeclineClick(req)}
+                  className="flex-1 border py-2"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Live Now (File 2 UI) ── */}
+        <div className="px-6 pb-12">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">Live Now</h3>
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase text-[#1D1D1D]">
+              <span className="w-1.5 h-1.5 bg-[#389C9A] rounded-full animate-pulse" />
+              Active
+            </div>
+          </div>
+
+          {liveCampaign ? (
+            <div className="bg-[#1D1D1D] p-6 flex flex-col gap-6 relative overflow-hidden border-2 border-[#1D1D1D]">
+              {/* Business + earnings row */}
+              <div className="flex items-center gap-6 relative z-10">
+                <ImageWithFallback
+                  src={liveCampaign.logo}
+                  alt={liveCampaign.business}
+                  className="w-12 h-12 border border-white/20 grayscale object-cover"
+                />
+                <div className="flex-1 text-white">
+                  <h4 className="font-black text-lg uppercase tracking-tight leading-none mb-1">
+                    {liveCampaign.business}
+                  </h4>
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
+                    {liveCampaign.name}
+                  </p>
+                </div>
+                <div className="text-right text-white">
+                  <p className="text-xl font-black italic leading-none mb-1 text-[#FEDB71]">
+                    ₦{liveCampaign.sessionEarnings.toFixed(2)}
+                  </p>
+                  <p className="text-[10px] font-black text-[#389C9A] uppercase tracking-widest italic">
+                    {liveCampaign.streamTime}
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="space-y-2 relative z-10">
+                <div className="h-1 bg-white/10 w-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#389C9A]"
+                    style={{ width: `${liveCampaign.progress}%` }}
+                  />
+                </div>
+                <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest">
+                  {liveCampaign.remainingMins} mins to qualify
+                </p>
+              </div>
+
+              {/* Update link */}
+              <div className="pt-4 border-t border-white/10 flex justify-end relative z-10">
+                <Link
+                  to={`/campaign/live-update/${liveCampaign.campaign_id}`}
+                  className="text-[10px] font-black uppercase tracking-widest text-white flex items-center gap-2 group hover:gap-3 transition-all italic"
+                >
+                  Update Campaign{" "}
+                  <ArrowUpRight className="w-3.5 h-3.5 group-hover:scale-110 transition-all text-[#FEDB71]" />
+                </Link>
+              </div>
+            </div>
           ) : (
-            <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl">
-              <Monitor className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p className="text-xs text-[#1D1D1D]/40 mb-4">No active campaign right now</p>
-              <Link to="/browse-businesses" className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] underline italic">
-                Find Opportunities →
+            <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center">
+              <p className="text-xs text-[#1D1D1D]/40 mb-4">
+                No active campaign running right now. Start a stream with an active campaign banner to see it here.
+              </p>
+              <Link
+                to="/campaigns"
+                className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D] underline italic"
+              >
+                View Active Campaigns →
               </Link>
             </div>
           )}
         </div>
 
-        {/* My Applications */}
-        {applications.length > 0 && (
-          <div className="px-6 pb-12">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">My Applications</h3>
-              <span className="text-[9px] font-black uppercase text-[#1D1D1D]/40">{applications.length} total</span>
-            </div>
-            <div className="flex flex-col gap-3">
-              {(applicationsExpanded ? applications : applications.slice(0, 3)).map(app => (
-                <div key={app.id} onClick={() => navigate(`/campaign/${app.campaign_id}/summary`)}
-                  className="bg-white border-2 border-[#1D1D1D] p-4 flex items-center justify-between hover:shadow-lg transition-all cursor-pointer rounded-xl">
-                  <div className="flex items-center gap-3">
-                    {/* FIX 1: corrected `clasName` typo → `className` so the logo wrapper renders correctly */}
-                    <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden">
-                      <ImageWithFallback src={app.logo} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-xs uppercase tracking-tight mb-1">{app.business}</h4>
-                      <span className="text-[7px] font-black uppercase tracking-widest bg-[#1D1D1D]/5 px-2 py-0.5 rounded-full">
-                        {app.type}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {app.amount != null && (
-                      <p className="text-sm font-black italic mb-1 text-[#389C9A]">₦{app.amount}</p>
-                    )}
-                    <div className={`text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                      app.status.toLowerCase() === "pending"       ? "bg-[#FEDB71] text-[#1D1D1D]" :
-                      app.status.toLowerCase() === "not_started"   ? "bg-[#FEDB71] text-[#1D1D1D]" :
-                      app.status.toLowerCase() === "active"        ? "bg-[#389C9A] text-white" :
-                      app.status.toLowerCase() === "completed"     ? "bg-green-500 text-white" :
-                      app.status.toLowerCase() === "declined"      ? "bg-red-100 text-red-600" :
-                      "bg-gray-200 text-gray-500"
-                    }`}>
-                      {app.status}
-                    </div>
-                    <p className="text-[6px] font-medium text-[#1D1D1D]/20 uppercase tracking-widest mt-1">
-                      {app.appliedAt}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {applications.length > 3 && (
-                <button onClick={() => setApplicationsExpanded(!applicationsExpanded)}
-                  className="w-full py-3 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 text-[#1D1D1D]/30 hover:text-[#1D1D1D] transition-colors">
-                  {applicationsExpanded
-                    ? <><span>Show less</span> <ChevronUp className="w-3 h-3" /></>
-                    : <><span>Show {applications.length - 3} more</span> <ChevronDown className="w-3 h-3" /></>}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Applications */}
+        <div className="px-6 pb-20">
+          <h3 className="text-xs mb-4">My Applications</h3>
 
-        {/* Quick Actions */}
-        <div className="px-6 pb-24">
-          <div className="grid grid-cols-3 gap-3">
-            <button onClick={() => navigate("/campaigns")}
-              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl">
-              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
-                <List className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
+          {(applicationsExpanded ? applications : applications.slice(0, 3)).map(app => (
+            <div key={app.id} className="border p-3 mb-2 flex justify-between">
+              <div>
+                <p className="font-bold text-xs">{app.business}</p>
+                <p className="text-[10px] opacity-40">{app.status}</p>
               </div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">My Campaigns</span>
-            </button>
-            <button onClick={() => earningsRef.current?.scrollIntoView({ behavior: "smooth" })}
-              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl">
-              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
-                <Wallet className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">Earnings</span>
-            </button>
-            <button onClick={() => navigate(`/profile/${creatorProfile?.id || "me"}`)}
-              className="bg-white border-2 border-[#1D1D1D] p-6 flex flex-col items-center gap-3 hover:bg-[#1D1D1D] hover:text-white transition-all group rounded-xl">
-              <div className="p-3 bg-[#F8F8F8] rounded-xl group-hover:bg-white/20">
-                <User className="w-5 h-5 text-[#389C9A] group-hover:text-white" />
-              </div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-center leading-tight">My Profile</span>
-            </button>
-          </div>
+              {app.amount && <p className="text-[#389C9A]">₦{app.amount}</p>}
+            </div>
+          ))}
         </div>
+
       </main>
 
       <BottomNav />
@@ -742,14 +620,14 @@ export function Dashboard() {
         isOpen={isDeclineModalOpen}
         onClose={() => setIsDeclineModalOpen(false)}
         onConfirm={handleConfirmDecline}
-        offerDetails={selectedRequest ? {
-          partnerName:  selectedRequest.business,
-          offerName:    selectedRequest.name,
-          campaignType: selectedRequest.type,
-          amount:       `₦${selectedRequest.price}`,
-          logo:         selectedRequest.logo,
-          partnerType:  "Business",
-        } : { partnerName: "", offerName: "", campaignType: "", amount: "", logo: "", partnerType: "" }}
+        offerDetails={{
+          partnerName: selectedRequest?.business || "",
+          offerName: selectedRequest?.name || "",
+          campaignType: selectedRequest?.type || "",
+          amount: `₦${selectedRequest?.price || 0}`,
+          logo: selectedRequest?.logo || "",
+          partnerType: "Business"
+        }}
       />
     </div>
   );

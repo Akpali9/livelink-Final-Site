@@ -4,16 +4,16 @@ import {
   Bell, MessageSquare, CheckCircle2, AlertTriangle, DollarSign,
   Briefcase, Zap, Trash2, CheckCheck, Loader2, Info, Users,
   Megaphone, ShieldCheck, XCircle, Mail, CreditCard, RefreshCw, Target,
+  ArrowLeft
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
-import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 
 // ─────────────────────────────────────────────
-// TYPES
+// TYPES (unchanged)
 // ─────────────────────────────────────────────
 
 type NotificationType =
@@ -39,7 +39,7 @@ interface Notification {
 }
 
 // ─────────────────────────────────────────────
-// HELPERS
+// HELPERS (unchanged)
 // ─────────────────────────────────────────────
 
 function getGrouping(dateString: string): Grouping {
@@ -51,8 +51,12 @@ function getGrouping(dateString: string): Grouping {
 }
 
 const GROUP_LABELS: Record<Grouping, string> = {
-  TODAY: "Today", YESTERDAY: "Yesterday", THIS_WEEK: "This Week", EARLIER: "Earlier",
+  TODAY: "Today",
+  YESTERDAY: "Yesterday",
+  THIS_WEEK: "This Week",
+  EARLIER: "Earlier",
 };
+
 const GROUP_ORDER: Grouping[] = ["TODAY", "YESTERDAY", "THIS_WEEK", "EARLIER"];
 
 function formatTime(dateString: string): string {
@@ -67,7 +71,7 @@ function formatTime(dateString: string): string {
 }
 
 // ─────────────────────────────────────────────
-// ICON MAP
+// ICON MAP (unchanged)
 // ─────────────────────────────────────────────
 
 const ICON_MAP: Record<string, { icon: React.ReactNode; bg: string }> = {
@@ -94,32 +98,10 @@ const ICON_MAP: Record<string, { icon: React.ReactNode; bg: string }> = {
   announcement:      { icon: <Bell          className="w-5 h-5 text-gray-500" />,   bg: "bg-gray-100"   },
   system:            { icon: <Info          className="w-5 h-5 text-gray-400" />,   bg: "bg-gray-100"   },
 };
+
 function getIconData(type: string) {
   return ICON_MAP[type] || { icon: <Bell className="w-5 h-5 text-gray-400" />, bg: "bg-gray-100" };
 }
-
-// ─────────────────────────────────────────────
-// TABS CONFIG
-// ─────────────────────────────────────────────
-
-const BIZ_TABS = [
-  { value: "all",         label: "All",          icon: Bell,          types: [] },
-  { value: "campaign",    label: "Campaigns",    icon: Megaphone,     types: ["campaign", "campaign_approved", "campaign_rejected", "campaign_invite"] },
-  { value: "offer",       label: "Offers",       icon: Zap,           types: ["offer", "new_offer", "action"] },
-  { value: "application", label: "Applications", icon: Users,         types: ["new_application"] },
-  { value: "message",     label: "Messages",     icon: MessageSquare, types: ["message"] },
-  { value: "payment",     label: "Payments",     icon: DollarSign,    types: ["payment", "earnings", "payout"] },
-  { value: "system",      label: "System",       icon: Info,          types: ["system", "announcement", "welcome"] },
-];
-
-const CREATOR_TABS = [
-  { value: "all",     label: "All",      icon: Bell,          types: [] },
-  { value: "offer",   label: "Offers",   icon: Zap,           types: ["offer", "new_offer", "action"] },
-  { value: "message", label: "Messages", icon: MessageSquare, types: ["message"] },
-  { value: "payment", label: "Payments", icon: DollarSign,    types: ["payment", "earnings", "payout"] },
-  { value: "campaign",label: "Campaigns",icon: Briefcase,     types: ["campaign", "campaign_approved", "campaign_rejected", "campaign_invite"] },
-  { value: "system",  label: "System",   icon: Info,          types: ["system", "announcement", "welcome"] },
-];
 
 // ─────────────────────────────────────────────
 // COMPONENT
@@ -133,12 +115,10 @@ export function Notifications() {
   const role     = searchParams.get("role") || "creator";
   const isBiz    = role === "business";
   const backPath = isBiz ? "/business/dashboard" : "/dashboard";
-  const tabs     = isBiz ? BIZ_TABS : CREATOR_TABS;
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading]             = useState(true);
   const [refreshing, setRefreshing]       = useState(false);
-  const [selectedType, setSelectedType]   = useState("all");
   const [isDeleting, setIsDeleting]       = useState<string | null>(null);
 
   // ─── FETCH ──────────────────────────────────────────────────────────────
@@ -239,19 +219,6 @@ export function Notifications() {
     });
   };
 
-  const deleteOne = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsDeleting(id);
-    try {
-      await supabase.from("notifications").delete().eq("id", id);
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-    } catch {
-      toast.error("Failed to delete");
-    } finally {
-      setIsDeleting(null);
-    }
-  };
-
   // ─── NAVIGATION ON CLICK ─────────────────────────────────────────────────
 
   const handleClick = (n: Notification) => {
@@ -283,16 +250,8 @@ export function Notifications() {
     }
   };
 
-  // ─── FILTER + GROUP ──────────────────────────────────────────────────────
-
-  const filtered = selectedType === "all"
-    ? notifications
-    : notifications.filter((n) => {
-        const tab = tabs.find((t) => t.value === selectedType);
-        return tab?.types.includes(n.type);
-      });
-
-  const grouped = filtered.reduce((acc, n) => {
+  // ─── GROUP NOTIFICATIONS (no filters, show all) ─────────────────────────
+  const grouped = notifications.reduce((acc, n) => {
     if (!acc[n.grouping]) acc[n.grouping] = [];
     acc[n.grouping].push(n);
     return acc;
@@ -305,7 +264,6 @@ export function Notifications() {
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] max-w-[480px] mx-auto w-full">
-        <AppHeader showBack title="Notifications" backPath={backPath} userType={isBiz ? "business" : "creator"} />
         <div className="flex items-center justify-center h-[80vh]">
           <Loader2 className="w-10 h-10 animate-spin text-[#389C9A]" />
         </div>
@@ -318,178 +276,137 @@ export function Notifications() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-20 max-w-[480px] mx-auto w-full">
-      <AppHeader showBack title="Notifications" backPath={backPath} userType={isBiz ? "business" : "creator"} />
+      {/* Header (matching target UI) */}
+      <header className="px-5 pt-10 pb-4 border-b border-[#1D1D1D]/10 sticky top-0 bg-white z-50">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate(backPath)}
+              className="p-1 -ml-1 active:bg-[#1D1D1D]/10 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-xl font-black uppercase tracking-tighter italic">Notifications</h1>
+          </div>
+          {notifications.length > 0 && (
+            <button
+              onClick={markAllRead}
+              className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] italic hover:opacity-70 active:scale-95 transition-all"
+            >
+              Mark All Read
+            </button>
+          )}
+        </div>
+      </header>
 
       <main className="flex-1">
-
-        {/* ── Sticky top bar ── */}
-        <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 border-b border-[#1D1D1D]/10 px-5 py-3">
-
-          {/* Status row */}
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[8px] font-black uppercase tracking-widest text-green-600">Live</span>
-              <span className="text-[8px] text-[#1D1D1D]/30">
-                · {unreadCount > 0 ? `${unreadCount} unread` : "All caught up"}
+        {notifications.length > 0 ? (
+          <>
+            {/* Unread & Clear All row */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-[#1D1D1D]/5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">
+                {unreadCount} unread
               </span>
-            </div>
-
-            <div className="flex items-center gap-3">
               <button
-                onClick={() => fetchNotifications(true)}
-                disabled={refreshing}
-                className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 hover:text-[#1D1D1D] transition-colors disabled:opacity-30"
+                onClick={clearAll}
+                className="text-[10px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 hover:text-[#1D1D1D] transition-colors italic"
               >
-                <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
-                {refreshing ? "Updating…" : "Refresh"}
+                Clear All
               </button>
-
-              {unreadCount > 0 && (
-                <button
-                  onClick={markAllRead}
-                  className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                >
-                  <CheckCheck className="w-3 h-3" /> Mark all read
-                </button>
-              )}
-
-              {notifications.length > 0 && (
-                <button
-                  onClick={clearAll}
-                  className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-red-400 hover:underline"
-                >
-                  <Trash2 className="w-3 h-3" /> Clear
-                </button>
-              )}
             </div>
-          </div>
 
-          {/* Filter tabs */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-            {tabs.map((tab) => {
-              const Icon  = tab.icon;
-              const count = tab.value === "all"
-                ? notifications.length
-                : notifications.filter((n) => tab.types.includes(n.type)).length;
-              const active = selectedType === tab.value;
+            {/* Notification Groups */}
+            <div className="flex flex-col">
+              {GROUP_ORDER.map((group) => {
+                const groupItems = grouped[group];
+                if (!groupItems || groupItems.length === 0) return null;
 
-              return (
-                <button
-                  key={tab.value}
-                  onClick={() => setSelectedType(tab.value)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 whitespace-nowrap transition-all text-[8px] font-black uppercase tracking-widest shrink-0 ${
-                    active
-                      ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
-                      : "bg-white text-[#1D1D1D]/60 border-[#E8E8E8] hover:border-[#1D1D1D]/30"
-                  }`}
-                >
-                  <Icon className="w-3 h-3" />
-                  {tab.label}
-                  {count > 0 && (
-                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded-full ${
-                      active ? "bg-white text-[#1D1D1D]" : "bg-[#1D1D1D] text-white"
-                    }`}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                return (
+                  <div key={group} className="flex flex-col">
+                    <div className="px-6 py-6 pb-2">
+                      <h3 className="text-[9px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/30 italic">
+                        {GROUP_LABELS[group]}
+                      </h3>
+                    </div>
+                    <div className="flex flex-col">
+                      <AnimatePresence mode="popLayout">
+                        {groupItems.map((n) => {
+                          const { icon, bg } = getIconData(n.type);
+                          return (
+                            <motion.div
+                              layout
+                              key={n.id}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 20 }}
+                              onClick={() => handleClick(n)}
+                              className={`flex w-full items-start gap-4 px-6 py-6 cursor-pointer relative transition-colors active:bg-[#F8F8F8] border-b border-[#1D1D1D]/5 ${
+                                !n.is_read
+                                  ? "bg-[#389C9A]/5 border-l-4 border-l-[#389C9A]"
+                                  : "bg-white border-l-4 border-l-transparent"
+                              }`}
+                            >
+                              {/* Icon */}
+                              <div className={`flex-shrink-0 w-12 h-12 rounded-full border border-[#1D1D1D]/10 flex items-center justify-center bg-white ${bg}`}>
+                                {icon}
+                              </div>
 
-        {/* ── Notification list ── */}
-        {filtered.length > 0 ? (
-          <div>
-            {GROUP_ORDER.map((group) => {
-              const items = grouped[group];
-              if (!items?.length) return null;
-              return (
-                <div key={group}>
-                  <div className="px-5 py-2.5 bg-[#F8F8F8] border-b border-[#1D1D1D]/5">
-                    <p className="text-[8px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/30">
-                      {GROUP_LABELS[group]}
-                    </p>
+                              {/* Content */}
+                              <div className="flex-1 min-w-0 pr-4">
+                                <div className="flex justify-between items-start mb-1">
+                                  <h4 className={`text-sm font-black uppercase tracking-tight leading-none truncate ${
+                                    !n.is_read ? 'text-[#1D1D1D]' : 'text-[#1D1D1D]/70'
+                                  }`}>
+                                    {n.title}
+                                  </h4>
+                                  <span className="text-[9px] font-bold uppercase tracking-widest text-[#1D1D1D]/30 whitespace-nowrap ml-2 italic">
+                                    {formatTime(n.created_at)}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] font-medium text-[#1D1D1D]/50 truncate italic">
+                                  {n.message}
+                                </p>
+                                {n.data?.amount && (
+                                  <span className="inline-flex items-center gap-1 mt-1.5 text-[8px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                                    <DollarSign className="w-2.5 h-2.5" />
+                                    {n.data.amount.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Unread dot */}
+                              {!n.is_read && (
+                                <div className="absolute right-6 top-1/2 -translate-y-1/2">
+                                  <div className="w-2 h-2 bg-[#389C9A] rounded-full" />
+                                </div>
+                              )}
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    </div>
                   </div>
-
-                  <AnimatePresence mode="popLayout">
-                    {items.map((n) => {
-                      const { icon, bg } = getIconData(n.type);
-                      return (
-                        <motion.div
-                          layout key={n.id}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          onClick={() => handleClick(n)}
-                          className={`group relative flex items-start gap-3 px-5 py-4 cursor-pointer transition-colors border-b border-[#1D1D1D]/5 hover:bg-[#F8F8F8] ${
-                            !n.is_read ? "bg-[#389C9A]/5" : "bg-white"
-                          }`}
-                        >
-                          <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${bg}`}>
-                            {icon}
-                          </div>
-
-                          <div className="flex-1 min-w-0 pr-8">
-                            <div className="flex justify-between items-start mb-0.5">
-                              <h4 className={`text-[11px] font-black uppercase tracking-wide leading-tight ${
-                                !n.is_read ? "text-[#1D1D1D]" : "text-[#1D1D1D]/60"
-                              }`}>
-                                {n.title}
-                              </h4>
-                              <span className="text-[8px] text-[#1D1D1D]/30 whitespace-nowrap ml-2 shrink-0">
-                                {formatTime(n.created_at)}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-[#1D1D1D]/50 line-clamp-2 leading-relaxed">
-                              {n.message}
-                            </p>
-                            {n.data?.amount && (
-                              <span className="inline-flex items-center gap-1 mt-1.5 text-[8px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                                <DollarSign className="w-2.5 h-2.5" />
-                                {n.data.amount.toLocaleString()}
-                              </span>
-                            )}
-                          </div>
-
-                          {!n.is_read && (
-                            <div className="absolute right-10 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#389C9A] rounded-full shrink-0" />
-                          )}
-
-                          <button
-                            onClick={(e) => deleteOne(n.id, e)}
-                            disabled={isDeleting === n.id}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-red-50 rounded-lg transition-all disabled:opacity-30"
-                          >
-                            {isDeleting === n.id
-                              ? <Loader2 className="w-3 h-3 animate-spin text-red-400" />
-                              : <Trash2 className="w-3 h-3 text-red-400" />}
-                          </button>
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center pt-24 px-10 text-center">
-            <div className="w-20 h-20 bg-[#F8F8F8] rounded-2xl flex items-center justify-center mb-6 border-2 border-[#1D1D1D]/10">
-              <Bell className="w-9 h-9 text-[#1D1D1D]/20" />
+                );
+              })}
             </div>
-            <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">All caught up!</h2>
-            <p className="text-[11px] text-[#1D1D1D]/40 max-w-[220px] mb-8">
-              {selectedType !== "all"
-                ? `No ${selectedType} notifications yet.`
-                : "Notifications will appear here when you receive them."}
+          </>
+        ) : (
+          /* Empty State (matching target UI) */
+          <div className="flex flex-col items-center justify-center pt-32 px-10 text-center">
+            <div className="w-24 h-24 rounded-none border-2 border-[#1D1D1D]/10 flex items-center justify-center mb-8">
+              <Bell className="w-10 h-10 text-[#1D1D1D]/10 stroke-[1.5]" />
+            </div>
+            <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-4 leading-none">
+              You're all caught up
+            </h2>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 leading-relaxed italic max-w-[280px]">
+              When businesses send offers, payments process or campaigns update you will see it here.
             </p>
             <button
               onClick={() => navigate(backPath)}
-              className="px-6 py-3 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
+              className="mt-12 px-8 py-4 border-2 border-[#1D1D1D] text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all italic active:scale-95"
             >
-              Back to Dashboard
+              Return to Dashboard
             </button>
           </div>
         )}

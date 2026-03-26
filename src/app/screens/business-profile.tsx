@@ -21,13 +21,16 @@ import {
   Twitter,
   Linkedin,
   Youtube,
-  Facebook
+  Facebook,
+  Upload,
+  Camera
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
+import { ImageWithFallback } from "../components/ImageWithFallback";
 
 interface BusinessProfileData {
   businessName: string;
@@ -38,10 +41,7 @@ interface BusinessProfileData {
   industry: string;
   country: string;
   bio: string;
-  registrationNumber?: string;
-  taxId?: string;
-  yearFounded?: string;
-  employeeCount?: string;
+  logoUrl?: string;
 }
 
 export function BusinessProfile() {
@@ -57,18 +57,17 @@ export function BusinessProfile() {
     industry: "E-commerce",
     country: "",
     bio: "",
-    registrationNumber: "",
-    taxId: "",
-    yearFounded: "",
-    employeeCount: ""
+    logoUrl: ""
   });
   
-  const [socialLinks, setSocialLinks] = useState<{platform: string, url: string}[]>([]);
+  const [socialLinks, setSocialLinks] = useState<{id?: string, platform: string, url: string}[]>([]);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [verificationStatus, setVerificationStatus] = useState<'verified' | 'pending' | 'unverified'>('unverified');
+  const [profileCompletion, setProfileCompletion] = useState(0);
 
   const industryOptions = [
     "E-commerce",
@@ -82,6 +81,10 @@ export function BusinessProfile() {
     "Finance",
     "Travel",
     "Entertainment",
+    "Automotive",
+    "Real Estate",
+    "Sports & Fitness",
+    "Non-profit",
     "Other"
   ];
 
@@ -117,19 +120,16 @@ export function BusinessProfile() {
         if (data) {
           setFormData({
             businessName: data.business_name || "",
-            yourName: data.contact_name || "",
-            contactNumber: data.contact_phone || "",
-            email: data.contact_email || "",
+            yourName: data.full_name || "",
+            contactNumber: data.phone_number || "",
+            email: data.email || "",
             website: data.website || "",
             industry: data.industry || "E-commerce",
             country: data.country || "",
             bio: data.description || "",
-            registrationNumber: data.registration_number || "",
-            taxId: data.tax_id || "",
-            yearFounded: data.year_founded || "",
-            employeeCount: data.employee_count || ""
+            logoUrl: data.logo_url || ""
           });
-          setSocialLinks(data.social_links || []);
+          setSocialLinks(data.socials || []);
           setVerificationStatus(data.verification_status || 'unverified');
         }
       } catch (error) {
@@ -141,6 +141,20 @@ export function BusinessProfile() {
 
     fetchProfile();
   }, [user]);
+
+  // Calculate profile completion percentage
+  useEffect(() => {
+    const requiredFields = ['businessName', 'yourName', 'contactNumber', 'email', 'country', 'industry'];
+    let completed = 0;
+    requiredFields.forEach(field => {
+      if (formData[field as keyof BusinessProfileData]) completed++;
+    });
+    if (formData.bio && formData.bio.length > 20) completed++;
+    if (formData.logoUrl) completed++;
+    if (socialLinks.length > 0) completed++;
+    const total = requiredFields.length + 3;
+    setProfileCompletion(Math.round((completed / total) * 100));
+  }, [formData, socialLinks]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -174,28 +188,24 @@ export function BusinessProfile() {
     setSaving(true);
 
     try {
+      const upsertData = {
+        user_id: user.id,
+        business_name: formData.businessName,
+        full_name: formData.yourName,
+        phone_number: formData.contactNumber,
+        email: formData.email,
+        website: formData.website || null,
+        industry: formData.industry,
+        country: formData.country,
+        description: formData.bio || null,
+        socials: socialLinks,
+        logo_url: formData.logoUrl || null,
+        updated_at: new Date().toISOString(),
+      };
+
       const { data, error } = await supabase
         .from("businesses")
-        .upsert(
-          {
-            user_id: user.id,
-            business_name: formData.businessName,
-            contact_name: formData.yourName,
-            contact_phone: formData.contactNumber,
-            contact_email: formData.email,
-            website: formData.website || null,
-            industry: formData.industry,
-            country: formData.country,
-            description: formData.bio || null,
-            registration_number: formData.registrationNumber || null,
-            tax_id: formData.taxId || null,
-            year_founded: formData.yearFounded || null,
-            employee_count: formData.employeeCount || null,
-            social_links: socialLinks,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" }
-        )
+        .upsert(upsertData, { onConflict: "user_id" })
         .select()
         .single();
 
@@ -211,6 +221,64 @@ export function BusinessProfile() {
       toast.error(error.message || "Failed to save profile");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Logo upload handler
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    
+    if (!file.type.startsWith('image/')) {
+      toast.error("Please upload an image file (PNG, JPG)");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("File size must be less than 2MB");
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const { data: existing, error: fetchError } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+      let businessId = existing?.id;
+
+      if (!businessId) {
+        const { data: newBusiness, error: createError } = await supabase
+          .from("businesses")
+          .insert({ user_id: user.id })
+          .select("id")
+          .single();
+        if (createError) throw createError;
+        businessId = newBusiness.id;
+      }
+
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${businessId}/${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from("business-logos")
+        .upload(fileName, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("business-logos")
+        .getPublicUrl(fileName);
+
+      setFormData(prev => ({ ...prev, logoUrl: publicUrl }));
+      toast.success("Logo uploaded successfully");
+
+    } catch (error: any) {
+      console.error("Logo upload error:", error);
+      toast.error(error.message || "Failed to upload logo");
+    } finally {
+      setUploadingLogo(false);
+      e.target.value = "";
     }
   };
 
@@ -259,9 +327,28 @@ export function BusinessProfile() {
         </h1>
       </div>
 
+      {/* Profile Completion Banner */}
+      <div className="mx-8 mt-6 p-4 bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 rounded-xl">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-[9px] font-black uppercase tracking-widest italic">Profile Completion</span>
+          <span className="text-[9px] font-black text-[#389C9A]">{profileCompletion}%</span>
+        </div>
+        <div className="h-2 bg-[#1D1D1D]/10 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-[#389C9A] transition-all duration-500"
+            style={{ width: `${profileCompletion}%` }}
+          />
+        </div>
+        {profileCompletion < 100 && (
+          <p className="text-[8px] text-[#1D1D1D]/50 mt-2 italic">
+            Complete your profile to increase trust and get better campaign opportunities.
+          </p>
+        )}
+      </div>
+
       {/* Verification Status Banner */}
       {verificationStatus !== 'verified' && (
-        <div className="mx-8 mt-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-start gap-3">
+        <div className="mx-8 mt-4 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-black text-amber-700 mb-1">Verification Required</p>
@@ -279,6 +366,53 @@ export function BusinessProfile() {
             Profile Details
           </h2>
           <div className="flex flex-col gap-4">
+            {/* Logo Upload */}
+            <div className="flex flex-col gap-1.5 items-center">
+              <div className="relative">
+                {formData.logoUrl ? (
+                  <div className="relative w-28 h-28 rounded-full overflow-hidden border-4 border-[#389C9A] shadow-lg">
+                    <ImageWithFallback 
+                      src={formData.logoUrl} 
+                      alt="Business Logo" 
+                      className="w-full h-full object-cover"
+                    />
+                    <label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer rounded-full">
+                      <Camera className="w-6 h-6 text-white" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                        disabled={uploadingLogo}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <label className="w-28 h-28 rounded-full border-4 border-dashed border-[#1D1D1D]/20 bg-[#F8F8F8] flex flex-col items-center justify-center cursor-pointer hover:border-[#389C9A] transition-all">
+                    <Upload className="w-8 h-8 text-[#389C9A] mb-1" />
+                    <span className="text-[8px] font-black uppercase tracking-widest text-center px-2">
+                      Upload Logo
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                      disabled={uploadingLogo}
+                    />
+                  </label>
+                )}
+                {uploadingLogo && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-full">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#389C9A]" />
+                  </div>
+                )}
+              </div>
+              <p className="text-[7px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">
+                PNG or JPG · Max 2MB
+              </p>
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
                 Your Full Name <span className="text-red-500">*</span>
@@ -426,66 +560,6 @@ export function BusinessProfile() {
               </div>
             </div>
 
-            {/* Additional Business Info */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
-                  Registration Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.registrationNumber}
-                  onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
-                  placeholder="12345678"
-                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
-                  Tax ID / VAT
-                </label>
-                <input
-                  type="text"
-                  value={formData.taxId}
-                  onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
-                  placeholder="GB123456789"
-                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
-                  Year Founded
-                </label>
-                <input
-                  type="text"
-                  value={formData.yearFounded}
-                  onChange={(e) => setFormData({ ...formData, yearFounded: e.target.value })}
-                  placeholder="2020"
-                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
-                  Employees
-                </label>
-                <select
-                  value={formData.employeeCount}
-                  onChange={(e) => setFormData({ ...formData, employeeCount: e.target.value })}
-                  className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold uppercase tracking-tight outline-none focus:border-[#1D1D1D] rounded-xl transition-all"
-                >
-                  <option value="">Select</option>
-                  <option value="1-10">1-10</option>
-                  <option value="11-50">11-50</option>
-                  <option value="51-200">51-200</option>
-                  <option value="201-500">201-500</option>
-                  <option value="500+">500+</option>
-                </select>
-              </div>
-            </div>
-
             {/* Social Media Links */}
             <div className="flex flex-col gap-3 mt-4">
               <label className="text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/60 italic">
@@ -588,7 +662,10 @@ export function BusinessProfile() {
             </div>
             
             {verificationStatus !== 'verified' && (
-              <button className="w-full py-3 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors">
+              <button 
+                onClick={() => toast.info("Document upload feature coming soon")}
+                className="w-full py-3 bg-[#1D1D1D] text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
+              >
                 Upload Documents
               </button>
             )}
@@ -600,7 +677,14 @@ export function BusinessProfile() {
           <h2 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6 text-[#1D1D1D]/40 italic">
             Danger Zone
           </h2>
-          <button className="flex items-center gap-2 text-red-500 hover:text-red-700 transition-colors italic p-4 border-2 border-red-200 rounded-xl w-full justify-center">
+          <button 
+            onClick={() => {
+              if (window.confirm("Are you sure you want to deactivate your account? This action can be reversed.")) {
+                toast.info("Account deactivation request sent to support.");
+              }
+            }}
+            className="flex items-center gap-2 text-red-500 hover:text-red-700 transition-colors italic p-4 border-2 border-red-200 rounded-xl w-full justify-center"
+          >
             <Trash2 className="w-4 h-4" />
             <span className="text-[10px] font-black uppercase tracking-[0.2em]">
               Deactivate Account

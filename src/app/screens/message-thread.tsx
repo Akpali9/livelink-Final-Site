@@ -47,7 +47,7 @@ interface ConversationDetails {
 
 export function MessageThread() {
   const navigate = useNavigate();
-  const { id } = useParams();
+  const { id: paramId, campaignId, creatorId } = useParams();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const role = searchParams.get("role") || "creator";
@@ -60,22 +60,89 @@ export function MessageThread() {
   const [sending, setSending] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Resolve conversation ID from either direct param or campaign/creator params
   useEffect(() => {
-    if (!id || !user) return;
+    if (!user) return;
+
+    const resolveConversation = async () => {
+      // If we have a direct conversation ID, use it
+      if (paramId) {
+        setConversationId(paramId);
+        return;
+      }
+
+      // Otherwise, try to find or create conversation from campaignId and creatorId
+      if (campaignId && creatorId) {
+        try {
+          // Determine which participant is the business (current user) and which is the creator
+          const businessId = user.id;
+          const creatorIdStr = creatorId;
+
+          // Check if a conversation already exists
+          const { data: existing, error: findError } = await supabase
+            .from("conversations")
+            .select("id")
+            .or(`and(participant1_id.eq.${businessId},participant2_id.eq.${creatorIdStr}),and(participant1_id.eq.${creatorIdStr},participant2_id.eq.${businessId})`)
+            .eq("campaign_id", campaignId)
+            .maybeSingle();
+
+          if (findError) throw findError;
+
+          if (existing) {
+            setConversationId(existing.id);
+            return;
+          }
+
+          // Create a new conversation
+          const { data: newConv, error: createError } = await supabase
+            .from("conversations")
+            .insert({
+              participant1_id: businessId,
+              participant1_type: "business",
+              participant2_id: creatorIdStr,
+              participant2_type: "creator",
+              campaign_id: campaignId,
+              last_message_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+
+          if (createError) throw createError;
+
+          setConversationId(newConv.id);
+        } catch (err) {
+          console.error("Error resolving conversation:", err);
+          toast.error("Failed to start conversation");
+          setLoading(false);
+        }
+      } else {
+        // No valid params – show error
+        toast.error("Invalid conversation link");
+        setLoading(false);
+      }
+    };
+
+    resolveConversation();
+  }, [paramId, campaignId, creatorId, user]);
+
+  // Once we have a conversation ID, load the conversation details and messages
+  useEffect(() => {
+    if (!conversationId || !user) return;
 
     const fetchData = async () => {
       setLoading(true);
-      
       try {
         // Fetch conversation details
         const { data: convData, error: convError } = await supabase
           .from("conversations")
           .select("*")
-          .eq("id", id)
+          .eq("id", conversationId)
           .single();
 
         if (convError) throw convError;
@@ -92,7 +159,6 @@ export function MessageThread() {
 
           // Fetch participant details
           const table = otherParticipantType === "creator" ? "creator_profiles" : "businesses";
-          
           const { data: participantData } = await supabase
             .from(table)
             .select("*")
@@ -126,7 +192,7 @@ export function MessageThread() {
         const { data: messagesData, error: messagesError } = await supabase
           .from("messages")
           .select("*")
-          .eq("conversation_id", id)
+          .eq("conversation_id", conversationId)
           .order("created_at", { ascending: true });
 
         if (messagesError) throw messagesError;
@@ -143,7 +209,7 @@ export function MessageThread() {
         await supabase
           .from("messages")
           .update({ is_read: true, read_at: new Date().toISOString() })
-          .eq("conversation_id", id)
+          .eq("conversation_id", conversationId)
           .eq("sender_id", convData?.participant1_id === user.id ? convData.participant2_id : convData.participant1_id)
           .eq("is_read", false);
 
@@ -159,14 +225,14 @@ export function MessageThread() {
 
     // Realtime subscription for new messages
     const channel = supabase
-      .channel("messages-" + id)
+      .channel("messages-" + conversationId)
       .on(
         "postgres_changes",
         { 
           event: "INSERT", 
           schema: "public", 
           table: "messages",
-          filter: `conversation_id=eq.${id}`
+          filter: `conversation_id=eq.${conversationId}`
         },
         async (payload) => {
           const newMessage = {
@@ -190,7 +256,7 @@ export function MessageThread() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id, user]);
+  }, [conversationId, user]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ 
@@ -200,7 +266,7 @@ export function MessageThread() {
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!inputText.trim() || !id || !user || sending) return;
+    if (!inputText.trim() || !conversationId || !user || sending) return;
 
     setSending(true);
 
@@ -210,7 +276,7 @@ export function MessageThread() {
       if (attachments.length > 0) {
         for (const file of attachments) {
           const fileExt = file.name.split('.').pop();
-          const fileName = `${id}/${Date.now()}-${file.name}`;
+          const fileName = `${conversationId}/${Date.now()}-${file.name}`;
           
           const { error: uploadError } = await supabase.storage
             .from("message-attachments")
@@ -234,7 +300,7 @@ export function MessageThread() {
       const { error: insertError } = await supabase
         .from("messages")
         .insert({
-          conversation_id: id,
+          conversation_id: conversationId,
           sender_id: user.id,
           content: inputText.trim(),
           is_read: false,
@@ -248,7 +314,7 @@ export function MessageThread() {
       await supabase
         .from("conversations")
         .update({ last_message_at: new Date().toISOString() })
-        .eq("id", id);
+        .eq("id", conversationId);
 
       setInputText("");
       setAttachments([]);

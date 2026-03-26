@@ -6,14 +6,15 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router";
 import { BottomNav } from "../components/bottom-nav";
+import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 import { ImageWithFallback } from "../components/ImageWithFallback";
 
-// ─────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+// Types (unchanged)
+// ──────────────────────────────────────────────────────────────
 
 type PartnershipType = "Pay + Code" | "Paying" | "Code Only" | "Open to Offers";
 
@@ -53,9 +54,9 @@ interface CampaignWithBusiness {
   partnership_type: PartnershipType;
 }
 
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+// Helpers (unchanged)
+// ──────────────────────────────────────────────────────────────
 
 function getBadgeColor(type: PartnershipType) {
   switch (type) {
@@ -88,9 +89,17 @@ function getPayRate(campaign: CampaignWithBusiness): string {
   return amount ? `₦${Number(amount).toLocaleString()}` : "Negotiable";
 }
 
-// ─────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────
+// Compute niche match percentage (simple heuristic)
+function getNicheMatchPercentage(creatorNiches: string[], campaignNiches: string[]): number {
+  if (!campaignNiches.length) return 100; // no specific niche required
+  if (!creatorNiches.length) return 0;
+  const common = campaignNiches.filter(niche => creatorNiches.some(cn => cn.toLowerCase() === niche.toLowerCase()));
+  return Math.round((common.length / campaignNiches.length) * 100);
+}
+
+// ──────────────────────────────────────────────────────────────
+// Main Component
+// ──────────────────────────────────────────────────────────────
 
 export function BrowseBusinesses() {
   const navigate = useNavigate();
@@ -99,7 +108,7 @@ export function BrowseBusinesses() {
   const [campaigns, setCampaigns]               = useState<CampaignWithBusiness[]>([]);
   const [loading, setLoading]                   = useState(true);
   const [refreshing, setRefreshing]             = useState(false);
-  const [applying, setApplying]                 = useState(false);   // ← tracks apply in-flight
+  const [applying, setApplying]                 = useState(false);
   const [searchQuery, setSearchQuery]           = useState("");
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignWithBusiness | null>(null);
   const [savedIds, setSavedIds]                 = useState<Set<string>>(new Set());
@@ -113,8 +122,7 @@ export function BrowseBusinesses() {
     type: "All",
   });
 
-  // ─── FETCH CAMPAIGNS ───────────────────────────────────────────────────
-
+  // ─── Fetch campaigns (unchanged) ───────────────────────────────────
   const fetchCampaigns = useCallback(async (silent = false) => {
     if (!user) return;
     if (silent) setRefreshing(true);
@@ -167,8 +175,7 @@ export function BrowseBusinesses() {
     }
   }, [user]);
 
-  // ─── FETCH CREATOR PROFILE ─────────────────────────────────────────────
-
+  // ─── Fetch creator profile (unchanged) ────────────────────────────
   useEffect(() => {
     if (!user) return;
     const fetch = async () => {
@@ -185,8 +192,7 @@ export function BrowseBusinesses() {
     fetch();
   }, [user]);
 
-  // ─── FETCH APPLICATIONS ────────────────────────────────────────────────
-
+  // ─── Fetch applications & saved (unchanged) ───────────────────────
   useEffect(() => {
     if (!creatorId || !user) return;
 
@@ -215,8 +221,7 @@ export function BrowseBusinesses() {
     return () => { sub.unsubscribe(); };
   }, [creatorId, user]);
 
-  // ─── REALTIME CAMPAIGNS ────────────────────────────────────────────────
-
+  // ─── Realtime subscriptions (unchanged) ──────────────────────────
   useEffect(() => {
     if (!user) return;
 
@@ -247,8 +252,7 @@ export function BrowseBusinesses() {
     };
   }, [user, fetchCampaigns]);
 
-  // ─── SAVE TOGGLE ───────────────────────────────────────────────────────
-
+  // ─── Save toggle (unchanged) ─────────────────────────────────────
   const toggleSave = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user) { toast.error("Please login to save campaigns"); navigate("/login/portal"); return; }
@@ -261,11 +265,7 @@ export function BrowseBusinesses() {
     localStorage.setItem(`saved_campaigns_${user.id}`, JSON.stringify([...next]));
   };
 
-  // ─── APPLY ─────────────────────────────────────────────────────────────
-  //
-  // FIX: accept MouseEvent so callers can call e.stopPropagation() before
-  // invoking this, preventing the card's onClick from firing on the same tap.
-
+  // ─── Apply logic (unchanged) ─────────────────────────────────────
   const applyToCampaign = async (campaign: CampaignWithBusiness, e?: React.MouseEvent) => {
     e?.stopPropagation();
 
@@ -329,7 +329,6 @@ export function BrowseBusinesses() {
 
       // Optimistic UI update
       setAppliedIds((prev) => new Set(prev).add(campaign.id));
-      // Also update selectedCampaign reference so the modal button reflects the new state immediately
       setSelectedCampaign((prev) => prev?.id === campaign.id ? { ...prev } : prev);
 
       toast.success("Application submitted! 🎉", {
@@ -351,7 +350,7 @@ export function BrowseBusinesses() {
         }).catch(console.error);
       }
 
-      // Close modal after a short delay so the user sees the "Applied" state
+      // Close modal after a short delay
       setTimeout(() => setSelectedCampaign(null), 1200);
     } catch (error: any) {
       console.error("Error applying:", error);
@@ -361,8 +360,7 @@ export function BrowseBusinesses() {
     }
   };
 
-  // ─── FILTERS ───────────────────────────────────────────────────────────
-
+  // ─── Filters & derived data (unchanged) ──────────────────────────
   const industries = ["All", ...Array.from(new Set(
     campaigns.map((c) => c.business?.industry).filter((i): i is string => !!i)
   ))];
@@ -387,8 +385,17 @@ export function BrowseBusinesses() {
     return (creatorProfile.avg_viewers || creatorProfile.avg_concurrent || 0) >= minFollowers;
   };
 
-  // ─── LOADING ───────────────────────────────────────────────────────────
+  // Compute niche match for selected campaign
+  const nicheMatchPercentage = useMemo(() => {
+    if (!selectedCampaign || !creatorProfile) return 0;
+    const creatorNiches = [
+      creatorProfile.niche,
+      ...(creatorProfile.categories || [])
+    ].filter(Boolean);
+    return getNicheMatchPercentage(creatorNiches, selectedCampaign.target_niches || []);
+  }, [selectedCampaign, creatorProfile]);
 
+  // ─── Loading state (unchanged) ───────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -400,79 +407,52 @@ export function BrowseBusinesses() {
     );
   }
 
-  // ─── RENDER ────────────────────────────────────────────────────────────
-
+  // ─── Render ──────────────────────────────────────────────────────
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+      <AppHeader showBack title="Browse Brands" />
 
-      {/* ── Sticky Header ── */}
-      <div className="px-5 py-5 sticky top-[84px] bg-white/95 backdrop-blur-md z-20 border-b border-[#1D1D1D]/10">
-
-        {/* Realtime bar */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-[8px] font-black uppercase tracking-widest text-green-600">Live</span>
-            <span className="text-[8px] text-[#1D1D1D]/30">
-              · {campaigns.length} active · {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          </div>
-          <button
-            onClick={() => fetchCampaigns(true)}
-            disabled={refreshing}
-            className="flex items-center gap-1 px-2 py-1 hover:bg-[#F8F8F8] rounded-lg transition-colors disabled:opacity-50"
-          >
-            {refreshing
-              ? <Loader2 className="w-3 h-3 animate-spin" />
-              : <RefreshCw className="w-3 h-3" />}
-            <span className="text-[8px] font-black uppercase tracking-widest">
-              {refreshing ? "Updating..." : "Refresh"}
-            </span>
-          </button>
-        </div>
-
-        {/* Search + Filter toggle */}
+      {/* Sticky Search & Filter Section */}
+      <div className="px-5 py-6 sticky top-[84px] bg-[#FDFDFD]/95 backdrop-blur-md z-20">
         <div className="flex gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-20 pointer-events-none" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 opacity-20" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search brands or campaigns..."
-              className="w-full bg-white border-2 border-[#1D1D1D] py-3.5 pl-11 pr-4 text-[11px] font-bold uppercase tracking-wide outline-none focus:bg-[#1D1D1D] focus:text-white transition-all placeholder:opacity-30 rounded-xl"
+              placeholder="SEARCH BRANDS..."
+              className="w-full bg-white border-2 border-[#1D1D1D] py-4 pl-12 pr-4 text-[11px] font-black uppercase tracking-[0.2em] outline-none focus:bg-[#1D1D1D] focus:text-white transition-all italic"
             />
           </div>
           <button
             onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className={`border-2 border-[#1D1D1D] px-4 rounded-xl transition-all ${
-              isFilterOpen ? "bg-[#1D1D1D] text-white" : "bg-white"
-            }`}
+            className={`border-2 border-[#1D1D1D] px-5 transition-all active:scale-95 ${isFilterOpen ? 'bg-[#1D1D1D] text-white' : 'bg-white text-[#1D1D1D]'}`}
           >
-            <Filter className={`w-5 h-5 ${isFilterOpen ? "text-white" : "text-[#389C9A]"}`} />
+            <Filter className={`w-5 h-5 ${isFilterOpen ? 'text-white' : 'text-[#389C9A]'}`} />
           </button>
         </div>
 
-        {/* Filter panel */}
+        {/* Filter Dropdown */}
         <AnimatePresence>
           {isFilterOpen && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="pt-5 pb-2 flex flex-col gap-5">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest mb-2 opacity-40">Industry</p>
+              <div className="pt-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <span className="text-[8px] font-black uppercase tracking-widest opacity-40 italic">Industry</span>
                   <div className="flex flex-wrap gap-2">
-                    {industries.map((ind) => (
+                    {industries.map(ind => (
                       <button
                         key={ind}
-                        onClick={() => setActiveFilters((p) => ({ ...p, industry: ind }))}
-                        className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest border-2 rounded-full transition-all ${
+                        onClick={() => setActiveFilters(prev => ({ ...prev, industry: ind }))}
+                        className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 border-2 transition-all rounded-none ${
                           activeFilters.industry === ind
-                            ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
-                            : "border-[#E8E8E8] hover:border-[#1D1D1D]"
+                            ? 'bg-[#1D1D1D] text-white border-[#1D1D1D]'
+                            : 'bg-white text-[#1D1D1D] border-[#1D1D1D]/10'
                         }`}
                       >
                         {ind}
@@ -480,17 +460,17 @@ export function BrowseBusinesses() {
                     ))}
                   </div>
                 </div>
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest mb-2 opacity-40">Partnership Type</p>
+                <div className="flex flex-col gap-2">
+                  <span className="text-[8px] font-black uppercase tracking-widest opacity-40 italic">Type</span>
                   <div className="flex flex-wrap gap-2">
-                    {types.map((t) => (
+                    {types.map(t => (
                       <button
                         key={t}
-                        onClick={() => setActiveFilters((p) => ({ ...p, type: t }))}
-                        className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest border-2 rounded-full transition-all ${
+                        onClick={() => setActiveFilters(prev => ({ ...prev, type: t }))}
+                        className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 border-2 transition-all rounded-none ${
                           activeFilters.type === t
-                            ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
-                            : "border-[#E8E8E8] hover:border-[#1D1D1D]"
+                            ? 'bg-[#1D1D1D] text-white border-[#1D1D1D]'
+                            : 'bg-white text-[#1D1D1D] border-[#1D1D1D]/10'
                         }`}
                       >
                         {t}
@@ -498,20 +478,14 @@ export function BrowseBusinesses() {
                     ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => setActiveFilters({ industry: "All", type: "All" })}
-                  className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline text-left"
-                >
-                  Clear filters
-                </button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* ── Feed ── */}
-      <main className="flex-1 px-5 pt-5 flex flex-col gap-5">
+      {/* Campaign Feed */}
+      <main className="flex-1 px-5 pt-4 flex flex-col gap-6">
         {filteredData.length === 0 ? (
           <div className="text-center py-16">
             <Briefcase className="w-12 h-12 mx-auto mb-4 opacity-20" />
@@ -534,21 +508,14 @@ export function BrowseBusinesses() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   onClick={() => setSelectedCampaign(campaign)}
-                  className="relative bg-white border-2 border-[#1D1D1D] rounded-2xl overflow-visible cursor-pointer group hover:shadow-lg active:scale-[0.99] transition-all"
+                  className="relative bg-white border-2 border-[#1D1D1D] rounded-xl overflow-visible transition-all cursor-pointer group active:scale-[0.99]"
                 >
-                  {/* NEW badge */}
-                  {isNew && (
-                    <div className="absolute -top-3 left-6 px-3 py-1 bg-green-500 text-white rounded-full text-[8px] font-black uppercase tracking-widest z-10">
-                      New
-                    </div>
-                  )}
-
-                  {/* Partnership type badge */}
-                  <div className={`absolute -top-3 right-6 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest z-10 ${getBadgeColor(campaign.partnership_type)}`}>
+                  {/* Partnership Badge Overlap */}
+                  <div className={`absolute -top-3 right-6 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest z-10 ${getBadgeColor(campaign.partnership_type)}`}>
                     {campaign.partnership_type}
                   </div>
 
-                  {/* Save button */}
+                  {/* Save Button (floating top-left) */}
                   <button
                     onClick={(e) => toggleSave(campaign.id, e)}
                     className="absolute top-4 left-4 z-10 p-2 bg-white border-2 border-[#1D1D1D] rounded-full hover:bg-[#1D1D1D] hover:text-white transition-all"
@@ -558,7 +525,7 @@ export function BrowseBusinesses() {
                       : <Bookmark className="w-4 h-4" />}
                   </button>
 
-                  {/* Verified badge */}
+                  {/* Verified Badge (optional) */}
                   {campaign.business?.verification_status === "verified" && (
                     <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-[#389C9A]/10 px-2 py-1 rounded-full">
                       <CheckCircle2 className="w-3 h-3 text-[#389C9A]" />
@@ -566,9 +533,9 @@ export function BrowseBusinesses() {
                     </div>
                   )}
 
-                  {/* Card body */}
-                  <div className="p-5 flex gap-4 pt-12">
-                    <div className="w-20 h-24 shrink-0 bg-[#F8F8F8] border-2 border-[#1D1D1D]/10 rounded-xl overflow-hidden">
+                  {/* Card Body */}
+                  <div className="p-6 flex gap-5 pt-12">
+                    <div className="relative w-24 h-32 shrink-0 bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-lg overflow-hidden">
                       <ImageWithFallback
                         src={campaign.business?.logo_url || ""}
                         alt={campaign.business?.business_name || campaign.name}
@@ -576,82 +543,52 @@ export function BrowseBusinesses() {
                       />
                     </div>
 
-                    <div className="flex-1 flex flex-col gap-2 pt-1">
-                      <h3 className="text-lg font-black uppercase tracking-tight leading-tight">
+                    <div className="flex-1 flex flex-col justify-start gap-3 pt-2">
+                      <h3 className="text-xl font-black uppercase tracking-tight leading-tight">
                         {campaign.business?.business_name || campaign.name}
                       </h3>
-
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[9px] font-black uppercase tracking-wide text-[#1D1D1D]/40 italic">
-                          {campaign.business?.industry || "General"}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-[#1D1D1D]/40 italic">
+                          {campaign.business?.industry?.toUpperCase() || "GENERAL"}
+                          <span className="mx-1.5 not-italic">·</span>
+                          {campaign.business?.city?.toUpperCase() || "REMOTE"}
                         </span>
-                        {campaign.business?.city && (
-                          <>
-                            <span className="text-[#1D1D1D]/20">·</span>
-                            <MapPin className="w-3 h-3 text-[#389C9A]" />
-                            <span className="text-[9px] font-bold text-[#1D1D1D]/40 italic">
-                              {campaign.business.city}
-                            </span>
-                          </>
-                        )}
                       </div>
-
-                      <p className="text-[10px] leading-relaxed text-[#1D1D1D]/60 line-clamp-2">
+                      <p className="text-[11px] font-medium leading-relaxed text-[#1D1D1D]/60 italic line-clamp-2">
                         {campaign.description}
                       </p>
-
-                      <div className="flex items-center gap-1.5">
-                        <Users className="w-3 h-3 text-[#389C9A]" />
-                        <span className={`text-[9px] font-bold ${meetsViewers ? "text-green-600" : "text-[#1D1D1D]/40"}`}>
-                          Min. {campaign.min_followers || 0} avg viewers
+                      <div className="flex items-center gap-2 mt-1">
+                        <Users className="w-3.5 h-3.5 text-[#389C9A]" />
+                        <span className="text-[9px] font-bold text-[#1D1D1D]/50 italic">
+                          Min. {campaign.min_followers || 0} avg viewers required
                         </span>
                       </div>
-
-                      {campaign.target_niches?.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {campaign.target_niches.slice(0, 3).map((tag) => (
-                            <span key={tag} className="px-2 py-0.5 bg-[#F8F8F8] text-[7px] font-black uppercase tracking-widest rounded-full">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
 
+                  {/* Full width divider */}
                   <div className="h-[2px] bg-[#1D1D1D]" />
 
-                  {/* Footer */}
-                  <div className="bg-[#F8F8F8] p-5 rounded-b-2xl flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-2xl font-black leading-none text-[#389C9A]">
+                  {/* Bottom Section */}
+                  <div className="bg-[#F8F8F8] p-6 flex items-center justify-between gap-4">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-3xl font-black leading-none text-[#D2691E] tracking-tight">
                         {getPayRate(campaign)}
                       </p>
-                      <p className="text-[9px] font-medium text-[#1D1D1D]/50 mt-0.5">
-                        for {campaign.streams_required} live streams
+                      <p className="text-[11px] font-medium leading-none text-[#D2691E]/70">
+                        for {campaign.streams_required} Live Streams
                       </p>
-                      <div className="flex items-center gap-1 mt-1">
-                        <Clock className="w-3 h-3 opacity-30" />
-                        <span className="text-[8px] opacity-40">{formatDeadline(campaign.end_date)}</span>
-                      </div>
                     </div>
 
-                    {hasApplied ? (
-                      <div className="bg-green-500 text-white px-5 py-3 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest rounded-xl">
-                        <CheckCircle2 className="w-4 h-4" /> Applied
-                      </div>
-                    ) : (
-                      <button
-                        onClick={(e) => {
-                          // Stop card click so the modal doesn't open when tapping View Details
-                          e.stopPropagation();
-                          setSelectedCampaign(campaign);
-                        }}
-                        className="bg-[#1D1D1D] text-white px-5 py-3 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl whitespace-nowrap"
-                      >
-                        View Details <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCampaign(campaign);
+                      }}
+                      className="bg-[#1D1D1D] text-white px-6 py-4 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest group-hover:bg-[#389C9A] transition-all active:scale-[0.98] whitespace-nowrap"
+                    >
+                      VIEW DETAILS <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
+                    </button>
                   </div>
                 </motion.div>
               );
@@ -660,180 +597,149 @@ export function BrowseBusinesses() {
         )}
       </main>
 
-      {/* ── Campaign Detail Modal ── */}
+      {/* Bottom Sheet Modal */}
       <AnimatePresence>
         {selectedCampaign && (
-          <>
-            {/* Backdrop */}
+          <div className="fixed inset-0 z-[100] flex items-end justify-center px-0">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
               onClick={() => !applying && setSelectedCampaign(null)}
+              className="absolute inset-0 bg-[#1D1D1D]/80 backdrop-blur-sm"
             />
-
             <motion.div
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto bg-white border-t-4 border-[#1D1D1D] z-50 rounded-t-3xl max-h-[90vh] overflow-y-auto"
-              // Prevent any clicks inside the sheet from bubbling to the backdrop
+              className="relative w-full max-w-[480px] bg-white border-t-4 border-[#1D1D1D] h-[92vh] flex flex-col rounded-t-[32px] shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="w-12 h-1 bg-[#1D1D1D]/10 rounded-full mx-auto my-4" />
-
-              <div className="px-6 pb-8">
-                {/* Close */}
-                <button
-                  onClick={() => !applying && setSelectedCampaign(null)}
-                  className="absolute top-5 right-5 p-2 bg-[#F8F8F8] rounded-full hover:bg-[#1D1D1D] hover:text-white transition-colors disabled:opacity-50"
-                  disabled={applying}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-
-                {/* Header */}
-                <div className="flex items-start gap-4 mb-6">
-                  <div className="w-20 h-20 border-2 border-[#1D1D1D]/10 rounded-xl overflow-hidden shrink-0">
-                    <ImageWithFallback
-                      src={selectedCampaign.business?.logo_url || ""}
-                      alt={selectedCampaign.business?.business_name || selectedCampaign.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h2 className="text-2xl font-black uppercase tracking-tight mb-2 leading-tight">
-                      {selectedCampaign.business?.business_name || selectedCampaign.name}
-                    </h2>
-                    <p className="text-xs text-[#1D1D1D]/50 italic mb-2">{selectedCampaign.name}</p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`px-3 py-1 text-[8px] font-black uppercase tracking-widest rounded-full ${getBadgeColor(selectedCampaign.partnership_type)}`}>
-                        {selectedCampaign.partnership_type}
-                      </span>
-                      {selectedCampaign.business?.verification_status === "verified" && (
-                        <span className="flex items-center gap-1 text-[8px] font-black text-[#389C9A]">
-                          <CheckCircle2 className="w-3 h-3" /> Verified
-                        </span>
-                      )}
+              {/* Fixed Header */}
+              <div className="shrink-0 bg-white px-6 pt-4 pb-2 border-b border-[#1D1D1D]/5">
+                <div className="w-12 h-1.5 bg-[#1D1D1D]/10 rounded-full mx-auto mb-6" />
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex gap-4">
+                    <div className="w-14 h-14 bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-xl overflow-hidden shrink-0">
+                      <ImageWithFallback
+                        src={selectedCampaign.business?.logo_url || ""}
+                        alt={selectedCampaign.business?.business_name || selectedCampaign.name}
+                        className="w-full h-full object-cover grayscale"
+                      />
                     </div>
-                  </div>
-                </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="bg-[#F8F8F8] p-4 rounded-xl">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Pay Rate</p>
-                    <p className="text-2xl font-black text-[#389C9A]">{getPayRate(selectedCampaign)}</p>
-                    <p className="text-[8px] opacity-40">for {selectedCampaign.streams_required} streams</p>
-                  </div>
-                  <div className="bg-[#F8F8F8] p-4 rounded-xl">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Min. Viewers</p>
-                    <p className="text-2xl font-black">{selectedCampaign.min_followers || 0}</p>
-                    <p className={`text-[8px] mt-0.5 font-bold ${meetsRequirement(selectedCampaign.min_followers || 0) ? "text-green-600" : "text-red-500"}`}>
-                      {meetsRequirement(selectedCampaign.min_followers || 0) ? "✓ You qualify" : "✗ Not met"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Eligibility warning */}
-                {!meetsRequirement(selectedCampaign.min_followers || 0) && (selectedCampaign.min_followers || 0) > 0 && (
-                  <div className="flex items-start gap-3 bg-red-50 border-2 border-red-200 p-4 rounded-xl mb-6">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-0.5">Requirements Not Met</p>
-                      <p className="text-[10px] text-red-500">
-                        This campaign requires {selectedCampaign.min_followers.toLocaleString()} avg viewers. You currently have{" "}
-                        {(creatorProfile?.avg_viewers || creatorProfile?.avg_concurrent || 0).toLocaleString()}.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* About */}
-                <div className="mb-6">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest mb-2 opacity-40">About the Campaign</h3>
-                  <p className="text-sm leading-relaxed text-[#1D1D1D]/70">{selectedCampaign.description}</p>
-                </div>
-
-                {/* Requirements checklist */}
-                <div className="mb-8">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest mb-3 opacity-40">Requirements</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 className="w-4 h-4 text-[#389C9A] shrink-0" />
-                      <span>Minimum {selectedCampaign.min_followers || 0} concurrent viewers</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 className="w-4 h-4 text-[#389C9A] shrink-0" />
-                      <span>Complete {selectedCampaign.streams_required} live streams</span>
-                    </div>
-                    {selectedCampaign.target_niches?.map((tag) => (
-                      <div key={tag} className="flex items-center gap-2 text-sm">
-                        <CheckCircle2 className="w-4 h-4 text-[#389C9A] shrink-0" />
-                        <span>Content in: {tag}</span>
+                      <h2 className="text-2xl font-black uppercase tracking-tighter leading-none mb-1 italic">
+                        {selectedCampaign.business?.business_name || selectedCampaign.name}
+                      </h2>
+                      <div className="flex items-center gap-2 italic">
+                        {selectedCampaign.business?.verification_status === "verified" && (
+                          <CheckCircle2 className="w-3 h-3 text-[#389C9A]" />
+                        )}
+                        <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">
+                          {selectedCampaign.business?.industry || "General"}
+                        </span>
                       </div>
-                    ))}
+                    </div>
                   </div>
-                </div>
-
-                {/* Deadline */}
-                {selectedCampaign.end_date && (
-                  <p className="text-center text-[9px] opacity-40 mb-4">
-                    Applications close {new Date(selectedCampaign.end_date).toLocaleDateString()}
-                  </p>
-                )}
-
-                {/* ── Action buttons ── */}
-                <div className="flex gap-3 mb-12">
-                  {/* Save */}
                   <button
-                    onClick={(e) => toggleSave(selectedCampaign.id, e)}
-                    disabled={applying}
-                    className={`flex-1 border-2 py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all rounded-xl disabled:opacity-50 ${
-                      savedIds.has(selectedCampaign.id)
-                        ? "bg-[#389C9A] text-white border-[#389C9A]"
-                        : "border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white"
-                    }`}
+                    onClick={() => !applying && setSelectedCampaign(null)}
+                    className="p-3 bg-[#F8F8F8] border-2 border-[#1D1D1D] rounded-xl active:scale-95 transition-transform"
                   >
-                    {savedIds.has(selectedCampaign.id)
-                      ? <><BookmarkCheck className="w-4 h-4" /> Saved</>
-                      : <><Bookmark className="w-4 h-4" /> Save</>}
-                  </button>
-
-                  {/* Apply Now — this is the button that was broken */}
-                  <button
-                    onClick={(e) => applyToCampaign(selectedCampaign, e)}
-                    disabled={
-                      applying ||
-                      appliedIds.has(selectedCampaign.id) ||
-                      !meetsRequirement(selectedCampaign.min_followers || 0)
-                    }
-                    className={`flex-[2] py-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all rounded-xl ${
-                      appliedIds.has(selectedCampaign.id)
-                        ? "bg-green-500 text-white cursor-not-allowed"
-                        : !meetsRequirement(selectedCampaign.min_followers || 0)
-                        ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                        : applying
-                        ? "bg-[#1D1D1D] text-white opacity-70 cursor-wait"
-                        : "bg-[#1D1D1D] text-white hover:bg-[#389C9A] active:scale-[0.98]"
-                    }`}
-                  >
-                    {appliedIds.has(selectedCampaign.id) ? (
-                      <><CheckCircle2 className="w-4 h-4" /> Applied</>
-                    ) : applying ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</>
-                    ) : !meetsRequirement(selectedCampaign.min_followers || 0) ? (
-                      "Requirements Not Met"
-                    ) : (
-                      <>Apply Now <ArrowRight className="w-4 h-4" /></>
-                    )}
+                    <X className="w-5 h-5 text-[#1D1D1D]" />
                   </button>
                 </div>
               </div>
+
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto px-6 pt-8 pb-32">
+                {/* Offer Grid */}
+                <div className="grid grid-cols-2 gap-px bg-[#1D1D1D] border-2 border-[#1D1D1D] mb-10 rounded-xl overflow-hidden">
+                  <div className="bg-white p-5 flex flex-col gap-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-widest opacity-30 italic">Pay Rate</span>
+                    <span className="text-xs font-black uppercase text-[#389C9A] tracking-tight">
+                      {getPayRate(selectedCampaign)}
+                    </span>
+                  </div>
+                  <div className="bg-white p-5 flex flex-col gap-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-widest opacity-30 italic">Min Viewers</span>
+                    <span className="text-xs font-black uppercase text-[#389C9A] tracking-tight">
+                      {selectedCampaign.min_followers || 0}
+                    </span>
+                  </div>
+                  <div className="bg-white p-5 flex flex-col gap-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-widest opacity-30 italic">Type</span>
+                    <span className="text-xs font-black uppercase text-[#389C9A] tracking-tight">
+                      {selectedCampaign.partnership_type}
+                    </span>
+                  </div>
+                  <div className="bg-white p-5 flex flex-col gap-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-widest opacity-30 italic">Deadline</span>
+                    <span className="text-xs font-black uppercase text-[#389C9A] tracking-tight">
+                      {formatDeadline(selectedCampaign.end_date)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* About Campaign */}
+                <div className="flex flex-col gap-12">
+                  <section>
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 border-b-2 border-[#1D1D1D]/10 pb-3 mb-6 italic">
+                      About Campaign
+                    </h3>
+                    <p className="text-sm font-medium leading-relaxed text-[#1D1D1D]/80 italic">
+                      {selectedCampaign.description}
+                    </p>
+                  </section>
+
+                  {/* Match Analysis */}
+                  <section className="mb-10">
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 border-b-2 border-[#1D1D1D]/10 pb-3 mb-6 italic">
+                      Match Analysis
+                    </h3>
+                    <div className="bg-[#1D1D1D] text-white p-8 flex flex-col gap-6 border-2 border-[#1D1D1D] rounded-2xl">
+                      <div className="flex justify-between items-center text-[11px] font-black uppercase italic tracking-widest">
+                        <span>Min. Viewers</span>
+                        <span className={meetsRequirement(selectedCampaign.min_followers || 0) ? 'text-[#389C9A]' : 'text-[#FEDB71]'}>
+                          {creatorProfile?.avg_viewers || creatorProfile?.avg_concurrent || 0} / {selectedCampaign.min_followers || 0}
+                        </span>
+                      </div>
+                      <div className="h-[1px] bg-white/10" />
+                      <div className="flex justify-between items-center text-[11px] font-black uppercase italic tracking-widest">
+                        <span>Niche Fit</span>
+                        <span className="text-[#389C9A]">{nicheMatchPercentage}% Match</span>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              {/* Fixed Bottom CTA */}
+              <div className="shrink-0 p-6 bg-white border-t-2 border-[#1D1D1D] z-[110]">
+                {appliedIds.has(selectedCampaign.id) ? (
+                  <div className="w-full bg-[#389C9A]/10 text-[#389C9A] p-5 text-center text-[10px] font-black uppercase tracking-[0.3em] border-2 border-[#389C9A]/20 rounded-xl italic">
+                    Application Pending
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => applyToCampaign(selectedCampaign, e)}
+                    disabled={applying || !meetsRequirement(selectedCampaign.min_followers || 0)}
+                    className={`w-full bg-[#1D1D1D] text-white p-5 rounded-xl text-lg font-black uppercase italic tracking-tighter flex items-center justify-center gap-4 active:scale-[0.98] transition-all shadow-[0_4px_0_0_#389C9A] ${
+                      !meetsRequirement(selectedCampaign.min_followers || 0) && 'opacity-50 cursor-not-allowed'
+                    }`}
+                  >
+                    {applying ? (
+                      <><Loader2 className="w-6 h-6 animate-spin" /> Submitting...</>
+                    ) : !meetsRequirement(selectedCampaign.min_followers || 0) ? (
+                      'Requirements Not Met'
+                    ) : (
+                      <>Send Application <ArrowRight className="w-6 h-6 text-[#FEDB71]" /></>
+                    )}
+                  </button>
+                )}
+              </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 

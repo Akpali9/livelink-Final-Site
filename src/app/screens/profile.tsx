@@ -14,7 +14,6 @@ import {
   Users,
   BarChart,
   Star,
-  TrendingUp,
   MessageSquare,
   Zap,
   Eye,
@@ -93,13 +92,13 @@ interface FormattedCreator {
 
 function getPlatformIconComponent(platformName: string) {
   switch (platformName.toLowerCase()) {
-    case "twitch":    return <Twitch className="w-4 h-4" />;
-    case "youtube":   return <Youtube className="w-4 h-4" />;
-    case "instagram": return <Instagram className="w-4 h-4" />;
-    case "facebook":  return <Facebook className="w-4 h-4" />;
-    case "twitter":   return <Twitter className="w-4 h-4" />;
-    case "tiktok":    return <VideoIcon className="w-4 h-4" />;
-    default:          return <Globe className="w-4 h-4" />;
+    case "twitch":    return <Twitch className="w-3 h-3 text-[#389C9A]" />;
+    case "youtube":   return <Youtube className="w-3 h-3 text-[#389C9A]" />;
+    case "instagram": return <Instagram className="w-3 h-3 text-[#389C9A]" />;
+    case "facebook":  return <Facebook className="w-3 h-3 text-[#389C9A]" />;
+    case "twitter":   return <Twitter className="w-3 h-3 text-[#389C9A]" />;
+    case "tiktok":    return <VideoIcon className="w-3 h-3 text-[#389C9A]" />;
+    default:          return <Globe className="w-3 h-3 text-[#389C9A]" />;
   }
 }
 
@@ -118,26 +117,16 @@ export function Profile() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // ── Resolve "me" → real UUID ─────────────────────────────────────────────
-  // If the route is /profile/me we can't send the literal string "me" to
-  // Supabase because the column is uuid type → "invalid input syntax for
-  // type uuid: 'me'".  We resolve it first, then store the real id.
   const [id, setId] = useState<string | undefined>(
     rawId === "me" ? undefined : rawId
   );
 
   useEffect(() => {
     if (rawId !== "me") {
-      // If rawId changed to a normal UUID (e.g. navigation), keep in sync
       setId(rawId);
       return;
     }
-
-    // rawId === "me" → look up the logged-in user's creator profile
-    if (!user) {
-      navigate("/login");
-      return;
-    }
+    if (!user) { navigate("/login"); return; }
 
     supabase
       .from("creator_profiles")
@@ -150,20 +139,17 @@ export function Profile() {
           navigate("/");
           return;
         }
-        setId(data.id); // real UUID → triggers fetchCreator below
+        setId(data.id);
       });
   }, [rawId, user]);
-
-  // ─────────────────────────────────────────────────────────────────────────
 
   const [creator, setCreator] = useState<FormattedCreator | null>(null);
   const [loading, setLoading] = useState(true);
   const [isBioExpanded, setIsBioExpanded] = useState(false);
   const [offerSent, setOfferSent] = useState(false);
-  const [showOfferModal, setShowOfferModal] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<CreatorPackage | null>(null);
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [customOffer, setCustomOffer] = useState({
-    streams: "4",
+    streams: "",
     rate: "",
     type: "Banner Only",
     message: "",
@@ -175,7 +161,6 @@ export function Profile() {
   // ─── FETCH CREATOR ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    // Wait until id is resolved (not undefined) and not "me"
     if (!id || id === "me") return;
 
     const fetchCreator = async () => {
@@ -184,34 +169,11 @@ export function Profile() {
         const { data: creatorData, error: creatorError } = await supabase
           .from("creator_profiles")
           .select(`
-            id,
-            user_id,
-            full_name,
-            username,
-            email,
-            phone_number,
-            phone_country_code,
-            avatar_url,
-            bio,
-            location,
-            country,
-            city,
-            niche,
-            categories,
-            avg_viewers,
-            avg_concurrent,
-            total_streams,
-            rating,
-            status,
-            verification_status,
-            frequency,
-            duration,
-            days,
-            time_of_day,
-            total_earned,
-            pending_earnings,
-            paid_out,
-            created_at
+            id, user_id, full_name, username, email, phone_number,
+            phone_country_code, avatar_url, bio, location, country, city,
+            niche, categories, avg_viewers, avg_concurrent, total_streams,
+            rating, status, verification_status, frequency, duration, days,
+            time_of_day, total_earned, pending_earnings, paid_out, created_at
           `)
           .eq("id", id)
           .maybeSingle();
@@ -219,32 +181,26 @@ export function Profile() {
         if (creatorError) throw creatorError;
         if (!creatorData) { setCreator(null); setLoading(false); return; }
 
-        // creator_platforms — creator_id matches creator_profiles.id
         const { data: platformsData } = await supabase
           .from("creator_platforms")
           .select("*")
           .eq("creator_id", id);
 
         const defaultPackages: CreatorPackage[] = [
-          { id: "1", name: "Bronze Package", streams: 4,  price: 15000, description: "Perfect for testing the partnership",  enabled: true, is_default: true },
-          { id: "2", name: "Silver Package", streams: 8,  price: 28000, description: "Best value for ongoing campaigns",     enabled: true },
-          { id: "3", name: "Gold Package",   streams: 12, price: 40000, description: "Maximum exposure for premium brands",  enabled: false },
+          { id: "1", name: "Bronze Package", streams: 4,  price: 15000, description: "Perfect for testing the partnership",  enabled: true,  is_default: false },
+          { id: "2", name: "Silver Package", streams: 8,  price: 28000, description: "Best value for ongoing campaigns",     enabled: true,  is_default: true  },
+          { id: "3", name: "Gold Package",   streams: 12, price: 40000, description: "Maximum exposure for premium brands",  enabled: true,  is_default: false },
         ];
 
-        // Own profile check
         if (user && creatorData.user_id === user.id) setIsOwnProfile(true);
 
-        // Business check
         if (user) {
           const { data: business } = await supabase
             .from("businesses")
             .select("id, business_name, email, logo_url")
             .eq("user_id", user.id)
             .maybeSingle();
-          if (business) {
-            setIsBusiness(true);
-            setBusinessProfile(business);
-          }
+          if (business) { setIsBusiness(true); setBusinessProfile(business); }
         }
 
         const formatted: FormattedCreator = {
@@ -252,8 +208,8 @@ export function Profile() {
           user_id:      creatorData.user_id,
           name:         creatorData.full_name || "Unknown Creator",
           username:     creatorData.username
-                          ? `@${creatorData.username}`
-                          : `@${(creatorData.full_name || "creator").toLowerCase().replace(/\s+/g, "")}`,
+                          ? creatorData.username
+                          : (creatorData.full_name || "creator").toLowerCase().replace(/\s+/g, ""),
           email:        creatorData.email || "",
           phone_number: creatorData.phone_number || "",
           avatar:       creatorData.avatar_url || "https://via.placeholder.com/200",
@@ -288,41 +244,36 @@ export function Profile() {
     fetchCreator();
   }, [id, user]);
 
-  // ─── OFFER ACTIONS ───────────────────────────────────────────────────────
+  // ─── DERIVED STATE ───────────────────────────────────────────────────────
 
-  const handleSelectPackage = (pkg: CreatorPackage) => {
-    setSelectedPackage(pkg);
-    setCustomOffer({ streams: pkg.streams.toString(), rate: pkg.price.toString(), type: "Banner Only", message: "" });
-    setShowOfferModal(true);
-  };
+  const selectedPackage = creator?.packages.find(p => p.id === selectedPackageId) ?? null;
 
-  const handleCustomOffer = () => {
-    setSelectedPackage(null);
-    setShowOfferModal(true);
-  };
-
-  const getEstimates = (streams: number, rate: number) => {
+  const getEstimates = (streams: number) => {
     if (!creator) return null;
     const avg = creator.stats.avgViewers;
     return {
       uniqueViewers: Math.round(avg * 0.4 * streams + 500),
       hours:         streams * 1.5,
       impressions:   Math.round(avg * 1.4 * streams),
-      totalCost:     streams * rate,
     };
   };
 
-  const estimates = selectedPackage
-    ? getEstimates(selectedPackage.streams, selectedPackage.price)
-    : customOffer.streams && customOffer.rate
-    ? getEstimates(parseInt(customOffer.streams), parseFloat(customOffer.rate))
-    : null;
+  const estimates = selectedPackage ? getEstimates(selectedPackage.streams) : null;
+
+  // ─── OFFER SEND ──────────────────────────────────────────────────────────
 
   const handleSendOffer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) { toast.error("Please login to send an offer"); navigate("/login/business"); return; }
     if (!isBusiness) { toast.error("Only businesses can send offers"); return; }
     if (!creator) return;
+
+    const streams = selectedPackage
+      ? selectedPackage.streams
+      : parseInt(customOffer.streams);
+    const rate = selectedPackage
+      ? selectedPackage.price / selectedPackage.streams
+      : parseFloat(customOffer.rate);
 
     try {
       const { data: campaignRow, error: campaignError } = await supabase
@@ -348,20 +299,14 @@ export function Profile() {
         .maybeSingle();
 
       if (existing) {
-        toast.info("You've already sent an offer to this creator for your latest campaign.");
-        setShowOfferModal(false);
+        toast.info("You've already sent an offer to this creator.");
         return;
       }
-
-      const streams = selectedPackage ? selectedPackage.streams : parseInt(customOffer.streams);
-      const rate    = selectedPackage
-        ? selectedPackage.price / selectedPackage.streams
-        : parseFloat(customOffer.rate);
 
       const { error } = await supabase.from("campaign_creators").insert({
         campaign_id:       campaignRow.id,
         creator_id:        creator.id,
-        status:            "pending",
+         status: "NOT STARTED",
         streams_target:    streams,
         streams_completed: 0,
         total_earnings:    streams * rate,
@@ -380,11 +325,9 @@ export function Profile() {
       });
 
       setOfferSent(true);
-      setShowOfferModal(false);
       toast.success("Offer sent successfully!");
-      setCustomOffer({ streams: "4", rate: "", type: "Banner Only", message: "" });
-      setSelectedPackage(null);
-      setTimeout(() => setOfferSent(false), 3000);
+      setCustomOffer({ streams: "", rate: "", type: "Banner Only", message: "" });
+      setSelectedPackageId(null);
     } catch (error) {
       console.error("Error sending offer:", error);
       toast.error("Failed to send offer");
@@ -427,16 +370,12 @@ export function Profile() {
 
   // ─── LOADING / NOT FOUND ─────────────────────────────────────────────────
 
-  // Show spinner while resolving "me" or fetching
   if (loading || (rawId === "me" && !id)) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
         <AppHeader showBack title="Creator Profile" />
         <div className="flex items-center justify-center h-[80vh]">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
-            <p className="text-sm text-gray-500">Loading profile...</p>
-          </div>
+          <div className="w-10 h-10 border-4 border-[#1D1D1D] border-t-transparent animate-spin rounded-full" />
         </div>
         <BottomNav />
       </div>
@@ -455,7 +394,7 @@ export function Profile() {
           </p>
           <button
             onClick={() => navigate("/browse")}
-            className="bg-[#1D1D1D] text-white px-8 py-4 text-sm font-black uppercase tracking-widest rounded-xl"
+            className="bg-[#1D1D1D] text-white px-8 py-4 text-sm font-black uppercase tracking-widest"
           >
             Browse Creators
           </button>
@@ -469,9 +408,9 @@ export function Profile() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
-      <AppHeader showBack title="Creator Profile" userType={isBusiness ? "business" : "creator"} />
+      <AppHeader showBack title="Creator Profile" />
 
-      <main className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+      <main className="max-w-[480px] mx-auto w-full">
 
         {/* ── Profile Header ── */}
         <div className="bg-white border-b border-[#1D1D1D]">
@@ -480,72 +419,88 @@ export function Profile() {
             {isOwnProfile && (
               <button
                 onClick={() => navigate("/settings")}
-                className="absolute top-6 right-6 p-3 border-2 border-[#1D1D1D] rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors group"
+                className="absolute top-6 right-6 border-2 border-[#1D1D1D] p-3 hover:bg-[#1D1D1D] hover:text-white transition-colors"
               >
-                <Settings className="w-5 h-5 group-hover:rotate-90 transition-transform" />
+                <Settings className="w-4 h-4" />
               </button>
             )}
 
-            {/* Avatar */}
+            {/* Avatar — square, no border-radius, grayscale (File 1 style) */}
             <div className="relative mb-6">
-              <div className="w-32 h-32 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8] rounded-2xl">
+              <div className="w-32 h-32 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8]">
                 <ImageWithFallback
                   src={creator.avatar}
                   alt={creator.name}
-                  className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500"
+                  className="w-full h-full object-cover grayscale"
                 />
               </div>
-              {creator.verified && (
-                <div className="absolute -bottom-2 -right-2 bg-[#389C9A] p-1.5 rounded-full border-2 border-white">
-                  <CheckCircle2 className="w-4 h-4 text-white" />
-                </div>
-              )}
             </div>
 
             {/* Name & Username */}
             <div className="flex flex-col items-center mb-4">
-              <h1 className="text-3xl font-black uppercase italic tracking-tight">{creator.name}</h1>
-              <span className="text-[10px] font-bold uppercase text-[#1D1D1D]/40">{creator.username}</span>
+              <h1 className="text-3xl font-black uppercase tracking-tighter leading-none italic mb-1">
+                {creator.name}
+              </h1>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">
+                @{creator.username}
+              </span>
             </div>
 
             {/* Platform Badges */}
             {creator.platforms.length > 0 && (
               <div className="flex flex-wrap justify-center gap-2 mb-4">
                 {creator.platforms.map((p, i) => (
-                  <a
-                    key={i}
-                    href={p.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 bg-[#389C9A]/10 px-3 py-1.5 rounded-full border border-[#389C9A]/20 hover:bg-[#389C9A] hover:text-white transition-colors"
-                  >
+                  <div key={i} className="flex items-center gap-1.5 bg-[#389C9A]/10 px-2 py-1 border border-[#389C9A]/20">
                     {getPlatformIconComponent(p.name)}
-                    <span className="text-[8px] font-black uppercase">{p.name}</span>
-                    <span className="text-[7px] font-medium opacity-60 ml-1">{formatNumber(p.followers)}</span>
-                  </a>
+                    <span className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] italic">{p.name}</span>
+                  </div>
+                ))}
+                {creator.verified && (
+                  <div className="flex items-center gap-1.5 bg-[#FEDB71]/10 px-2 py-1 border border-[#FEDB71]/20">
+                    <CheckCircle2 className="w-3 h-3 text-[#1D1D1D]" />
+                    <span className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]">Verified</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Location */}
+            <div className="flex items-center gap-1 mb-4 text-[10px] font-bold uppercase tracking-widest italic">
+              <MapPin className="w-3 h-3 text-[#1D1D1D]/40" />
+              <span>{creator.location}</span>
+            </div>
+
+            {/* Niches */}
+            {creator.niches.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-2 mb-6">
+                {creator.niches.map((n, i) => (
+                  <span key={i} className="text-[9px] font-bold uppercase tracking-widest bg-[#F8F8F8] px-2 py-0.5 border border-[#1D1D1D]/10 italic">
+                    {n}
+                  </span>
                 ))}
               </div>
             )}
 
-            {/* Location & Availability */}
-            <div className="flex items-center justify-center gap-4 mb-6">
-              <div className="flex items-center gap-1 text-[10px] uppercase font-bold italic">
-                <MapPin className="w-3 h-3 text-[#1D1D1D]/40" />
-                <span>{creator.location}</span>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1 border-2 border-[#1D1D1D] text-[8px] uppercase font-black italic rounded-full">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    creator.availability.includes("Available") ? "bg-[#389C9A]" : "bg-gray-400"
-                  }`}
-                />
-                {creator.availability}
-              </div>
+            {/* Bio */}
+            <div className="w-full max-w-sm mb-6">
+              <p className={`text-sm leading-relaxed text-[#1D1D1D]/80 ${!isBioExpanded ? "line-clamp-3" : ""}`}>
+                {creator.bio}
+              </p>
+              {creator.bio.length > 120 && (
+                <button
+                  onClick={() => setIsBioExpanded(!isBioExpanded)}
+                  className="mt-2 text-[10px] font-black uppercase tracking-widest text-[#389C9A] flex items-center gap-1 mx-auto underline"
+                >
+                  {isBioExpanded
+                    ? <><ChevronUp className="w-3 h-3" /> Show less</>
+                    : <><ChevronDown className="w-3 h-3" /> Read more</>}
+                </button>
+              )}
             </div>
 
-            {/* Contact Info — businesses only */}
+            {/* Contact details (business only) */}
             {isBusiness && (creator.email || creator.phone_number) && (
-              <div className="flex flex-col gap-2 w-full max-w-sm mb-6 p-4 bg-[#F8F8F8] border border-[#1D1D1D]/10 rounded-xl text-left">
+              <div className="flex flex-col gap-2 w-full max-w-sm mb-6 p-4 bg-[#F8F8F8] border border-[#1D1D1D]/10 text-left">
                 <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Contact Details</p>
                 {creator.email && (
                   <div className="flex items-center gap-2 text-[11px]">
@@ -562,312 +517,363 @@ export function Profile() {
               </div>
             )}
 
-            {/* Niches */}
-            {creator.niches.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-2 mb-6">
-                {creator.niches.map((n, i) => (
-                  <span
-                    key={i}
-                    className="text-[8px] font-black uppercase bg-[#F8F8F8] px-3 py-1.5 rounded-full border border-[#1D1D1D]/10 italic"
-                  >
-                    {n}
-                  </span>
-                ))}
+            {/* Availability Pill */}
+            <div className="inline-flex items-center gap-2 px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest italic">
+              <span className={`w-2 h-2 ${creator.availability.includes("Available") ? "bg-[#389C9A]" : "bg-red-500"}`} />
+              {creator.availability}
+            </div>
+
+            {/* Business action buttons */}
+            {!isOwnProfile && isBusiness && (
+              <div className="flex gap-3 w-full mt-6">
+                <button
+                  onClick={() => {
+                    setSelectedPackageId(null);
+                    setOfferSent(false);
+                    // Scroll to offer section
+                    document.getElementById("offer-section")?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                  className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all italic flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-4 h-4 text-[#FEDB71]" /> Send Offer
+                </button>
+                <button
+                  onClick={handleContact}
+                  className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all italic flex items-center justify-center gap-2"
+                >
+                  <MessageSquare className="w-4 h-4" /> Message
+                </button>
               </div>
             )}
 
-            {/* Bio */}
-            <div className="w-full max-w-sm mb-6">
-              <p className={`text-sm text-[#1D1D1D]/80 leading-relaxed ${!isBioExpanded ? "line-clamp-3" : ""}`}>
-                {creator.bio}
+            {/* Own profile edit button */}
+            {isOwnProfile && (
+              <button
+                onClick={() => navigate("/settings")}
+                className="w-full mt-6 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all italic flex items-center justify-center gap-2"
+              >
+                <Settings className="w-4 h-4 text-[#FEDB71]" /> Edit Profile
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Stats Row (File 1 style: gap-[1px] grid with bg-[#1D1D1D]) ── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-[#1D1D1D] border-b border-[#1D1D1D]">
+          <div className="bg-white p-6 flex flex-col gap-1 items-center text-center">
+            <span className="text-2xl font-black italic">{formatNumber(creator.stats.avgViewers)}</span>
+            <span className="text-[8px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">Avg Viewers</span>
+          </div>
+          <div className="bg-white p-6 flex flex-col gap-1 items-center text-center">
+            <span className="text-2xl font-black italic text-[#389C9A]">{creator.stats.totalStreams}</span>
+            <span className="text-[8px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">Total Streams</span>
+          </div>
+          <div className="bg-white p-6 flex flex-col gap-1 items-center text-center">
+            <span className="text-2xl font-black italic">{creator.niches.length}</span>
+            <span className="text-[8px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">Niches</span>
+          </div>
+          <div className="bg-white p-6 flex flex-col gap-1 items-center text-center">
+            <span className="text-2xl font-black italic text-[#FEDB71]">{creator.stats.rating?.toFixed(1) || "—"}</span>
+            <span className="text-[8px] font-bold uppercase tracking-widest text-[#1D1D1D]/40">Rating</span>
+          </div>
+        </div>
+
+        <div className="px-6 py-12" id="offer-section">
+
+          {/* ── Partnership Packages (File 1 style) ── */}
+          {creator.packages.length > 0 && (
+            <div className="mb-12">
+              <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Partnership Packages</h2>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 mb-8 italic">
+                Choose a package or make the creator a custom offer below.
               </p>
-              {creator.bio.length > 120 && (
-                <button
-                  className="mt-2 text-[9px] uppercase text-[#389C9A] font-black hover:underline flex items-center gap-1"
-                  onClick={() => setIsBioExpanded(!isBioExpanded)}
-                >
-                  {isBioExpanded
-                    ? <><ChevronUp className="w-3 h-3" /> Show less</>
-                    : <><ChevronDown className="w-3 h-3" /> Read more</>}
-                </button>
-              )}
-            </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-3 w-full">
-              {isOwnProfile ? (
-                <button
-                  onClick={() => navigate("/settings")}
-                  className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
-                >
-                  <Settings className="w-4 h-4 text-[#FEDB71]" /> Edit Profile
-                </button>
-              ) : isBusiness ? (
-                <>
-                  <button
-                    onClick={handleCustomOffer}
-                    className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all rounded-xl flex items-center justify-center gap-2"
+              <div className="flex flex-col gap-6">
+                {creator.packages.map((pkg) => (
+                  <div
+                    key={pkg.id}
+                    onClick={() => isBusiness && setSelectedPackageId(pkg.id === selectedPackageId ? null : pkg.id)}
+                    className={`relative transition-all border-2 flex flex-col ${isBusiness ? "cursor-pointer" : ""} ${
+                      selectedPackageId === pkg.id
+                        ? "border-[#1D1D1D] bg-white scale-[1.02]"
+                        : "border-[#1D1D1D]/10 bg-[#F8F8F8] hover:border-[#389C9A]/40"
+                    } ${pkg.is_default ? "pt-12 pb-10" : "py-8"}`}
                   >
-                    <Zap className="w-4 h-4 text-[#FEDB71]" /> Send Offer
-                  </button>
-                  <button
-                    onClick={handleContact}
-                    className="flex-1 border-2 border-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-all rounded-xl flex items-center justify-center gap-2"
-                  >
-                    <MessageSquare className="w-4 h-4" /> Message
-                  </button>
-                </>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Stats Grid ── */}
-        <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { icon: <Users className="w-5 h-5 text-[#389C9A] mx-auto" />, value: formatNumber(creator.stats.avgViewers), label: "Avg Viewers" },
-              { icon: <Eye className="w-5 h-5 text-[#389C9A] mx-auto" />,   value: creator.stats.totalStreams,              label: "Total Streams" },
-              { icon: <Star className="w-5 h-5 text-[#FEDB71] mx-auto" />,  value: creator.stats.rating || "—",            label: "Rating" },
-            ].map((s, i) => (
-              <div key={i} className="text-center">
-                <div className="bg-[#F8F8F8] p-3 rounded-xl mb-2">{s.icon}</div>
-                <p className="text-lg font-black">{s.value}</p>
-                <p className="text-[7px] font-black uppercase tracking-widest opacity-40">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Packages ── */}
-        {creator.packages.length > 0 && (
-          <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em]">Campaign Packages</h3>
-              <Package className="w-4 h-4 text-[#389C9A]" />
-            </div>
-            <div className="space-y-4">
-              {creator.packages.map((pkg) => (
-                <motion.div
-                  key={pkg.id}
-                  whileHover={{ y: -2 }}
-                  className={`relative bg-white border-2 rounded-xl p-6 cursor-pointer transition-all ${
-                    pkg.is_default
-                      ? "border-[#389C9A] shadow-lg"
-                      : "border-[#1D1D1D] hover:border-[#389C9A]"
-                  }`}
-                  onClick={() => isBusiness && handleSelectPackage(pkg)}
-                >
-                  {pkg.is_default && (
-                    <div className="absolute -top-3 right-4 bg-[#389C9A] text-white px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest">
-                      Popular
-                    </div>
-                  )}
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h4 className="font-black text-lg uppercase tracking-tight">{pkg.name}</h4>
-                      <p className="text-[8px] font-medium opacity-40 uppercase tracking-widest">{pkg.streams} streams</p>
-                    </div>
-                    <p className="text-xl font-black text-[#389C9A]">₦{pkg.price.toLocaleString()}</p>
-                  </div>
-                  <p className="text-[9px] text-[#1D1D1D]/60 mb-4">{pkg.description}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[7px] font-black uppercase tracking-widest opacity-40">
-                      <Clock className="w-3 h-3" />
-                      <span>Est. {(pkg.streams * 1.5).toFixed(1)} hours</span>
-                    </div>
-                    {isBusiness && (
-                      <span className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] flex items-center gap-1">
-                        Select Package <ArrowRight className="w-3 h-3" />
-                      </span>
+                    {pkg.is_default && (
+                      <div className="absolute top-0 left-0 right-0 h-10 bg-[#FEDB71] flex items-center justify-center border-b-2 border-[#1D1D1D]">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1D1D1D] italic">Most Popular</span>
+                      </div>
                     )}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-            <div className="mt-6 border border-[#389C9A]/30 bg-[#389C9A]/5 p-4 rounded-xl flex gap-3">
-              <Info className="w-4 h-4 text-[#389C9A] flex-shrink-0 mt-0.5" />
-              <p className="text-[8px] text-[#1D1D1D]/70 leading-relaxed">
-                Prices shown are per package. Minimum 4 streams per package. All prices are reviewed by our team.
-              </p>
-            </div>
-          </div>
-        )}
 
-        {/* ── Connected Platforms ── */}
-        {creator.platforms.length > 0 && (
-          <div className="px-6 py-8 border-b border-[#1D1D1D]/10">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">Connected Platforms</h3>
-            <div className="space-y-3">
-              {creator.platforms.map((platform, i) => (
-                <a
-                  key={i}
-                  href={platform.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-[#F8F8F8] p-4 rounded-xl flex items-center justify-between hover:bg-[#1D1D1D] hover:text-white transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    {getPlatformIconComponent(platform.name)}
-                    <div>
-                      <p className="font-black text-xs uppercase">{platform.name}</p>
-                      {platform.username && (
-                        <p className="text-[7px] font-medium opacity-40 group-hover:opacity-60">{platform.username}</p>
+                    <div className="px-8 flex flex-col items-center text-center">
+                      <span className="text-[10px] font-black tracking-widest mb-4 opacity-40 italic">
+                        {pkg.name.toUpperCase()}
+                      </span>
+                      <span className="text-4xl font-black uppercase tracking-tighter italic mb-1">
+                        {pkg.streams} Streams
+                      </span>
+                      <p className="text-[10px] font-medium text-[#1D1D1D]/60 mb-6 px-4 leading-relaxed italic">
+                        {pkg.description}
+                      </p>
+                      <span className="text-3xl font-black mb-8 italic text-[#389C9A]">
+                        ₦{pkg.price.toLocaleString()}
+                      </span>
+
+                      {isBusiness && (
+                        <button
+                          className={`w-full py-4 text-[10px] font-black uppercase tracking-widest transition-all italic ${
+                            pkg.is_default
+                              ? "bg-[#1D1D1D] text-white"
+                              : "border-2 border-[#1D1D1D] text-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white"
+                          } ${selectedPackageId === pkg.id && !pkg.is_default ? "bg-[#1D1D1D] text-white" : ""}`}
+                        >
+                          {selectedPackageId === pkg.id ? "Selected ✓" : "Select"}
+                        </button>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-black">{formatNumber(platform.followers)}</p>
-                    <ExternalLink className="w-3 h-3 opacity-40 group-hover:opacity-100" />
-                  </div>
-                </a>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ── CTA for Businesses ── */}
-        {isBusiness && (
-          <div className="px-6 py-8">
-            <div className="bg-gradient-to-r from-[#1D1D1D] to-gray-800 p-8 rounded-xl text-white relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-[#389C9A] opacity-20 rounded-full blur-3xl" />
-              <h4 className="text-xl font-black uppercase italic mb-2">Ready to collaborate?</h4>
-              <p className="text-[9px] opacity-60 mb-6">Send an offer to start working with {creator.name}</p>
-              <button
-                onClick={handleCustomOffer}
-                className="w-full bg-white text-[#1D1D1D] py-4 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] hover:text-white transition-all flex items-center justify-center gap-2"
+          {/* ── Estimated Viewership (File 1 style) ── */}
+          <AnimatePresence>
+            {selectedPackage && estimates && isBusiness && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="mb-12"
               >
-                Send Offer <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-      </main>
+                <div className="bg-white border-2 border-[#1D1D1D] p-8">
+                  <h3 className="text-sm font-black uppercase tracking-widest mb-6 italic">
+                    Estimated Viewership for This Package
+                  </h3>
 
-      <BottomNav />
-
-      {/* ── Offer Modal ── */}
-      <AnimatePresence>
-        {showOfferModal && (
-          <div className="fixed inset-0 z-[100] flex items-end justify-center px-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowOfferModal(false)}
-              className="absolute inset-0 bg-[#1D1D1D]/80 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="relative w-full max-w-[480px] bg-white border-t-4 border-[#1D1D1D] rounded-t-3xl max-h-[90vh] overflow-y-auto"
-            >
-              <div className="w-12 h-1 bg-[#1D1D1D]/10 rounded-full mx-auto my-4" />
-
-              <div className="px-6 py-4">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h2 className="text-2xl font-black uppercase tracking-tighter italic">
-                      {selectedPackage ? selectedPackage.name : "Custom Offer"}
-                    </h2>
-                    <p className="text-[8px] font-medium opacity-40 uppercase tracking-widest">to {creator.name}</p>
+                  <div className="flex flex-col gap-6 mb-8">
+                    <div className="flex items-start gap-3">
+                      <Users className="w-4 h-4 text-[#389C9A] mt-1" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-tight italic">
+                          Approx. {estimates.uniqueViewers.toLocaleString()} unique viewers
+                        </p>
+                        <p className="text-[10px] text-[#1D1D1D]/40 uppercase tracking-widest">
+                          over {selectedPackage.streams} streams
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <VideoIcon className="w-4 h-4 text-[#389C9A] mt-1" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-tight italic">
+                          Approx. {estimates.hours} hours
+                        </p>
+                        <p className="text-[10px] text-[#1D1D1D]/40 uppercase tracking-widest">
+                          of live brand exposure
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <BarChart className="w-4 h-4 text-[#389C9A] mt-1" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-tight italic">
+                          Approx. {estimates.impressions.toLocaleString()} banner impressions
+                        </p>
+                        <p className="text-[10px] text-[#1D1D1D]/40 uppercase tracking-widest">
+                          based on avg concurrent viewers
+                        </p>
+                      </div>
+                    </div>
                   </div>
+
+                  <p className="text-[9px] text-[#1D1D1D]/30 italic mb-8 uppercase tracking-widest">
+                    Estimates are based on this creator's historical average. Actual figures may vary.
+                  </p>
+
                   <button
-                    onClick={() => setShowOfferModal(false)}
-                    className="p-2 border border-[#1D1D1D]/10 rounded-xl hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                    onClick={() => {
+                      document.getElementById("custom-offer-form")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                    className="w-full bg-[#1D1D1D] text-white py-6 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 italic active:scale-[0.98] transition-all"
                   >
-                    <X className="w-5 h-5" />
+                    Proceed to Send Offer <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
                   </button>
                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-                <form onSubmit={handleSendOffer} className="space-y-4">
-                  <div>
-                    <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">Campaign Type</label>
-                    <select
-                      value={customOffer.type}
-                      onChange={(e) => setCustomOffer({ ...customOffer, type: e.target.value })}
-                      className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
-                    >
-                      <option>Banner Only</option>
-                      <option>Promo Code</option>
-                      <option>Banner + Promo Code</option>
-                    </select>
+          {/* ── Custom Offer / Send Offer Form (business only, File 1 style) ── */}
+          {isBusiness && (
+            <div className="mb-12 pt-12 border-t border-[#1D1D1D]/10" id="custom-offer-form">
+              <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">
+                {selectedPackage ? "Confirm Your Offer" : "Make a Custom Offer"}
+              </h2>
+              <p className="text-xs text-[#1D1D1D]/60 mb-8 italic">
+                {selectedPackage
+                  ? `You've selected the ${selectedPackage.name}. Complete and send your offer below.`
+                  : "If none of the packages fit your needs, propose your own terms directly."}
+              </p>
+
+              {offerSent ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="bg-white border border-[#1D1D1D] p-8 text-center"
+                >
+                  <div className="w-12 h-12 bg-[#389C9A]/10 flex items-center justify-center mx-auto mb-4 border border-[#389C9A]/20">
+                    <CheckCircle2 className="w-6 h-6 text-[#389C9A]" />
                   </div>
-
+                  <h3 className="font-black uppercase tracking-widest mb-4 italic">Offer Sent!</h3>
+                  <p className="text-xs text-[#1D1D1D]/60 leading-relaxed italic">
+                    Your offer has been sent to {creator.name}. They will review it and respond within 48 hours.
+                    You can track this in your My Campaigns tab.
+                  </p>
+                  <button
+                    onClick={() => { setOfferSent(false); setSelectedPackageId(null); }}
+                    className="mt-8 text-[10px] font-black uppercase tracking-widest underline italic text-[#389C9A]"
+                  >
+                    Send another offer
+                  </button>
+                </motion.div>
+              ) : (
+                <form onSubmit={handleSendOffer} className="space-y-6">
+                  {/* Number of streams — hidden if package selected */}
                   {!selectedPackage && (
-                    <>
-                      <div>
-                        <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">Number of Streams</label>
-                        <input
-                          type="number" min="4" max="50"
-                          value={customOffer.streams}
-                          onChange={(e) => setCustomOffer({ ...customOffer, streams: e.target.value })}
-                          className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">Rate per Stream (₦)</label>
-                        <input
-                          type="number" min="1000" step="500"
-                          value={customOffer.rate}
-                          onChange={(e) => setCustomOffer({ ...customOffer, rate: e.target.value })}
-                          className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl"
-                          required
-                        />
-                      </div>
-                    </>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 mb-2 italic">
+                        Number of streams
+                      </label>
+                      <input
+                        type="number"
+                        min="4"
+                        placeholder="e.g. 8"
+                        className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-bold outline-none focus:border-[#1D1D1D] transition-all italic"
+                        value={customOffer.streams}
+                        onChange={(e) => setCustomOffer({ ...customOffer, streams: e.target.value })}
+                        required
+                      />
+                    </div>
                   )}
 
-                  <div>
-                    <label className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1 block">Personal Message (optional)</label>
-                    <textarea
-                      value={customOffer.message}
-                      onChange={(e) => setCustomOffer({ ...customOffer, message: e.target.value })}
-                      rows={3}
-                      placeholder="Tell the creator about your campaign..."
-                      className="w-full p-4 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none transition-colors text-sm rounded-xl resize-none"
-                    />
-                  </div>
-
-                  {estimates && (
-                    <div className="bg-[#F8F8F8] p-4 rounded-xl">
-                      <h4 className="text-[8px] font-black uppercase tracking-widest mb-3 flex items-center gap-1">
-                        <BarChart className="w-3 h-3 text-[#389C9A]" /> Estimated Reach
-                      </h4>
-                      <div className="grid grid-cols-2 gap-3 text-[9px]">
-                        <div><p className="opacity-40">Unique Viewers</p><p className="font-black">{estimates.uniqueViewers.toLocaleString()}</p></div>
-                        <div><p className="opacity-40">Total Hours</p><p className="font-black">{estimates.hours.toFixed(1)}h</p></div>
-                        <div><p className="opacity-40">Impressions</p><p className="font-black">{estimates.impressions.toLocaleString()}</p></div>
-                        <div><p className="opacity-40">Total Cost</p><p className="font-black text-[#389C9A]">₦{estimates.totalCost.toLocaleString()}</p></div>
+                  {/* Rate — hidden if package selected */}
+                  {!selectedPackage && (
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 mb-2 italic">
+                        Your offered rate
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[#389C9A]">₦</span>
+                        <input
+                          type="number"
+                          min="1000"
+                          placeholder="per every 4 qualifying lives"
+                          className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 pl-8 text-xs font-bold outline-none focus:border-[#1D1D1D] transition-all italic"
+                          value={customOffer.rate}
+                          onChange={(e) => setCustomOffer({ ...customOffer, rate: e.target.value })}
+                          required
+                        />
                       </div>
                     </div>
                   )}
 
+                  {/* Package summary if one is selected */}
+                  {selectedPackage && (
+                    <div className="bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest italic">{selectedPackage.name}</p>
+                        <p className="text-[9px] text-[#1D1D1D]/40 uppercase">{selectedPackage.streams} streams</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg font-black italic text-[#389C9A]">₦{selectedPackage.price.toLocaleString()}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPackageId(null)}
+                          className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40 underline italic"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Campaign type */}
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 mb-2 italic">
+                      Campaign type
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {["Banner Only", "Promo Code Only", "Banner + Promo Code"].map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setCustomOffer({ ...customOffer, type })}
+                          className={`px-4 py-2 text-[9px] font-black uppercase tracking-widest border transition-all italic ${
+                            customOffer.type === type
+                              ? "bg-[#1D1D1D] text-white border-[#1D1D1D]"
+                              : "bg-white border-[#1D1D1D]/10"
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Message */}
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 mb-2 italic">
+                      Message to the creator
+                    </label>
+                    <textarea
+                      rows={4}
+                      placeholder="Introduce your business, explain what you are looking for..."
+                      className="w-full bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 text-xs font-medium outline-none focus:border-[#1D1D1D] resize-none transition-all italic"
+                      value={customOffer.message}
+                      onChange={(e) => setCustomOffer({ ...customOffer, message: e.target.value })}
+                    />
+                  </div>
+
                   <button
                     type="submit"
-                    className="w-full bg-[#1D1D1D] text-white py-5 text-sm font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all flex items-center justify-center gap-2"
+                    className="w-full py-6 bg-[#1D1D1D] text-white font-black uppercase tracking-widest text-xs hover:bg-[#389C9A] transition-all italic active:scale-[0.98]"
                   >
-                    Send Offer <ArrowRight className="w-4 h-4 text-[#FEDB71]" />
+                    Send Offer
                   </button>
                 </form>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+              )}
+            </div>
+          )}
 
-      {/* ── Success Banner ── */}
-      {offerSent && (
-        <div className="fixed top-4 left-0 right-0 flex justify-center z-50 pointer-events-none">
-          <div className="bg-[#389C9A] text-white px-6 py-4 rounded-xl shadow-lg flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5" />
-            <span className="text-sm font-black uppercase tracking-widest">Offer Sent Successfully!</span>
+          {/* ── Important Notes (File 1 style) ── */}
+          <div className="bg-[#F8F8F8] border border-[#1D1D1D]/10 p-8 mb-12">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start gap-3">
+                <Info className="w-4 h-4 text-[#389C9A] mt-0.5 shrink-0" />
+                <p className="text-[10px] font-bold leading-relaxed uppercase tracking-tight italic">
+                  All streams must be a minimum of 45 minutes to qualify toward your package
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <Info className="w-4 h-4 text-[#389C9A] mt-0.5 shrink-0" />
+                <p className="text-[10px] font-bold leading-relaxed uppercase tracking-tight italic">
+                  Packages are billed per every 4 qualifying lives completed
+                </p>
+              </div>
+              <div className="flex items-start gap-3">
+                <Info className="w-4 h-4 text-[#389C9A] mt-0.5 shrink-0" />
+                <p className="text-[10px] font-bold leading-relaxed uppercase tracking-tight italic">
+                  Payment is held securely and only released to the creator once streams are verified
+                </p>
+              </div>
+            </div>
           </div>
+
         </div>
-      )}
+      </main>
+
+      <BottomNav />
     </div>
   );
 }
