@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Link } from "react-router";
 import {
   MessageSquare, Bell, User, ArrowLeft, Settings, LogOut,
   Home, CheckCircle, AlertCircle, Calendar, DollarSign,
-  Briefcase, Mail, Send, Loader2
+  Briefcase, Mail, Send
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../lib/contexts/AuthContext";
@@ -67,16 +67,16 @@ export function AppHeader({
     userTypeProp ?? (detectedType === "business" ? "business" : "creator");
   const isBusiness = userType === "business";
 
-  const [showProfileMenu, setShowProfileMenu]         = useState(false);
-  const [showNotifications, setShowNotifications]     = useState(false);
-  const [showMessages, setShowMessages]               = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [unreadMessages, setUnreadMessages]           = useState(0);
-  const [notifications, setNotifications]             = useState<Notification[]>([]);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [recentConversations, setRecentConversations] = useState<ConversationPreview[]>([]);
-  const [userName, setUserName]                       = useState("");
-  const [userAvatar, setUserAvatar]                   = useState<string | null>(null);
-  const [creatorId, setCreatorId]                     = useState<string | null>(null);
+  const [userName, setUserName] = useState("");
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
 
   // ─── USER DATA + PROFILE IDs ──────────────────────────────────────────
 
@@ -148,7 +148,7 @@ export function AppHeader({
 
     fetchData();
 
-    // ── Realtime: notifications ──
+    // Realtime: notifications
     const notifSub = supabase
       .channel(`header_notifications_${user.id}`)
       .on(
@@ -205,7 +205,7 @@ export function AppHeader({
       )
       .subscribe();
 
-    // ── Realtime: messages ──
+    // Realtime: messages
     const msgSub = supabase
       .channel(`header_messages_${user.id}`)
       .on(
@@ -373,15 +373,14 @@ export function AppHeader({
   // ─── RENDER ───────────────────────────────────────────────────────────
 
   return (
-    <header className="px-5 pt-6 pb-4 border-b-2 border-[#1D1D1D]/10 sticky top-0 bg-white/95 backdrop-blur-sm z-50 max-w-[480px]">
-      <div className="flex justify-between items-center mx-auto gap-4">
-
+    <header className="px-5 pt-10 pb-4 border-b border-[#1D1D1D]/10 sticky top-0 bg-white z-50">
+      <div className="flex justify-between items-center">
         {/* ── Left ── */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3">
           {showBack && (
             <button
               onClick={() => (backPath ? navigate(backPath) : navigate(-1))}
-              className="p-2 -ml-2 hover:bg-[#F0F0F0] active:bg-[#E8E8E8] transition-colors rounded-lg shrink-0"
+              className="p-1 -ml-1 active:bg-[#1D1D1D]/10 transition-colors"
               aria-label="Go back"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -390,7 +389,7 @@ export function AppHeader({
           {showHome && (
             <button
               onClick={() => navigate(dashboardPath)}
-              className="p-2 -ml-2 hover:bg-[#F0F0F0] transition-colors rounded-lg shrink-0"
+              className="p-1 -ml-1 active:bg-[#1D1D1D]/10 transition-colors"
               aria-label="Dashboard"
             >
               <Home className="w-5 h-5" />
@@ -398,32 +397,32 @@ export function AppHeader({
           )}
           {showLogo && (
             <div
-              className="flex flex-col cursor-pointer shrink-0"
+              className="flex flex-col cursor-pointer"
               onClick={() => (isAuthenticated ? navigate(dashboardPath) : navigate("/"))}
             >
               <h1 className="text-xl font-black uppercase tracking-tighter italic leading-none flex items-center gap-2">
-                <div className="w-6 h-6 bg-[#1D1D1D] flex items-center justify-center text-white text-[8px] italic rounded-lg shrink-0">
+                <div className="w-5 h-5 bg-[#1D1D1D] flex items-center justify-center text-white text-[8px] italic">
                   LL
                 </div>
                 LiveLink
               </h1>
               {subtitle && (
-                <span className="text-[7px] font-bold uppercase tracking-[0.3em] opacity-40 mt-0.5 pl-8">
+                <span className="text-[7px] font-bold uppercase tracking-[0.3em] opacity-40 mt-0.5">
                   {subtitle}
                 </span>
               )}
             </div>
           )}
           {title && !showLogo && (
-            <h1 className="text-lg font-black uppercase tracking-tighter italic truncate">{title}</h1>
+            <h1 className="text-xl font-black uppercase tracking-tighter italic">{title}</h1>
           )}
         </div>
 
         {/* ── Right ── */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-3">
           {showActions && (
             <>
-              {/* ── Messages Button + Dropdown ── */}
+              {/* Messages Button */}
               <div className="relative">
                 <button
                   onClick={() => {
@@ -431,21 +430,19 @@ export function AppHeader({
                     setShowNotifications(false);
                     setShowProfileMenu(false);
                   }}
-                  className="relative p-2 hover:bg-[#F0F0F0] transition-colors rounded-lg"
+                  className="relative p-1.5 hover:bg-[#1D1D1D]/5 transition-colors border border-transparent active:border-[#1D1D1D]/10"
                   aria-label="Messages"
                 >
                   <MessageSquare className="w-5 h-5" />
                   {unreadMessages > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#389C9A] border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white px-1">
-                      {unreadMessages > 9 ? "9+" : unreadMessages}
-                    </span>
+                    <div className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#389C9A] border-2 border-white rounded-full" />
                   )}
                 </button>
 
-               
+                
               </div>
 
-              {/* ── Notifications Button + Dropdown ── */}
+              {/* Notifications Button */}
               <div className="relative">
                 <button
                   onClick={() => {
@@ -453,23 +450,23 @@ export function AppHeader({
                     setShowMessages(false);
                     setShowProfileMenu(false);
                   }}
-                  className="relative p-2 hover:bg-[#F0F0F0] transition-colors rounded-lg"
+                  className="relative p-1.5 hover:bg-[#1D1D1D]/5 transition-colors border border-transparent active:border-[#1D1D1D]/10"
                   aria-label="Notifications"
                 >
                   <Bell className="w-5 h-5" />
                   {unreadNotifications > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#FEDB71] text-[#1D1D1D] text-[9px] font-black flex items-center justify-center border border-[#1D1D1D]/30 rounded-full px-1">
+                    <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-[#FEDB71] text-[#1D1D1D] text-[7px] font-black flex items-center justify-center rounded-none border border-[#1D1D1D]">
                       {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                    </span>
+                    </div>
                   )}
                 </button>
 
-
+               
               </div>
             </>
           )}
 
-          {/* ── Avatar / Profile Menu ── */}
+          {/* Profile / Avatar Button */}
           <div className="relative ml-1">
             <button
               onClick={() => {
@@ -481,16 +478,123 @@ export function AppHeader({
                   navigate("/login/portal");
                 }
               }}
-              className="w-9 h-9 rounded-full border-2 border-[#1D1D1D] overflow-hidden bg-white flex items-center justify-center active:scale-95 transition-transform hover:border-[#389C9A]"
+              className="w-9 h-9 border border-[#1D1D1D] flex items-center justify-center bg-white active:scale-95 transition-transform overflow-hidden"
               aria-label="Profile menu"
             >
               {userAvatar ? (
                 <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
               ) : (
-                <User className="w-4 h-4" />
+                <User className="w-4.5 h-4.5" />
               )}
             </button>
-                            <AnimatePresence>
+            {/* Messages Dropdown */}
+                <AnimatePresence>
+                  {showMessages && (
+                    <>
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowMessages(false)}
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.12 }}
+                        className="absolute right-0 mt-3 w-80 bg-white border border-[#1D1D1D] shadow-none z-50"
+                      >
+                        {/* Header */}
+                        <div className="p-4 border-b border-[#1D1D1D]/10">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-4 h-4 text-[#389C9A]" />
+                              <span className="text-[8px] font-black uppercase tracking-widest italic">
+                                Messages
+                              </span>
+                            </div>
+                            {unreadMessages > 0 && (
+                              <span className="bg-[#389C9A] text-white text-[7px] font-black px-2 py-0.5 border border-[#1D1D1D]">
+                                {unreadMessages} unread
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* List */}
+                        <div className="max-h-[360px] overflow-y-auto">
+                          {recentConversations.length === 0 ? (
+                            <div className="py-10 flex flex-col items-center gap-3">
+                              <Send className="w-8 h-8 opacity-20" />
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                                No messages yet
+                              </p>
+                              <p className="text-[8px] opacity-30">
+                                {isBusiness
+                                  ? "Start a conversation with a creator"
+                                  : "Start a conversation with a business"}
+                              </p>
+                            </div>
+                          ) : (
+                            recentConversations.map((conv) => (
+                              <Link
+                                key={conv.id}
+                                to={`/messages/${conv.id}?role=${userType}`}
+                                onClick={() => setShowMessages(false)}
+                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/10 hover:bg-[#1D1D1D] hover:text-white transition-colors ${
+                                  !conv.is_read ? "bg-[#389C9A]/5" : ""
+                                }`}
+                              >
+                                {conv.other_participant_avatar ? (
+                                  <ImageWithFallback
+                                    src={conv.other_participant_avatar}
+                                    className="w-9 h-9 rounded-full border border-[#1D1D1D]/10 object-cover shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-full bg-[#F0F0F0] border border-[#1D1D1D]/10 flex items-center justify-center shrink-0">
+                                    <User className="w-4 h-4 opacity-40" />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-baseline mb-0.5">
+                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">
+                                      {conv.other_participant_name}
+                                    </p>
+                                    <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
+                                      {formatTimestamp(conv.last_message_time)}
+                                    </span>
+                                  </div>
+                                  <p className="text-[9px] opacity-50 truncate">
+                                    {conv.last_message}
+                                  </p>
+                                </div>
+                                {!conv.is_read && (
+                                  <div className="w-2 h-2 rounded-full bg-[#389C9A] shrink-0 mt-1.5" />
+                                )}
+                              </Link>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Footer */}
+                        {recentConversations.length > 0 && (
+                          <div className="px-4 py-3 border-t border-[#1D1D1D]/10">
+                            <Link
+                              to={messagesPath}
+                              onClick={() => setShowMessages(false)}
+                              className="block text-center text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                            >
+                              View All Messages →
+                            </Link>
+                          </div>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+               {/* Notifications Dropdown */}
+                <AnimatePresence>
                   {showNotifications && (
                     <>
                       <motion.div
@@ -501,17 +605,19 @@ export function AppHeader({
                         onClick={() => setShowNotifications(false)}
                       />
                       <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                        transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute right-0 top-full mt-2 w-80 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.12 }}
+                        className="absolute right-0 mt-3 w-80 bg-white border border-[#1D1D1D] shadow-none z-50"
                       >
                         {/* Header */}
-                        <div className="px-4 py-3 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center">
+                        <div className="p-4 border-b border-[#1D1D1D]/10 flex justify-between items-center">
                           <div className="flex items-center gap-2">
                             <Bell className="w-4 h-4 text-[#FEDB71]" />
-                            <span className="text-[10px] font-black uppercase tracking-widest italic">Notifications</span>
+                            <span className="text-[8px] font-black uppercase tracking-widest italic">
+                              Notifications
+                            </span>
                           </div>
                           {unreadNotifications > 0 && (
                             <button
@@ -528,26 +634,32 @@ export function AppHeader({
                           {notifications.length === 0 ? (
                             <div className="py-10 flex flex-col items-center gap-3">
                               <Bell className="w-8 h-8 opacity-20" />
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No notifications</p>
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                                No notifications
+                              </p>
                             </div>
                           ) : (
                             notifications.map((n) => (
                               <div
                                 key={n.id}
                                 onClick={() => markNotificationAsRead(n.id)}
-                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/8 hover:bg-[#F8F8F8] cursor-pointer transition-colors ${
+                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/10 hover:bg-[#1D1D1D] hover:text-white cursor-pointer transition-colors ${
                                   !n.is_read ? "bg-[#FEDB71]/5" : ""
                                 }`}
                               >
                                 <div className="mt-0.5 shrink-0">{getNotificationIcon(n.type)}</div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex justify-between items-baseline mb-0.5">
-                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">{n.title}</p>
+                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">
+                                      {n.title}
+                                    </p>
                                     <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
                                       {formatTimestamp(n.created_at)}
                                     </span>
                                   </div>
-                                  <p className="text-[9px] opacity-50 line-clamp-2 break-words">{n.message}</p>
+                                  <p className="text-[9px] opacity-50 line-clamp-2 break-words">
+                                    {n.message}
+                                  </p>
                                 </div>
                                 {!n.is_read && (
                                   <div className="w-2 h-2 rounded-full bg-[#FEDB71] shrink-0 mt-1.5" />
@@ -559,11 +671,11 @@ export function AppHeader({
 
                         {/* Footer */}
                         {notifications.length > 0 && (
-                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
+                          <div className="px-4 py-3 border-t border-[#1D1D1D]/10">
                             <Link
                               to={notificationsPath}
                               onClick={() => setShowNotifications(false)}
-                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
+                              className="block text-center text-[8px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
                             >
                               View All Notifications →
                             </Link>
@@ -573,103 +685,8 @@ export function AppHeader({
                     </>
                   )}
                 </AnimatePresence>
-                 <AnimatePresence>
-                  {showMessages && (
-                    <>
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-40"
-                        onClick={() => setShowMessages(false)}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                        transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute right-0 top-full mt-2 w-80 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
-                      >
-                        {/* Header */}
-                        <div className="px-4 py-3 border-b-2 border-[#1D1D1D] bg-[#F8F8F8] flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <Mail className="w-4 h-4 text-[#389C9A]" />
-                            <span className="text-[10px] font-black uppercase tracking-widest italic">Messages</span>
-                          </div>
-                          {unreadMessages > 0 && (
-                            <span className="bg-[#389C9A] text-white text-[8px] font-black px-2 py-0.5 rounded-full">
-                              {unreadMessages} unread
-                            </span>
-                          )}
-                        </div>
 
-                        {/* List */}
-                        <div className="max-h-[360px] overflow-y-auto">
-                          {recentConversations.length === 0 ? (
-                            <div className="py-10 flex flex-col items-center gap-3">
-                              <Send className="w-8 h-8 opacity-20" />
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No messages yet</p>
-                              <p className="text-[8px] opacity-30">
-                                {isBusiness
-                                  ? "Start a conversation with a creator"
-                                  : "Start a conversation with a business"}
-                              </p>
-                            </div>
-                          ) : (
-                            recentConversations.map((conv) => (
-                              <Link
-                                key={conv.id}
-                                to={`/messages/${conv.id}?role=${userType}`}
-                                onClick={() => setShowMessages(false)}
-                                className={`flex items-start gap-3 px-4 py-3 border-b border-[#1D1D1D]/8 hover:bg-[#F8F8F8] transition-colors ${
-                                  !conv.is_read ? "bg-[#389C9A]/5" : ""
-                                }`}
-                              >
-                                {conv.other_participant_avatar ? (
-                                  <ImageWithFallback
-                                    src={conv.other_participant_avatar}
-                                    className="w-9 h-9 rounded-full border-2 border-[#1D1D1D]/10 object-cover shrink-0"
-                                  />
-                                ) : (
-                                  <div className="w-9 h-9 rounded-full bg-[#F0F0F0] border-2 border-[#1D1D1D]/10 flex items-center justify-center shrink-0">
-                                    <User className="w-4 h-4 opacity-40" />
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex justify-between items-baseline mb-0.5">
-                                    <p className="text-[11px] font-black uppercase tracking-wide truncate">
-                                      {conv.other_participant_name}
-                                    </p>
-                                    <span className="text-[8px] opacity-40 whitespace-nowrap ml-2 shrink-0">
-                                      {formatTimestamp(conv.last_message_time)}
-                                    </span>
-                                  </div>
-                                  <p className="text-[9px] opacity-50 truncate">{conv.last_message}</p>
-                                </div>
-                                {!conv.is_read && (
-                                  <div className="w-2 h-2 rounded-full bg-[#389C9A] shrink-0 mt-1.5" />
-                                )}
-                              </Link>
-                            ))
-                          )}
-                        </div>
-
-                        {/* Footer */}
-                        {recentConversations.length > 0 && (
-                          <div className="px-4 py-3 border-t-2 border-[#1D1D1D] bg-[#F8F8F8]">
-                            <Link
-                              to={messagesPath}
-                              onClick={() => setShowMessages(false)}
-                              className="block text-center text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline"
-                            >
-                              View All Messages →
-                            </Link>
-                          </div>
-                        )}
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
+            {/* Profile Dropdown */}
             <AnimatePresence>
               {showProfileMenu && isAuthenticated && (
                 <>
@@ -681,28 +698,30 @@ export function AppHeader({
                     onClick={() => setShowProfileMenu(false)}
                   />
                   <motion.div
-                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                    transition={{ duration: 0.12, ease: "easeOut" }}
-                    className="absolute right-0 top-full mt-2 w-64 bg-white border-2 border-[#1D1D1D] shadow-2xl z-50 rounded-xl overflow-hidden"
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute right-0 mt-3 w-64 bg-white border border-[#1D1D1D] shadow-none z-50"
                   >
                     {/* User info */}
-                    <div className="px-4 py-4 border-b-2 border-[#1D1D1D] bg-[#F8F8F8]">
+                    <div className="p-4 border-b border-[#1D1D1D]/10">
                       <div className="flex items-center gap-3 mb-3">
                         {userAvatar ? (
                           <img
                             src={userAvatar}
                             alt={userName}
-                            className="w-10 h-10 rounded-full border-2 border-[#1D1D1D]/10 object-cover shrink-0"
+                            className="w-10 h-10 rounded-full border border-[#1D1D1D]/10 object-cover shrink-0"
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded-full bg-[#F0F0F0] border-2 border-[#1D1D1D]/10 flex items-center justify-center shrink-0">
+                          <div className="w-10 h-10 rounded-full bg-[#F0F0F0] border border-[#1D1D1D]/10 flex items-center justify-center shrink-0">
                             <User className="w-5 h-5 opacity-40" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-black uppercase tracking-wide truncate">{userName}</p>
+                          <p className="text-[11px] font-black uppercase tracking-wide truncate">
+                            {userName}
+                          </p>
                           <p className="text-[9px] opacity-40 truncate">{user?.email}</p>
                         </div>
                       </div>
@@ -715,7 +734,7 @@ export function AppHeader({
                     </div>
 
                     {/* Menu items */}
-                    <div className="p-2">
+                    <div className="p-1">
                       {[
                         {
                           to:    profilePath,
@@ -739,7 +758,7 @@ export function AppHeader({
                           key={item.to}
                           to={item.to}
                           onClick={() => setShowProfileMenu(false)}
-                          className="flex items-center gap-3 px-3 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                          className="flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors italic"
                         >
                           {item.icon}
                           {item.label}
@@ -750,7 +769,7 @@ export function AppHeader({
 
                       <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white text-red-500 transition-colors italic"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         Logout
@@ -762,7 +781,6 @@ export function AppHeader({
             </AnimatePresence>
           </div>
         </div>
-
       </div>
     </header>
   );
