@@ -66,7 +66,8 @@ export const routes: RouteObject[] = [
   // Campaign creation flow
   { path: "/business/create-campaign", element: protectBusiness(CampaignTypeSelection) },     // entry point
   { path: "/business/campaign/type", element: protectBusiness(CampaignTypeSelection) },       // alias
-  { path: "/business/campaign/creation", element: protectBusiness(CampaignCreation) },        // brief & payment
+  { path: "/business/campaign/creation", element: protectBusiness(CampaignCreation) },
+  { path: "/messages/:campaignId/creator/:creatorId", element: protectCreator(MessageThread) }, // brief & payment
   
   // Campaign detail routes
   { path: "/business/campaign/overview/:id", element: protectBusiness(BusinessCampaignOverview) },
