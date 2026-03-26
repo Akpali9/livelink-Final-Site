@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router";
-import { Home, Search, Bell, Briefcase, MessageSquare } from "lucide-react";
+import { Home, Search, User, Briefcase, MessageSquare } from "lucide-react";
 import { useAuth } from "../lib/contexts/AuthContext";
 
 export function BottomNav() {
@@ -15,13 +15,13 @@ export function BottomNav() {
         { icon: Home,         label: "Home",         path: "/business/dashboard" },
         { icon: Search,       label: "Browse",       path: "/browse" },
         { icon: Briefcase,    label: "My Campaigns", path: "/business/campaigns" },
-        { icon: Bell,         label: "Notifications",path: "/notifications?role=business" },
+        { icon: User,        label: "Profile",  path: "/notifications?role=business" },
       ]
     : [
         { icon: Home,         label: "Home",         path: "/dashboard" },
         { icon: Search,       label: "Browse",       path: "/browse" },
         { icon: Briefcase,    label: "Campaigns",    path: "/campaigns" },
-        { icon: Bell,         label: "Notifications",path: "/notifications?role=creator" },
+        { icon: User,          label: "Profile", path: "/notifications?role=creator" },
       ];
 
   const isActive = (path: string, label: string) => {
