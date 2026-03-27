@@ -136,8 +136,10 @@ export function BusinessCampaignOverview() {
         `)
         .eq("campaign_id", id);
       if (creatorsError) throw creatorsError;
+      
+      // Log the raw status values
+      console.log("[fetchData] Raw creators data:", creatorsData.map(c => ({ id: c.id, status: c.status })));
       setCreators(creatorsData || []);
-      console.log("[fetchData] Creators loaded:", creatorsData);
 
       setLastUpdated(new Date());
       if (silent) toast.success("Data refreshed");
@@ -242,7 +244,7 @@ export function BusinessCampaignOverview() {
         console.error("[Update] Supabase error:", error);
         throw error;
       }
-      console.log("[Update] Success:", data);
+      console.log("[Update] Success, updated row:", data);
 
       // OPTIMISTIC UI UPDATE: change the creator's status locally
       setCreators(prev => {
@@ -255,7 +257,7 @@ export function BusinessCampaignOverview() {
               }
             : c
         );
-        console.log("[Optimistic] New creators state:", updated);
+        console.log("[Optimistic] New creators state:", updated.map(c => ({ id: c.id, status: c.status })));
         return updated;
       });
 
@@ -287,6 +289,8 @@ export function BusinessCampaignOverview() {
     } catch (err: any) {
       console.error("[Update] Error:", err);
       toast.error(err.message || "Failed to update status");
+      // If the update failed, revert the optimistic change by refreshing now
+      fetchData(true);
     } finally {
       setUpdatingCreatorId(null);
     }
