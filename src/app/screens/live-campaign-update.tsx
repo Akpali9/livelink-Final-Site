@@ -1,21 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router";
 import {
-  ArrowLeft,
   Download,
-  Calendar,
-  Tag,
-  Tv,
   Clock,
   CheckCircle2,
   MessageSquare,
   AlertTriangle,
-  ChevronRight,
-  X,
   Upload,
-  ArrowRight,
   Loader2,
   Eye,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/ImageWithFallback";
@@ -75,12 +69,12 @@ export function LiveCampaignUpdate() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [streamProofs, setStreamProofs] = useState<StreamProof[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [selectedStreamNumber, setSelectedStreamNumber] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadingStreamNum, setUploadingStreamNum] = useState<number | null>(null);
+  const [selectedStreamNumber, setSelectedStreamNumber] = useState<number | null>(null);
   const [selectedProof, setSelectedProof] = useState<{ url: string; streamNum: number } | null>(null);
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+  const [justUploadedStream, setJustUploadedStream] = useState<number | null>(null);
   const [creatorProfileId, setCreatorProfileId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,57 +102,56 @@ export function LiveCampaignUpdate() {
   }, [user, navigate]);
 
   // ─── Fetch campaign data ──────────────────────────────────────────────
-  const fetchData = useCallback(async (silent = false) => {
-    if (!campaignId || !user || !creatorProfileId) return;
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
+  const fetchData = useCallback(
+    async (silent = false) => {
+      if (!campaignId || !user || !creatorProfileId) return;
+      if (!silent) setLoading(true);
 
-    try {
-      const { data: campaignData, error: campaignError } = await supabase
-        .from("campaigns")
-        .select("*")
-        .eq("id", campaignId)
-        .single();
-      if (campaignError) throw campaignError;
-      setCampaign(campaignData);
+      try {
+        const { data: campaignData, error: campaignError } = await supabase
+          .from("campaigns")
+          .select("*")
+          .eq("id", campaignId)
+          .single();
+        if (campaignError) throw campaignError;
+        setCampaign(campaignData);
 
-      const { data: linkData, error: linkError } = await supabase
-        .from("campaign_creators")
-        .select("*")
-        .eq("campaign_id", campaignId)
-        .eq("creator_id", creatorProfileId)
-        .maybeSingle();
-      if (linkError) throw linkError;
-      if (!linkData) {
-        toast.error("You are not assigned to this campaign");
-        navigate("/campaigns");
-        return;
+        const { data: linkData, error: linkError } = await supabase
+          .from("campaign_creators")
+          .select("*")
+          .eq("campaign_id", campaignId)
+          .eq("creator_id", creatorProfileId)
+          .maybeSingle();
+        if (linkError) throw linkError;
+        if (!linkData) {
+          toast.error("You are not assigned to this campaign");
+          navigate("/campaigns");
+          return;
+        }
+        setCreatorLink(linkData);
+
+        const { data: businessData, error: businessError } = await supabase
+          .from("businesses")
+          .select("id, name, logo_url, user_id")
+          .eq("id", campaignData.business_id)
+          .maybeSingle();
+        if (!businessError && businessData) setBusiness(businessData);
+
+        const { data: proofsData, error: proofsError } = await supabase
+          .from("stream_proofs")
+          .select("*")
+          .eq("campaign_creator_id", linkData.id)
+          .order("stream_number", { ascending: true });
+        if (!proofsError) setStreamProofs(proofsData || []);
+      } catch (error: any) {
+        console.error("Error fetching campaign:", error);
+        toast.error(error.message || "Failed to load campaign");
+      } finally {
+        setLoading(false);
       }
-      setCreatorLink(linkData);
-
-      const { data: businessData, error: businessError } = await supabase
-        .from("businesses")
-        .select("id, name, logo_url, user_id")
-        .eq("id", campaignData.business_id)
-        .maybeSingle();
-      if (!businessError && businessData) setBusiness(businessData);
-
-      const { data: proofsData, error: proofsError } = await supabase
-        .from("stream_proofs")
-        .select("*")
-        .eq("campaign_creator_id", linkData.id)
-        .order("stream_number", { ascending: true });
-      if (!proofsError) setStreamProofs(proofsData || []);
-
-      if (!silent) toast.success("Data refreshed");
-    } catch (error: any) {
-      console.error("Error fetching campaign:", error);
-      toast.error(error.message || "Failed to load campaign");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [campaignId, user, creatorProfileId, navigate]);
+    },
+    [campaignId, user, creatorProfileId, navigate]
+  );
 
   // ─── Real‑time subscriptions ──────────────────────────────────────────
   useEffect(() => {
@@ -180,7 +173,12 @@ export function LiveCampaignUpdate() {
       .channel(`creator-link-${creatorProfileId}-${campaignId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "campaign_creators", filter: `creator_id=eq.${creatorProfileId}` },
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "campaign_creators",
+          filter: `creator_id=eq.${creatorProfileId}`,
+        },
         (payload) => {
           setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev));
         }
@@ -191,7 +189,12 @@ export function LiveCampaignUpdate() {
       .channel(`proofs-${campaignId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "stream_proofs", filter: `campaign_creator_id=eq.${creatorLink?.id}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "stream_proofs",
+          filter: `campaign_creator_id=eq.${creatorLink?.id}`,
+        },
         () => fetchData(true)
       )
       .subscribe();
@@ -203,9 +206,23 @@ export function LiveCampaignUpdate() {
     };
   }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
 
-  // ─── File upload handler using Supabase Edge Function (bypasses RLS) ───
+  // ─── FIX 1: triggerFileInput now directly calls .click() ─────────────
+  // No modal needed — just set the stream number and open the native picker.
+  const triggerFileInput = (streamNum: number) => {
+    setSelectedStreamNumber(streamNum);
+    // Small timeout ensures state is set before the input fires onChange
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 0);
+  };
+
+  // ─── File upload handler ──────────────────────────────────────────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+
+    // Reset input value so the same file can be re-selected if needed
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
     if (!file || selectedStreamNumber === null) return;
 
     const allowedTypes = ["image/png", "image/jpeg"];
@@ -218,32 +235,28 @@ export function LiveCampaignUpdate() {
       return;
     }
 
+    const streamNum = selectedStreamNumber;
     setUploading(true);
+    setUploadingStreamNum(streamNum);
+
     try {
-      // Generate unique file path
       const fileExt = file.name.split(".").pop();
-      const fileName = `${campaignId}_${selectedStreamNumber}_${Date.now()}.${fileExt}`;
+      const fileName = `${campaignId}_${streamNum}_${Date.now()}.${fileExt}`;
       const filePath = `stream-proofs/${creatorProfileId}/${fileName}`;
 
-      // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from("campaign-assets")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const {
         data: { publicUrl },
       } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      // ─── Call Supabase Edge Function (bypasses RLS) ───
       const { data, error } = await supabase.functions.invoke("insert-proof", {
         body: {
           campaign_creator_id: creatorLink?.id,
-          stream_number: selectedStreamNumber,
+          stream_number: streamNum,
           proof_url: publicUrl,
           status: "pending",
           submitted_at: new Date().toISOString(),
@@ -255,22 +268,24 @@ export function LiveCampaignUpdate() {
         throw new Error(error.message || "Edge function failed");
       }
 
-      toast.success(`Proof for Stream ${selectedStreamNumber} uploaded! The business will review it shortly.`);
-      setIsUploadModalOpen(false);
-      fetchData(true); // refresh
+      console.log("insert-proof response:", data);
+
+      // FIX 3: Flash a "just uploaded" success state on the card
+      setJustUploadedStream(streamNum);
+      setTimeout(() => setJustUploadedStream(null), 3000);
+
+      toast.success(`Stream ${streamNum} proof uploaded! Awaiting business review.`);
+
+      // Refresh proofs so card immediately shows "Under Review"
+      await fetchData(true);
     } catch (error: any) {
       console.error("Upload error:", error);
       toast.error(error.message || "Failed to upload proof");
     } finally {
       setUploading(false);
+      setUploadingStreamNum(null);
       setSelectedStreamNumber(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  };
-
-  const triggerFileInput = (streamNum: number) => {
-    setSelectedStreamNumber(streamNum);
-    setIsUploadModalOpen(true);
   };
 
   const handleViewProof = (proofUrl: string, streamNum: number) => {
@@ -315,12 +330,11 @@ export function LiveCampaignUpdate() {
   const totalStreams = campaign.streams_required;
   const progress = (completedStreams / totalStreams) * 100;
 
-  // Build stream log
   const streamLog = Array.from({ length: totalStreams }, (_, i) => {
     const streamNum = i + 1;
-    const proof = streamProofs.find(p => p.stream_number === streamNum);
+    const proof = streamProofs.find((p) => p.stream_number === streamNum);
     let status: "Verified" | "Under Review" | "Upload Required" | "Upcoming" = "Upcoming";
-    let proofUrl = null;
+    let proofUrl: string | null = null;
     if (proof) {
       if (proof.status === "verified") {
         status = "Verified";
@@ -330,15 +344,15 @@ export function LiveCampaignUpdate() {
         proofUrl = proof.proof_url;
       }
     } else if (streamNum <= completedStreams) {
-      status = "Verified"; // fallback if missing proof but stream count is high
+      status = "Verified";
     } else if (streamNum === completedStreams + 1) {
       status = "Upload Required";
     }
-    return { num: streamNum, status, proofUrl, date: "TBC", duration: "TBC" };
+    return { num: streamNum, status, proofUrl };
   });
 
-  const verifiedStreams = streamLog.filter(s => s.status === "Verified").length;
-  const underReview = streamLog.filter(s => s.status === "Under Review").length;
+  const verifiedStreams = streamLog.filter((s) => s.status === "Verified").length;
+  const underReview = streamLog.filter((s) => s.status === "Under Review").length;
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -360,16 +374,16 @@ export function LiveCampaignUpdate() {
           <h2 className="text-4xl font-black uppercase tracking-tighter leading-none italic mb-2">
             {businessName}
           </h2>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 italic">
-            {campaign.name}
-          </p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 italic">{campaign.name}</p>
         </div>
 
         {/* Streams Progress Card */}
         <div className="bg-white border-2 border-[#1D1D1D] p-10 mb-10">
           <div className="flex justify-between items-end mb-6">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-2 italic">STREAMS PROGRESS</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-2 italic">
+                STREAMS PROGRESS
+              </p>
               <h3 className="text-4xl font-black italic tracking-tighter leading-none">
                 {completedStreams} / {totalStreams}
               </h3>
@@ -378,7 +392,6 @@ export function LiveCampaignUpdate() {
               ₦{totalEarnings.toLocaleString()}
             </p>
           </div>
-
           <div className="h-2.5 bg-[#1D1D1D]/5 w-full rounded-none overflow-hidden mb-3">
             <motion.div
               initial={{ width: 0 }}
@@ -395,16 +408,24 @@ export function LiveCampaignUpdate() {
         {/* Info Grid */}
         <div className="grid grid-cols-2 gap-[1px] bg-[#1D1D1D] border-2 border-[#1D1D1D] mb-12">
           <div className="bg-white p-6">
-            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">TOTAL BUDGET</span>
+            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">
+              TOTAL BUDGET
+            </span>
             <span className="text-sm font-black italic">₦{campaign.budget?.toLocaleString()}</span>
           </div>
           <div className="bg-white p-6">
-            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">PROMO CODE</span>
+            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">
+              PROMO CODE
+            </span>
             <span className="text-sm font-black italic tracking-tight">WELCOME20</span>
           </div>
           <div className="bg-white p-6">
-            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">START DATE</span>
-            <span className="text-sm font-black italic">{campaign.start_date ? new Date(campaign.start_date).toLocaleDateString() : "TBC"}</span>
+            <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">
+              START DATE
+            </span>
+            <span className="text-sm font-black italic">
+              {campaign.start_date ? new Date(campaign.start_date).toLocaleDateString() : "TBC"}
+            </span>
           </div>
           <div className="bg-white p-6">
             <span className="text-[8px] font-black uppercase tracking-widest opacity-30 block mb-2 italic">TYPE</span>
@@ -418,7 +439,10 @@ export function LiveCampaignUpdate() {
           <div className="relative group">
             <div className="aspect-video border-2 border-[#1D1D1D] bg-black overflow-hidden relative">
               <ImageWithFallback
-                src={campaign.banner_url || "https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&h=400&fit=crop"}
+                src={
+                  campaign.banner_url ||
+                  "https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&h=400&fit=crop"
+                }
                 className="w-full h-full object-cover opacity-60 grayscale"
               />
               <div className="absolute inset-0 flex items-center justify-center">
@@ -449,70 +473,108 @@ export function LiveCampaignUpdate() {
         <div className="mb-14">
           <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6 opacity-40 italic">STREAM UPDATES</h4>
           <div className="flex flex-col gap-6">
-            {streamLog.map((stream) => (
-              <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-8 flex flex-col gap-8">
-                <div className="flex justify-between items-center">
-                  <span className="font-black text-lg uppercase italic tracking-tighter leading-none">STREAM {stream.num}</span>
-                  <div
-                    className={`px-2.5 py-1 text-[7px] font-black uppercase tracking-widest border italic ${
-                      stream.status === "Verified"
-                        ? "bg-[#389C9A]/10 text-[#389C9A] border-[#389C9A]/20"
-                        : stream.status === "Under Review"
-                        ? "bg-[#FEDB71]/10 text-[#D2691E] border-[#FEDB71]/20"
-                        : stream.status === "Upload Required"
-                        ? "bg-[#F8F8F8] text-[#1D1D1D]/40 border-[#1D1D1D]/10"
-                        : "bg-white text-[#1D1D1D]/20 border-[#1D1D1D]/10"
-                    }`}
-                  >
-                    {stream.status === "Verified" && "✓ VERIFIED"}
-                    {stream.status === "Under Review" && "⏳ UNDER REVIEW"}
-                    {stream.status === "Upload Required" && "UPLOAD REQUIRED"}
-                    {stream.status === "Upcoming" && "UPCOMING"}
-                  </div>
-                </div>
+            {streamLog.map((stream) => {
+              const isUploadingThis = uploading && uploadingStreamNum === stream.num;
+              const justUploaded = justUploadedStream === stream.num;
 
-                {/* Always show VIEW PROOF if proofUrl exists */}
-                {stream.proofUrl && (
-                  <button
-                    onClick={() => handleViewProof(stream.proofUrl, stream.num)}
-                    className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#389C9A]"
-                  >
-                    <Eye className="w-4 h-4" /> VIEW PROOF
-                  </button>
-                )}
-
-                {stream.status === "Under Review" && (
-                  <div className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#D2691E]">
-                    <Clock className="w-4 h-4" />
-                    <span>PROOF SUBMITTED — AWAITING BUSINESS VERIFICATION</span>
-                  </div>
-                )}
-
-                {stream.status === "Upload Required" && (
-                  <div className="flex flex-col gap-5">
-                    <button
-                      onClick={() => triggerFileInput(stream.num)}
-                      className="w-full bg-[#1D1D1D] text-white py-5 px-6 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all italic border-2 border-[#1D1D1D]"
+              return (
+                <div
+                  key={stream.num}
+                  className={`bg-white border-2 p-8 flex flex-col gap-8 transition-colors duration-500 ${
+                    justUploaded ? "border-[#389C9A]" : "border-[#1D1D1D]"
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-black text-lg uppercase italic tracking-tighter leading-none">
+                      STREAM {stream.num}
+                    </span>
+                    <div
+                      className={`px-2.5 py-1 text-[7px] font-black uppercase tracking-widest border italic ${
+                        stream.status === "Verified"
+                          ? "bg-[#389C9A]/10 text-[#389C9A] border-[#389C9A]/20"
+                          : stream.status === "Under Review"
+                          ? "bg-[#FEDB71]/10 text-[#D2691E] border-[#FEDB71]/20"
+                          : stream.status === "Upload Required"
+                          ? "bg-[#F8F8F8] text-[#1D1D1D]/40 border-[#1D1D1D]/10"
+                          : "bg-white text-[#1D1D1D]/20 border-[#1D1D1D]/10"
+                      }`}
                     >
-                      <Upload className="w-4 h-4 text-[#FEDB71]" /> UPLOAD STREAM PROOF
-                    </button>
-                    <p className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/30 text-center italic">
-                      SCREENSHOT OF YOUR ANALYTICS SHOWING VIEWERS AND STREAM DURATION
-                    </p>
+                      {stream.status === "Verified" && "✓ VERIFIED"}
+                      {stream.status === "Under Review" && "⏳ UNDER REVIEW"}
+                      {stream.status === "Upload Required" && "UPLOAD REQUIRED"}
+                      {stream.status === "Upcoming" && "UPCOMING"}
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {/* FIX 3: Success confirmation shown immediately after upload */}
+                  {justUploaded && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#389C9A] bg-[#389C9A]/5 border border-[#389C9A]/20 px-4 py-3"
+                    >
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>PROOF UPLOADED — AWAITING BUSINESS VERIFICATION</span>
+                    </motion.div>
+                  )}
+
+                  {stream.proofUrl && (
+                    <button
+                      onClick={() => handleViewProof(stream.proofUrl!, stream.num)}
+                      className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#389C9A]"
+                    >
+                      <Eye className="w-4 h-4" /> VIEW PROOF
+                    </button>
+                  )}
+
+                  {stream.status === "Under Review" && !justUploaded && (
+                    <div className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#D2691E]">
+                      <Clock className="w-4 h-4" />
+                      <span>PROOF SUBMITTED — AWAITING BUSINESS VERIFICATION</span>
+                    </div>
+                  )}
+
+                  {stream.status === "Upload Required" && (
+                    <div className="flex flex-col gap-5">
+                      {/* FIX 1 & 2: Button directly triggers triggerFileInput — no modal needed */}
+                      <button
+                        onClick={() => triggerFileInput(stream.num)}
+                        disabled={isUploadingThis}
+                        className="w-full bg-[#1D1D1D] text-white py-5 px-6 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-[0.98] transition-all italic border-2 border-[#1D1D1D] disabled:opacity-50"
+                      >
+                        {isUploadingThis ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" /> UPLOADING...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4 text-[#FEDB71]" /> UPLOAD STREAM PROOF
+                          </>
+                        )}
+                      </button>
+                      <p className="text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/30 text-center italic">
+                        SCREENSHOT OF YOUR ANALYTICS SHOWING VIEWERS AND STREAM DURATION
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {/* Earnings Bar */}
             <div className="mt-4 bg-[#1D1D1D] p-10 text-white border-b-4 border-[#389C9A]">
               <div className="grid grid-cols-2 gap-10 mb-8">
                 <div>
-                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 italic">VERIFIED STREAMS</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 italic">
+                    VERIFIED STREAMS
+                  </p>
                   <p className="text-3xl font-black italic tracking-tighter">{verifiedStreams}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 italic text-[#FEDB71]">EARNINGS UNLOCKED</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-2 italic text-[#FEDB71]">
+                    EARNINGS UNLOCKED
+                  </p>
                   <p className="text-3xl font-black italic tracking-tighter">₦{totalEarnings.toLocaleString()}</p>
                 </div>
               </div>
@@ -528,7 +590,9 @@ export function LiveCampaignUpdate() {
 
         {/* Partnership Rules */}
         <div className="mb-14 px-4">
-          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8 opacity-40 italic">PARTNERSHIP RULES</h4>
+          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8 opacity-40 italic">
+            PARTNERSHIP RULES
+          </h4>
           <div className="space-y-4">
             {[
               "Minimum stream duration: 45 minutes",
@@ -536,7 +600,10 @@ export function LiveCampaignUpdate() {
               "Promo code must be mentioned at least once per hour",
               "No offensive content during the sponsored stream",
             ].map((req, i) => (
-              <div key={i} className="flex gap-5 p-6 bg-white border border-[#1D1D1D]/10 items-start italic group hover:border-[#389C9A] transition-colors">
+              <div
+                key={i}
+                className="flex gap-5 p-6 bg-white border border-[#1D1D1D]/10 items-start italic group hover:border-[#389C9A] transition-colors"
+              >
                 <CheckCircle2 className="w-4.5 h-4.5 text-[#389C9A] shrink-0 mt-0.5" />
                 <p className="text-[10px] font-black uppercase tracking-tight leading-relaxed opacity-60 group-hover:opacity-100">
                   {req}
@@ -546,7 +613,7 @@ export function LiveCampaignUpdate() {
           </div>
         </div>
 
-        {/* Need Help? Section – FIXED MESSAGE LINK using business user_id */}
+        {/* Need Help? */}
         <div className="px-4 mb-20">
           <div className="bg-[#1D1D1D]/5 p-12 border-2 border-[#1D1D1D] text-center">
             <h4 className="text-xl font-black uppercase italic mb-3 tracking-tighter leading-none">NEED HELP?</h4>
@@ -562,50 +629,26 @@ export function LiveCampaignUpdate() {
           </div>
         </div>
 
-        {/* Hidden file input */}
+        {/*
+          FIX 2: Input is NOT hidden via display:none / className="hidden".
+          Uses opacity:0 + pointer-events:none instead so .click() works on mobile.
+        */}
         <input
           ref={fileInputRef}
           type="file"
           accept="image/png,image/jpeg"
           onChange={handleFileUpload}
-          className="hidden"
+          style={{
+            position: "absolute",
+            opacity: 0,
+            pointerEvents: "none",
+            width: "1px",
+            height: "1px",
+          }}
         />
       </main>
 
-      {/* Upload Modal */}
-      <AnimatePresence>
-        {isUploadModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white p-8 max-w-[90%] w-full max-w-[400px] text-center">
-              <div className="flex justify-between items-start mb-6">
-                <h3 className="text-2xl font-black uppercase tracking-tighter italic">
-                  Upload Proof – Stream {selectedStreamNumber}
-                </h3>
-                <button onClick={() => setIsUploadModalOpen(false)} className="p-1">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              {uploading ? (
-                <div className="flex flex-col items-center py-8">
-                  <Loader2 className="w-12 h-12 animate-spin text-[#389C9A] mb-4" />
-                  <p className="text-[10px] font-black uppercase tracking-widest italic">Uploading...</p>
-                </div>
-              ) : (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-[#1D1D1D] p-8 cursor-pointer hover:bg-[#F8F8F8] transition-colors"
-                >
-                  <Upload className="w-8 h-8 mx-auto mb-4 text-[#389C9A]" />
-                  <p className="text-[10px] font-black uppercase tracking-widest italic">Tap to select screenshot</p>
-                  <p className="text-[8px] font-medium opacity-40 mt-2">PNG or JPG, max 5MB</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Proof Modal */}
+      {/* Proof Viewer Modal */}
       <AnimatePresence>
         {isProofModalOpen && selectedProof && (
           <>
@@ -625,9 +668,14 @@ export function LiveCampaignUpdate() {
             >
               <div className="w-12 h-1 bg-[#1D1D1D]/10 mx-auto mt-4 rounded-full" />
               <div className="p-8 text-center">
-                <h3 className="text-2xl font-black uppercase tracking-tighter italic mb-4">
-                  Stream Proof — Stream {selectedProof.streamNum}
-                </h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-2xl font-black uppercase tracking-tighter italic">
+                    Stream Proof — Stream {selectedProof.streamNum}
+                  </h3>
+                  <button onClick={() => setIsProofModalOpen(false)} className="p-1">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
                 <div className="mb-8 border-2 border-[#1D1D1D] aspect-video bg-black overflow-hidden">
                   <ImageWithFallback
                     src={selectedProof.url}
