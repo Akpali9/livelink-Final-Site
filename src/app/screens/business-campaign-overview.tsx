@@ -135,6 +135,8 @@ export function BusinessCampaignOverview() {
         `)
         .eq("campaign_id", id);
       if (creatorsError) throw creatorsError;
+      
+      console.log("[fetchData] Raw creators:", creatorsData.map(c => ({ id: c.id, status: c.status })));
       setCreators(creatorsData || []);
 
       setLastUpdated(new Date());
@@ -186,6 +188,7 @@ export function BusinessCampaignOverview() {
             filter: `campaign_id=eq.${id}`,
           },
           () => {
+            console.log("[realtime] campaign_creators changed, refreshing...");
             fetchData(true);
           }
         )
@@ -217,8 +220,16 @@ export function BusinessCampaignOverview() {
     if (!ok) return;
 
     setUpdatingCreatorId(campaignCreatorId);
+    const targetStatus = newStatus === "active" ? "active" : "declined";
+
+    // Optimistic UI update
+    setCreators(prev => prev.map(c => 
+      c.id === campaignCreatorId 
+        ? { ...c, status: targetStatus, streams_target: newStatus === "active" ? (campaign?.streams_required || c.streams_target) : c.streams_target }
+        : c
+    ));
+
     try {
-      const targetStatus = newStatus === "active" ? "active" : "declined";
       const updates: any = {
         status: targetStatus,
         updated_at: new Date().toISOString(),
@@ -228,20 +239,12 @@ export function BusinessCampaignOverview() {
         updates.streams_target = campaign?.streams_required;
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("campaign_creators")
         .update(updates)
-        .eq("id", campaignCreatorId)
-        .select();
+        .eq("id", campaignCreatorId);
 
       if (error) throw error;
-
-      // Optimistic UI update
-      setCreators(prev => prev.map(c => 
-        c.id === campaignCreatorId 
-          ? { ...c, status: targetStatus, streams_target: newStatus === "active" ? (campaign?.streams_required || c.streams_target) : c.streams_target }
-          : c
-      ));
 
       // Notify creator
       if (creatorUserId) {
@@ -258,11 +261,11 @@ export function BusinessCampaignOverview() {
       }
 
       toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
-      fetchData(true); // ensure sync
+      fetchData(true);
     } catch (err: any) {
       console.error("Update error:", err);
       toast.error(err.message || "Failed to update status");
-      fetchData(true); // revert
+      fetchData(true); // revert optimistic update
     } finally {
       setUpdatingCreatorId(null);
     }
@@ -308,7 +311,7 @@ export function BusinessCampaignOverview() {
   const totalBudget = campaign.budget || 0;
   const totalCreators = creators.length;
   const activeCreators = creators.filter(c => c.status === "active").length;
-  const notStartedCreators = creators.filter(c => c.status === "not_started" || c.status === "pending").length;
+  const notStartedCreators = creators.filter(c => c.status === "not_started" || (c.status && c.status.toLowerCase().includes("pending"))).length;
   const completedStreams = creators.reduce((sum, c) => sum + c.streams_completed, 0);
   const totalStreams = campaign.streams_required || 0;
   const streamProgress = totalStreams > 0 ? (completedStreams / totalStreams) * 100 : 0;
@@ -387,8 +390,10 @@ export function BusinessCampaignOverview() {
               {creators.map((creator) => {
                 const statusLower = creator.status?.toLowerCase() || "";
                 const isPending = statusLower.includes('pending') || statusLower === 'not_started';
+                
                 let displayStatus = "PENDING";
                 if (creator.status === "active") displayStatus = "ACTIVE";
+                else if (creator.status === "completed") displayStatus = "COMPLETED";
                 else if (creator.status === "not_started") displayStatus = "NOT STARTED";
                 else if (creator.status === "declined") displayStatus = "DECLINED";
                 else if (statusLower.includes('pending')) displayStatus = "PENDING";
@@ -425,6 +430,7 @@ export function BusinessCampaignOverview() {
                       <div className="flex flex-col items-end gap-3">
                         <div className={`px-2 py-0.5 text-[7px] font-black uppercase tracking-widest italic border ${
                           displayStatus === "ACTIVE" ? "bg-[#389C9A] text-white border-[#389C9A]" :
+                          displayStatus === "COMPLETED" ? "bg-blue-100 text-blue-700 border-blue-200" :
                           displayStatus === "NOT STARTED" ? "bg-gray-100 text-gray-400 border-gray-200" :
                           displayStatus === "DECLINED" ? "bg-red-100 text-red-400 border-red-200" :
                           "bg-[#FEDB71] text-[#1D1D1D] border-[#FEDB71]"
@@ -459,11 +465,7 @@ export function BusinessCampaignOverview() {
                           disabled={updatingCreatorId === creator.id}
                           className="flex-1 py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center justify-center gap-1"
                         >
-                          {updatingCreatorId === creator.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <CheckCircle className="w-3 h-3" />
-                          )}
+                          {updatingCreatorId === creator.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
                           Approve
                         </button>
                         <button
@@ -479,11 +481,7 @@ export function BusinessCampaignOverview() {
                           disabled={updatingCreatorId === creator.id}
                           className="flex-1 py-2 bg-red-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-1"
                         >
-                          {updatingCreatorId === creator.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <XCircle className="w-3 h-3" />
-                          )}
+                          {updatingCreatorId === creator.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
                           Reject
                         </button>
                       </div>
@@ -495,7 +493,7 @@ export function BusinessCampaignOverview() {
           </div>
         )}
 
-        {/* Creator Summary Card (unchanged) */}
+        {/* Creator Summary Card */}
         <div className="px-8 py-8">
           <div className="bg-white border-2 border-[#1D1D1D] overflow-hidden">
             <div className="p-6">
@@ -594,7 +592,7 @@ export function BusinessCampaignOverview() {
           <button className="w-full text-center text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 underline italic">Show All Streams →</button>
         </div>
 
-        {/* Banner and other sections (unchanged) */}
+        {/* Your Active Banner */}
         <div className="px-8 py-12 border-b-2 border-[#1D1D1D]">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8">Your Active Banner</h3>
           <div className="bg-black border-2 border-[#1D1D1D] overflow-hidden mb-6 opacity-40 grayscale"><ImageWithFallback src={bannerUrl} className="w-full h-auto grayscale opacity-80" /></div>
