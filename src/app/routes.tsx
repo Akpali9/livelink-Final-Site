@@ -17,7 +17,6 @@ import { BusinessCreateCampaign } from "./screens/business-create-campaign";
 import { CampaignCreatorDetail } from "./screens/campaign-creator-detail";
 import { BrowseBusinesses } from "./screens/browse-businesses";
 import { BrowseCreators } from "./screens/browse";
-import { MessagesInbox } from "./screens/messages-inbox";
 import { Notifications } from "./screens/notifications";
 import { UpcomingGigDetail } from "./screens/upcoming-gig-detail";
 import { AdminDashboard } from "./components/AdminDashboard";
@@ -51,8 +50,8 @@ export const routes: RouteObject[] = [
   { path: "/campaigns", element: protectCreator(Campaigns) },
   { path: "/campaign/:id", element: protectCreator(CampaignDetails) }, // <-- NEW creator campaign detail route
   { path: "/browse-businesses", element: protectCreator(BrowseBusinesses) },
-  { path: "/messages", element: protectCreator(MessagesInbox) },
-  { path: "/messages/:id", element: protectCreator(MessageThread) },
+  { path: "/messages", element: protectCreator(Messages) },
+  { path: "/messages/:id", element: protectCreator(Message) },
   { path: "/notifications", element: protectCreator(Notifications) },
   
   // Business routes
@@ -67,7 +66,7 @@ export const routes: RouteObject[] = [
   { path: "/business/create-campaign", element: protectBusiness(CampaignTypeSelection) },     // entry point
   { path: "/business/campaign/type", element: protectBusiness(CampaignTypeSelection) },       // alias
   { path: "/business/campaign/creation", element: protectBusiness(CampaignCreation) },
-  { path: "/messages/:campaignId/creator/:creatorId", element: protectCreator(MessageThread) }, // brief & payment
+  { path: "/messages/:campaignId/creator/:creatorId", element: protectCreator(Message) }, // brief & payment
   
   // Campaign detail routes
   { path: "/business/campaign/overview/:id", element: protectBusiness(BusinessCampaignOverview) },
@@ -76,13 +75,13 @@ export const routes: RouteObject[] = [
   { path: "/business/campaign/:campaignId/creator/:creatorId", element: protectBusiness(CampaignCreatorDetail) },
   
   { path: "/browse", element: protectBusiness(BrowseCreators) },
-  { path: "/business/messages", element: protectBusiness(MessagesInbox) },
+  { path: "/business/messages", element: protectBusiness(Messages) },
   { path: "/campaign/live-update/:id", element: protectCreator(LiveCampaignUpdate) },
   // Admin routes
   { path: "/admin/dashboard", element: protectAdmin(AdminDashboard) },
   { path: "/admin/*", element: protectAdmin(AdminDashboard) },
   { path: "/campaign/:id/summary", element: protectCreator(CampaignSummary) },
-  { path: "/business/messages/:campaignId/creator/:creatorId", element: protectBusiness(MessageThread) },
+  { path: "/business/messages/:campaignId/creator/:creatorId", element: protectBusiness(Message) },
   // Catch all
   { path: "*", element: <LoginPortal /> },
 ];
