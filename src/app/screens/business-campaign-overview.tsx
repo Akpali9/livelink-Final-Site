@@ -385,6 +385,19 @@ export function BusinessCampaignOverview() {
             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 italic mb-6">
               All Creators ({creators.length})
             </h3>
+
+            <div className="flex flex-col gap-4">
+              {creators.map((creator) => {
+                const statusLower = creator.status?.toLowerCase() || "";
+                const isPending = statusLower.includes('pending') || statusLower === 'not_started';
+                
+                let displayStatus = "";
+                if (creator.status === "active") displayStatus = "ACTIVE";
+                else if (creator.status === "completed") displayStatus = "COMPLETED";
+                else if (creator.status === "not_started") displayStatus = "NOT STARTED";
+                else if (creator.status === "declined") displayStatus = "DECLINED";
+                else if (statusLower.includes('pending')) displayStatus = "PENDING";
+
                 return (
                   <div
                     key={creator.id}
