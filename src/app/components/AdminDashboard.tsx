@@ -842,8 +842,7 @@ function AdminOverview({ stats, onTabChange, onApproveAllBusinesses, onApproveAl
 }
 
 // ─────────────────────────────────────────────
-// CREATORS TAB — shows ALL creators, actions:
-//   deactivate/reactivate, message, delete
+// CREATORS TAB
 // ─────────────────────────────────────────────
 
 function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelectAll, onApproveSelected, onRejectSelected, actionLoading, onRefresh, adminUser }: {
@@ -859,7 +858,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
   const [showFilters, setShowFilters]  = useState(false);
   const [actionId, setActionId]        = useState<string | null>(null);
 
-  // ── Toggle active / suspended ──
   const toggleStatus = async (creator: any) => {
     const newStatus = creator.status === "active" ? "suspended" : "active";
     const label     = newStatus === "active" ? "reactivate" : "deactivate";
@@ -876,7 +874,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
     } finally { setActionId(null); }
   };
 
-  // ── Open DM with this creator ──
   const messageCreator = async (creator: any) => {
     if (!adminUser?.id || !creator.user_id) { toast.error("Cannot open chat"); return; }
     try {
@@ -898,7 +895,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
     }
   };
 
-  // ── Delete creator ──
   const deleteCreator = async (creator: any) => {
     const ok = await confirmToast(`Permanently delete ${creator.full_name || "this creator"}? This cannot be undone.`);
     if (!ok) return;
@@ -949,7 +945,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
           </span>
         </div>
 
-        {/* Bulk action bar */}
         {selectedItems.length > 0 && (
           <div className="bg-[#1D1D1D] text-white p-3 rounded-xl flex items-center justify-between">
             <span className="text-xs font-black">{selectedItems.length} selected</span>
@@ -980,7 +975,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
           </button>
         </div>
 
-        {/* Filter tabs */}
         <div className="flex gap-2 flex-wrap">
           {(["all", "active", "suspended", "pending_review"] as const).map(tab => (
             <button key={tab} onClick={() => setFilter(tab)}
@@ -1009,7 +1003,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                 selectedItems.includes(creator.id) ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
               }`}>
 
-              {/* Top row */}
               <div className="flex items-start gap-3 mb-3">
                 <button onClick={() => onToggleSelect(creator.id)} className="mt-1 shrink-0">
                   {selectedItems.includes(creator.id)
@@ -1027,7 +1020,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                     <Mail className="w-3 h-3 shrink-0" />
                     <span className="truncate">{getEmail(creator)}</span>
                   </div>
-                  {/* Payment method display */}
                   {creator.payment_method && (
                     <div className="flex items-center gap-1 text-[9px] text-gray-500 mt-0.5">
                       <CreditCard className="w-3 h-3" />
@@ -1050,7 +1042,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                 </span>
               </div>
 
-              {/* Stats row */}
               {(creator.avg_viewers || creator.rating) && (
                 <div className="flex gap-3 ml-8 mb-3">
                   {creator.avg_viewers && (
@@ -1076,21 +1067,17 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                 </div>
               )}
 
-              {/* Action buttons */}
               <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
-                {/* View */}
                 <button onClick={() => setSelectedCreator(creator)}
                   className="py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1">
                   <Eye className="w-3 h-3" /> View
                 </button>
 
-                {/* Message */}
                 <button onClick={() => messageCreator(creator)} disabled={actionId === creator.id}
                   className="py-2 border-2 border-[#389C9A] text-[#389C9A] text-[9px] font-black uppercase hover:bg-[#389C9A] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
                   <MessageSquare className="w-3 h-3" /> Message
                 </button>
 
-                {/* Deactivate / Reactivate */}
                 <button onClick={() => toggleStatus(creator)} disabled={actionId === creator.id}
                   className={`py-2 border-2 text-[9px] font-black uppercase transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50 ${
                     creator.status === "active"
@@ -1104,7 +1091,6 @@ function AdminCreators({ creators, selectedItems, onToggleSelect, onToggleSelect
                       : <><UserCheck className="w-3 h-3" /> Activate</>}
                 </button>
 
-                {/* Delete — full width on its own row */}
                 <button onClick={() => deleteCreator(creator)} disabled={actionId === creator.id}
                   className="col-span-3 py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
                   <Trash2 className="w-3 h-3" /> Delete Account
@@ -1137,14 +1123,12 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
   const [selectedBusiness, setSelectedBusiness] = useState<any>(null);
   const [actionId, setActionId]                 = useState<string | null>(null);
 
-  // ── Derive status the same way throughout ──────────────────────────────
   const getStatus = (b: any): "approved" | "rejected" | "pending" => {
     if (b.application_status === "approved" || b.status === "approved") return "approved";
     if (b.application_status === "rejected" || b.status === "rejected") return "rejected";
     return "pending";
   };
 
-  // ── Approve / reject single business ──────────────────────────────────
   const updateStatus = async (id: string, newStatus: "approved" | "rejected") => {
     const biz    = businesses.find(b => b.id === id);
     const label  = newStatus === "approved" ? "Approve" : "Reject";
@@ -1185,7 +1169,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
     }
   };
 
-  // ── Delete business ────────────────────────────────────────────────────
   const deleteBusiness = async (id: string) => {
     const biz = businesses.find(b => b.id === id);
     const ok  = await confirmToast(`Permanently delete "${biz?.business_name || "this business"}"? This cannot be undone.`);
@@ -1203,7 +1186,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
     }
   };
 
-  // ── Filter counts (same pattern as AdminCreators) ─────────────────────
   const filterCounts = {
     all:      businesses.length,
     pending:  businesses.filter(b => getStatus(b) === "pending").length,
@@ -1230,8 +1212,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
   return (
     <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
       <div className="flex flex-col gap-3 mb-4">
-
-        {/* Header row */}
         <div className="flex items-center justify-between">
           <h3 className="font-black uppercase tracking-tight text-lg">All Businesses</h3>
           <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] bg-[#389C9A]/10 px-3 py-1 rounded-full">
@@ -1239,7 +1219,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
           </span>
         </div>
 
-        {/* Bulk action bar */}
         {selectedItems.length > 0 && (
           <div className="bg-[#1D1D1D] text-white p-3 rounded-xl flex items-center justify-between">
             <span className="text-xs font-black">{selectedItems.length} selected</span>
@@ -1260,7 +1239,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
           </div>
         )}
 
-        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
@@ -1272,7 +1250,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
           />
         </div>
 
-        {/* Filter tabs with live counts — same pill style as AdminCreators */}
         <div className="flex gap-2 flex-wrap">
           {(["all", "pending", "approved", "rejected"] as const).map(tab => (
             <button
@@ -1291,7 +1268,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
             </button>
           ))}
 
-          {/* "Select all pending" shortcut */}
           {filter === "pending" && filtered.length > 0 && (
             <button
               onClick={() => onToggleSelectAll(filtered)}
@@ -1303,7 +1279,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
         </div>
       </div>
 
-      {/* List */}
       {filtered.length === 0 ? (
         <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
           <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -1322,7 +1297,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                   selectedItems.includes(biz.id) ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
                 }`}
               >
-                {/* Top info row */}
                 <div className="flex items-start gap-3 mb-3">
                   <button onClick={() => onToggleSelect(biz.id)} className="mt-1 shrink-0">
                     {selectedItems.includes(biz.id)
@@ -1345,7 +1319,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                     {biz.industry && (
                       <div className="text-[9px] text-gray-400 mt-0.5">{biz.industry}</div>
                     )}
-                    {/* Payment method display */}
                     {biz.payment_method && (
                       <div className="flex items-center gap-1 text-[9px] text-gray-500 mt-0.5">
                         <CreditCard className="w-3 h-3" />
@@ -1368,10 +1341,7 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                   <span className={statusBadge(s)}>{s}</span>
                 </div>
 
-                {/* Action buttons — context-sensitive per status */}
                 <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8">
-
-                  {/* View — always present */}
                   <button
                     onClick={() => setSelectedBusiness(biz)}
                     className="py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1"
@@ -1379,7 +1349,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                     <Eye className="w-3 h-3" /> View
                   </button>
 
-                  {/* PENDING → Approve + Reject */}
                   {s === "pending" && (
                     <>
                       <button
@@ -1387,23 +1356,18 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                         disabled={actionId === biz.id}
                         className="py-2 bg-green-500 text-white text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                       >
-                        {actionId === biz.id
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <><CheckCircle className="w-3 h-3" /> Approve</>}
+                        {actionId === biz.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><CheckCircle className="w-3 h-3" /> Approve</>}
                       </button>
                       <button
                         onClick={() => updateStatus(biz.id, "rejected")}
                         disabled={actionId === biz.id}
                         className="py-2 bg-red-500 text-white text-[9px] font-black uppercase hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                       >
-                        {actionId === biz.id
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <><XCircle className="w-3 h-3" /> Reject</>}
+                        {actionId === biz.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><XCircle className="w-3 h-3" /> Reject</>}
                       </button>
                     </>
                   )}
 
-                  {/* APPROVED → Revoke + Delete */}
                   {s === "approved" && (
                     <>
                       <button
@@ -1411,23 +1375,18 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                         disabled={actionId === biz.id}
                         className="py-2 border-2 border-orange-400 text-orange-500 text-[9px] font-black uppercase hover:bg-orange-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                       >
-                        {actionId === biz.id
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <><XCircle className="w-3 h-3" /> Revoke</>}
+                        {actionId === biz.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><XCircle className="w-3 h-3" /> Revoke</>}
                       </button>
                       <button
                         onClick={() => deleteBusiness(biz.id)}
                         disabled={actionId === biz.id}
                         className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                       >
-                        {actionId === biz.id
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <><Trash2 className="w-3 h-3" /> Delete</>}
+                        {actionId === biz.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Trash2 className="w-3 h-3" /> Delete</>}
                       </button>
                     </>
                   )}
 
-                  {/* REJECTED → Re-approve + Delete */}
                   {s === "rejected" && (
                     <>
                       <button
@@ -1435,24 +1394,19 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                         disabled={actionId === biz.id}
                         className="py-2 border-2 border-green-500 text-green-600 text-[9px] font-black uppercase hover:bg-green-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                       >
-                        {actionId === biz.id
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <><CheckCircle className="w-3 h-3" /> Re-approve</>}
+                        {actionId === biz.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><CheckCircle className="w-3 h-3" /> Re-approve</>}
                       </button>
                       <button
                         onClick={() => deleteBusiness(biz.id)}
                         disabled={actionId === biz.id}
                         className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                       >
-                        {actionId === biz.id
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <><Trash2 className="w-3 h-3" /> Delete</>}
+                        {actionId === biz.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Trash2 className="w-3 h-3" /> Delete</>}
                       </button>
                     </>
                   )}
                 </div>
 
-                {/* Full-width delete row for pending (no delete shown inline) */}
                 {s === "pending" && (
                   <div className="mt-2 ml-8">
                     <button
@@ -1460,9 +1414,7 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                       disabled={actionId === biz.id}
                       className="w-full py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                     >
-                      {actionId === biz.id
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                        : <><Trash2 className="w-3 h-3" /> Delete Account</>}
+                      {actionId === biz.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Trash2 className="w-3 h-3" /> Delete Account</>}
                     </button>
                   </div>
                 )}
@@ -1480,7 +1432,10 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
 }
 
 // ─────────────────────────────────────────────
-// CAMPAIGNS TAB
+// CAMPAIGNS TAB — ENHANCED (from doc 1)
+// Added: payCreator, refreshExpandedCampaign,
+//        realtime subscription, earnings display,
+//        pay button, proper proof refresh
 // ─────────────────────────────────────────────
 
 function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSelectAll, onApproveSelected, onRejectSelected, actionLoading, onRefresh }: {
@@ -1493,51 +1448,86 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
   const [searchTerm, setSearchTerm]   = useState("");
   const [showFilters, setShowFilters]  = useState(false);
   const [updating, setUpdating]       = useState<string | null>(null);
-  // Expanded campaign state
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
   const [campaignCreators, setCampaignCreators] = useState<Record<string, any[]>>({});
   const [campaignProofs, setCampaignProofs] = useState<Record<string, any[]>>({});
   const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
+  const [payingCreatorId, setPayingCreatorId] = useState<string | null>(null);
 
-  // Load creators and proofs when a campaign is expanded
-  useEffect(() => {
-    if (!expandedCampaignId) return;
+  // ── Shared refresh helper ──────────────────────────────────────────────
+  const refreshExpandedCampaign = async (campaignId: string) => {
+    const { data: creators, error } = await supabase
+      .from("campaign_creators")
+      .select(`
+        *,
+        creator_profiles (
+          id, full_name, username, avatar_url, user_id,
+          payment_method, payment_account
+        )
+      `)
+      .eq("campaign_id", campaignId);
+    if (!error && creators) {
+      setCampaignCreators(prev => ({ ...prev, [campaignId]: creators }));
 
-    const loadCreators = async () => {
-      const { data: creators, error } = await supabase
-        .from("campaign_creators")
-        .select(`
-          *,
-          creator_profiles (
-            id, full_name, username, avatar_url, user_id,
-            payment_method, payment_account
-          )
-        `)
-        .eq("campaign_id", expandedCampaignId);
-      if (error) {
-        console.error("Error loading creators:", error);
-        return;
-      }
-      setCampaignCreators(prev => ({ ...prev, [expandedCampaignId]: creators || [] }));
-
-      // Load proofs for each creator
-      for (const creator of creators || []) {
+      const proofsMap: Record<string, any[]> = {};
+      for (const creator of creators) {
         const { data: proofs } = await supabase
           .from("stream_proofs")
           .select("*")
           .eq("campaign_creator_id", creator.id)
           .order("stream_number");
-        if (proofs) {
-          setCampaignProofs(prev => ({
-            ...prev,
-            [creator.id]: proofs,
-          }));
-        }
+        if (proofs) proofsMap[creator.id] = proofs;
       }
+      setCampaignProofs(prev => ({ ...prev, ...proofsMap }));
+    }
+  };
+
+  // ── Realtime subscription for expanded campaign ────────────────────────
+  useEffect(() => {
+    if (!expandedCampaignId) return;
+
+    const channel = supabase
+      .channel(`admin-campaign-${expandedCampaignId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "campaign_creators",
+          filter: `campaign_id=eq.${expandedCampaignId}`,
+        },
+        () => {
+          refreshExpandedCampaign(expandedCampaignId);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "stream_proofs",
+        },
+        (payload) => {
+          const creatorId = payload.new?.campaign_creator_id;
+          if (creatorId && campaignCreators[expandedCampaignId]?.some(c => c.id === creatorId)) {
+            refreshExpandedCampaign(expandedCampaignId);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
-    loadCreators();
   }, [expandedCampaignId]);
 
+  // ── Initial load when campaign is expanded ─────────────────────────────
+  useEffect(() => {
+    if (!expandedCampaignId) return;
+    refreshExpandedCampaign(expandedCampaignId);
+  }, [expandedCampaignId]);
+
+  // ── Campaign status update ─────────────────────────────────────────────
   const updateStatus = async (id: string, newStatus: "active" | "rejected" | "completed") => {
     const camp  = campaigns.find(c => c.id === id);
     const label = newStatus === "active" ? "approve" : newStatus === "completed" ? "mark complete" : "reject";
@@ -1580,6 +1570,7 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
     } finally { setUpdating(null); }
   };
 
+  // ── Delete campaign ────────────────────────────────────────────────────
   const deleteCampaign = async (id: string) => {
     const camp = campaigns.find(c => c.id === id);
     const ok   = await confirmToast(`Delete "${camp?.name || "campaign"}"? This cannot be undone.`);
@@ -1590,20 +1581,19 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
     onRefresh();
   };
 
+  // ── Verify stream proof ────────────────────────────────────────────────
   const verifyProof = async (proofId: string, creatorId: string, streamNum: number) => {
     const ok = await confirmToast(`Verify stream ${streamNum} for this creator?`);
     if (!ok) return;
 
     setVerifyingProofId(proofId);
     try {
-      // 1. Update proof
       const { error: proofError } = await supabase
         .from("stream_proofs")
         .update({ status: "verified", verified_at: new Date().toISOString() })
         .eq("id", proofId);
       if (proofError) throw proofError;
 
-      // 2. Get campaign and per‑stream earning
       const { data: campaign } = await supabase
         .from("campaigns")
         .select("budget, streams_required, pay_per_stream")
@@ -1612,7 +1602,6 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
 
       const perStream = campaign?.pay_per_stream || (campaign?.budget / campaign?.streams_required);
 
-      // 3. Update campaign_creators
       const { data: cc } = await supabase
         .from("campaign_creators")
         .select("streams_completed, total_earnings")
@@ -1629,7 +1618,6 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
         .eq("id", creatorId);
       if (updateError) throw updateError;
 
-      // 4. Notify creator
       const { data: profile } = await supabase
         .from("creator_profiles")
         .select("user_id")
@@ -1647,13 +1635,62 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
       }
 
       toast.success(`Stream ${streamNum} verified!`);
-      // Refresh the expanded view
-      setExpandedCampaignId(null);
-      setTimeout(() => setExpandedCampaignId(expandedCampaignId), 100);
+      if (expandedCampaignId) refreshExpandedCampaign(expandedCampaignId);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setVerifyingProofId(null);
+    }
+  };
+
+  // ── Pay creator ────────────────────────────────────────────────────────
+  const payCreator = async (creatorId: string, creatorUserId: string, campaignCreatorId: string, totalEarnings: number, paidOut: number) => {
+    const pending = totalEarnings - paidOut;
+    if (pending <= 0) {
+      toast.info("No pending earnings to pay.");
+      return;
+    }
+
+    const ok = await confirmToast(`Pay ₦${pending.toLocaleString()} to this creator?`);
+    if (!ok) return;
+
+    setPayingCreatorId(creatorId);
+    try {
+      const { error: updateError } = await supabase
+        .from("campaign_creators")
+        .update({ paid_out: totalEarnings, updated_at: new Date().toISOString() })
+        .eq("id", campaignCreatorId);
+      if (updateError) throw updateError;
+
+      const { error: payoutError } = await supabase
+        .from("creator_payouts")
+        .insert({
+          creator_id: creatorId,
+          campaign_creator_id: campaignCreatorId,
+          amount: pending,
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        });
+      if (payoutError) throw payoutError;
+
+      if (creatorUserId) {
+        await supabase.from("notifications").insert({
+          user_id: creatorUserId,
+          type: "payout",
+          title: "Payout Completed! 💰",
+          message: `₦${pending.toLocaleString()} has been paid out for your campaign work.`,
+          data: { campaign_creator_id: campaignCreatorId, amount: pending },
+          created_at: new Date().toISOString(),
+        }).catch(console.error);
+      }
+
+      toast.success(`Paid ₦${pending.toLocaleString()}`);
+      if (expandedCampaignId) refreshExpandedCampaign(expandedCampaignId);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setPayingCreatorId(null);
     }
   };
 
@@ -1770,7 +1807,7 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
                 <p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p>
               </div>
 
-              {/* Expand button */}
+              {/* Expand / collapse button */}
               <div className="flex items-center gap-2 mt-2">
                 <button
                   onClick={() => setExpandedCampaignId(expandedCampaignId === camp.id ? null : camp.id)}
@@ -1785,91 +1822,129 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
                 </button>
               </div>
 
-              {/* Expanded section */}
+              {/* ── Expanded creator / proof / pay section ── */}
               {expandedCampaignId === camp.id && (
                 <div className="mt-4 border-t pt-4 space-y-4">
-                  {campaignCreators[expandedCampaignId]?.map(creator => {
-                    const proofs = campaignProofs[creator.id] || [];
-                    const streamStatuses = Array.from({ length: creator.streams_target }, (_, i) => {
-                      const streamNum = i + 1;
-                      const proof = proofs.find(p => p.stream_number === streamNum);
-                      return { streamNum, proof };
-                    });
+                  {(campaignCreators[expandedCampaignId] || []).length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">No creators joined yet</p>
+                  ) : (
+                    campaignCreators[expandedCampaignId].map(creator => {
+                      const proofs = campaignProofs[creator.id] || [];
+                      const streamStatuses = Array.from({ length: creator.streams_target }, (_, i) => {
+                        const streamNum = i + 1;
+                        const proof = proofs.find(p => p.stream_number === streamNum);
+                        return { streamNum, proof };
+                      });
+                      const pendingPay = (creator.total_earnings || 0) - (creator.paid_out || 0);
 
-                    return (
-                      <div key={creator.id} className="border rounded-lg p-3 bg-gray-50">
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="flex items-center gap-2">
-                            {creator.creator_profiles?.avatar_url ? (
-                              <img src={creator.creator_profiles.avatar_url} className="w-8 h-8 rounded-full" />
-                            ) : (
-                              <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-black text-xs">
-                                {creator.creator_profiles?.full_name?.[0] || "C"}
+                      return (
+                        <div key={creator.id} className="border rounded-lg p-3 bg-gray-50">
+                          {/* Creator header */}
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="flex items-center gap-2">
+                              {creator.creator_profiles?.avatar_url ? (
+                                <img src={creator.creator_profiles.avatar_url} className="w-8 h-8 rounded-full object-cover" alt="" />
+                              ) : (
+                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-black text-xs">
+                                  {creator.creator_profiles?.full_name?.[0] || "C"}
+                                </div>
+                              )}
+                              <div>
+                                <p className="font-bold text-sm">{creator.creator_profiles?.full_name || "Unknown"}</p>
+                                {creator.creator_profiles?.payment_method && (
+                                  <p className="text-[8px] text-gray-500 flex items-center gap-1">
+                                    <CreditCard className="w-3 h-3" />
+                                    {creator.creator_profiles.payment_method}
+                                    {creator.creator_profiles.payment_account && (
+                                      <span className="opacity-60">(****{creator.creator_profiles.payment_account.slice(-4)})</span>
+                                    )}
+                                  </p>
+                                )}
                               </div>
-                            )}
-                            <div>
-                              <p className="font-bold text-sm">{creator.creator_profiles?.full_name || "Unknown"}</p>
-                              {creator.creator_profiles?.payment_method && (
-                                <p className="text-[8px] text-gray-500 flex items-center gap-1">
-                                  <CreditCard className="w-3 h-3" />
-                                  {creator.creator_profiles.payment_method}
-                                  {creator.creator_profiles.payment_account && (
-                                    <span className="opacity-60">(****{creator.creator_profiles.payment_account.slice(-4)})</span>
-                                  )}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-black text-[#389C9A]">
+                                ₦{(creator.total_earnings || 0).toLocaleString()} earned
+                              </p>
+                              {pendingPay > 0 && (
+                                <p className="text-[9px] text-yellow-600">
+                                  Pending: ₦{pendingPay.toLocaleString()}
                                 </p>
                               )}
                             </div>
                           </div>
-                          <span className="text-xs font-black">
-                            {creator.streams_completed}/{creator.streams_target} streams
-                          </span>
-                        </div>
 
-                        <div className="space-y-2 mt-2">
-                          {streamStatuses.map(({ streamNum, proof }) => (
-                            <div key={streamNum} className="flex items-center justify-between text-sm border-b pb-1">
-                              <span>Stream {streamNum}</span>
-                              {proof ? (
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => window.open(proof.proof_url, '_blank')}
-                                    className="text-[#389C9A] text-xs underline flex items-center gap-1"
-                                  >
-                                    <Eye className="w-3 h-3" /> View
-                                  </button>
-                                  {proof.status === 'pending' && (
+                          {/* Stream proofs list */}
+                          <div className="space-y-2 mt-2">
+                            {streamStatuses.map(({ streamNum, proof }) => (
+                              <div key={streamNum} className="flex items-center justify-between text-sm border-b pb-1">
+                                <span>Stream {streamNum}</span>
+                                {proof ? (
+                                  <div className="flex items-center gap-2">
                                     <button
-                                      onClick={() => verifyProof(proof.id, creator.id, streamNum)}
-                                      disabled={verifyingProofId === proof.id}
-                                      className="px-2 py-0.5 bg-green-500 text-white text-[9px] font-black rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
+                                      onClick={() => window.open(proof.proof_url, '_blank')}
+                                      className="text-[#389C9A] text-xs underline flex items-center gap-1"
                                     >
-                                      {verifyingProofId === proof.id ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <CheckCircle className="w-3 h-3" />
-                                      )}
-                                      Verify
+                                      <Eye className="w-3 h-3" /> View
                                     </button>
-                                  )}
-                                  <span className={`text-[8px] font-black uppercase ${
-                                    proof.status === 'verified' ? 'text-green-600' : 'text-yellow-600'
-                                  }`}>
-                                    {proof.status}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400 text-xs">No proof</span>
-                              )}
+                                    {proof.status === 'pending' && (
+                                      <button
+                                        onClick={() => verifyProof(proof.id, creator.id, streamNum)}
+                                        disabled={verifyingProofId === proof.id}
+                                        className="px-2 py-0.5 bg-green-500 text-white text-[9px] font-black rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
+                                      >
+                                        {verifyingProofId === proof.id ? (
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                          <CheckCircle className="w-3 h-3" />
+                                        )}
+                                        Verify
+                                      </button>
+                                    )}
+                                    <span className={`text-[8px] font-black uppercase ${
+                                      proof.status === 'verified' ? 'text-green-600' : 'text-yellow-600'
+                                    }`}>
+                                      {proof.status}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">No proof</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Pay button — only shown when there are pending earnings */}
+                          {pendingPay > 0 && (
+                            <div className="mt-3 pt-2 border-t">
+                              <button
+                                onClick={() => payCreator(
+                                  creator.creator_id,
+                                  creator.creator_profiles?.user_id,
+                                  creator.id,
+                                  creator.total_earnings || 0,
+                                  creator.paid_out || 0,
+                                )}
+                                disabled={payingCreatorId === creator.creator_id}
+                                className="w-full py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                              >
+                                {payingCreatorId === creator.creator_id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <CreditCard className="w-3 h-3" />
+                                )}
+                                Pay Pending (₦{pendingPay.toLocaleString()})
+                              </button>
                             </div>
-                          ))}
+                          )}
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               )}
 
-              {/* Context-sensitive action buttons */}
+              {/* Campaign action buttons */}
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8 mt-2">
                 {camp.status === "pending_review" && (
                   <>
@@ -2366,7 +2441,6 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
         </div>
       </div>
 
-      {/* New message modal */}
       <AnimatePresence>
         {showUserSearch && (
           <>
@@ -2598,7 +2672,6 @@ function AdminSupport() {
                   selected?.id === ticket.id ? "border-[#389C9A]" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
                 }`}>
 
-                {/* Summary row */}
                 <div className="p-4 cursor-pointer"
                   onClick={() => setSelected(selected?.id === ticket.id ? null : ticket)}>
                   <div className="flex items-start justify-between gap-3 mb-2">
@@ -2614,7 +2687,6 @@ function AdminSupport() {
                   <p className="text-[10px] text-gray-500 line-clamp-2">{original}</p>
                 </div>
 
-                {/* Expanded detail */}
                 <AnimatePresence>
                   {selected?.id === ticket.id && (
                     <motion.div
@@ -2624,8 +2696,6 @@ function AdminSupport() {
                       className="border-t-2 border-[#1D1D1D]/10 overflow-hidden"
                     >
                       <div className="p-4 space-y-4 bg-[#F8F8F8]">
-
-                        {/* Original message */}
                         <div>
                           <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-1">Ticket Details</p>
                           <div className="bg-white border-2 border-[#1D1D1D]/10 rounded-xl p-3">
@@ -2633,7 +2703,6 @@ function AdminSupport() {
                           </div>
                         </div>
 
-                        {/* Admin reply thread */}
                         {replies.length > 0 && (
                           <div className="space-y-2">
                             <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Admin Replies</p>
@@ -2646,7 +2715,6 @@ function AdminSupport() {
                           </div>
                         )}
 
-                        {/* Reply input */}
                         <div>
                           <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Reply to User</p>
                           <textarea
@@ -2664,7 +2732,6 @@ function AdminSupport() {
                           </button>
                         </div>
 
-                        {/* Status actions */}
                         <div>
                           <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Update Status</p>
                           <div className="grid grid-cols-2 gap-2">
@@ -2839,7 +2906,7 @@ function AdminReports() {
 }
 
 // ─────────────────────────────────────────────
-// TRANSACTIONS TAB – includes both business transactions and creator payouts
+// TRANSACTIONS TAB
 // ─────────────────────────────────────────────
 
 function AdminTransactions() {
@@ -2878,7 +2945,6 @@ function AdminTransactions() {
 
   return (
     <div className="space-y-4">
-      {/* Business Transactions */}
       <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
         <h3 className="font-black uppercase tracking-tight text-lg mb-4 flex items-center gap-2">
           <CreditCard className="w-5 h-5 text-[#389C9A]" /> Business Transactions
@@ -2906,7 +2972,6 @@ function AdminTransactions() {
         )}
       </div>
 
-      {/* Creator Payouts */}
       <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
         <h3 className="font-black uppercase tracking-tight text-lg mb-4 flex items-center gap-2">
           <Users className="w-5 h-5 text-[#389C9A]" /> Creator Payouts
