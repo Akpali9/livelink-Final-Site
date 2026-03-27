@@ -219,7 +219,6 @@ export function BusinessCampaignOverview() {
 
     setUpdatingCreatorId(campaignCreatorId);
     try {
-      // Normalize the status to lowercase (consistent with DB)
       const targetStatus = newStatus === "active" ? "active" : "declined";
       const updates: any = {
         status: targetStatus,
@@ -235,7 +234,7 @@ export function BusinessCampaignOverview() {
         .from("campaign_creators")
         .update(updates)
         .eq("id", campaignCreatorId)
-        .select(); // return the updated row
+        .select();
 
       if (error) {
         console.error("[Update] Supabase error:", error);
@@ -243,7 +242,18 @@ export function BusinessCampaignOverview() {
       }
       console.log("[Update] Success:", data);
 
-      // Notify the creator (wrap in try/catch so it doesn't break the main update)
+      // Optimistic UI update: change the creator's status locally
+      setCreators(prev => prev.map(c => 
+        c.id === campaignCreatorId 
+          ? { 
+              ...c, 
+              status: targetStatus,
+              streams_target: targetStatus === "active" ? (campaign?.streams_required || c.streams_target) : c.streams_target
+            }
+          : c
+      ));
+
+      // Notify the creator (non‑blocking)
       if (creatorUserId) {
         try {
           await supabase.from("notifications").insert({
@@ -258,12 +268,11 @@ export function BusinessCampaignOverview() {
           });
         } catch (notifErr) {
           console.warn("[Update] Notification failed:", notifErr);
-          // Don't throw, the status update already succeeded
         }
       }
 
       toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
-      // Force a refresh immediately (the real‑time subscription should also trigger it)
+      // Background refresh to ensure consistency
       await fetchData(true);
     } catch (err: any) {
       console.error("[Update] Error:", err);
@@ -405,6 +414,12 @@ export function BusinessCampaignOverview() {
                 // Case‑insensitive pending detection
                 const statusLower = creator.status?.toLowerCase() || "";
                 const isPending = statusLower.includes('pending') || statusLower === 'not_started' || statusLower === 'not started';
+                // Determine display text for badge
+                let displayStatus = "PENDING";
+                if (creator.status === "active") displayStatus = "ACTIVE";
+                else if (creator.status === "not_started") displayStatus = "NOT STARTED";
+                else if (creator.status === "declined") displayStatus = "DECLINED";
+                else if (statusLower.includes('pending')) displayStatus = "PENDING";
 
                 return (
                   <div
@@ -437,14 +452,12 @@ export function BusinessCampaignOverview() {
                       </div>
                       <div className="flex flex-col items-end gap-3">
                         <div className={`px-2 py-0.5 text-[7px] font-black uppercase tracking-widest italic border ${
-                          creator.status === "active" ? "bg-[#389C9A] text-white border-[#389C9A]" :
-                          creator.status === "not_started" ? "bg-gray-100 text-gray-400 border-gray-200" :
-                          creator.status === "declined" ? "bg-red-100 text-red-400 border-red-200" :
+                          displayStatus === "ACTIVE" ? "bg-[#389C9A] text-white border-[#389C9A]" :
+                          displayStatus === "NOT STARTED" ? "bg-gray-100 text-gray-400 border-gray-200" :
+                          displayStatus === "DECLINED" ? "bg-red-100 text-red-400 border-red-200" :
                           "bg-[#FEDB71] text-[#1D1D1D] border-[#FEDB71]"
                         }`}>
-                          {creator.status === "active" ? "ACTIVE" :
-                           creator.status === "not_started" ? "NOT STARTED" :
-                           creator.status === "declined" ? "DECLINED" : "PENDING"}
+                          {displayStatus}
                         </div>
                         <button
                           onClick={(e) => {
