@@ -127,7 +127,7 @@ export function LiveCampaignUpdate() {
         .from("campaign_creators")
         .select("*")
         .eq("campaign_id", campaignId)
-        .eq("creator_id", creatorProfileId) // use profile ID, not auth ID
+        .eq("creator_id", creatorProfileId)
         .maybeSingle();
       if (linkError) throw linkError;
       if (!linkData) {
@@ -140,7 +140,7 @@ export function LiveCampaignUpdate() {
       // 3. Fetch business info (including user_id for messaging)
       const { data: businessData, error: businessError } = await supabase
         .from("businesses")
-        .select("id, name, logo_url, user_id") // added user_id
+        .select("id, name, logo_url, user_id")
         .eq("id", campaignData.business_id)
         .maybeSingle();
       if (!businessError && businessData) setBusiness(businessData);
@@ -257,7 +257,7 @@ export function LiveCampaignUpdate() {
       });
       if (insertError) throw insertError;
 
-      toast.success(`Proof for Stream ${selectedStreamNumber} uploaded!`);
+      toast.success(`Proof for Stream ${selectedStreamNumber} uploaded! The business will review it shortly.`);
       setIsUploadModalOpen(false);
       fetchData(true); // refresh
     } catch (error: any) {
@@ -324,6 +324,7 @@ export function LiveCampaignUpdate() {
         proofUrl = proof.proof_url;
       } else if (proof.status === "pending") {
         status = "Under Review";
+        proofUrl = proof.proof_url;
       }
     } else if (streamNum <= completedStreams) {
       status = "Verified"; // fallback if missing proof but stream count is high
@@ -467,7 +468,8 @@ export function LiveCampaignUpdate() {
                   </div>
                 </div>
 
-                {stream.status === "Verified" && stream.proofUrl && (
+                {/* Always show VIEW PROOF if proofUrl exists */}
+                {stream.proofUrl && (
                   <button
                     onClick={() => handleViewProof(stream.proofUrl, stream.num)}
                     className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#389C9A]"
@@ -479,7 +481,7 @@ export function LiveCampaignUpdate() {
                 {stream.status === "Under Review" && (
                   <div className="flex items-center gap-3 text-[9px] font-black uppercase tracking-widest italic text-[#D2691E]">
                     <Clock className="w-4 h-4" />
-                    <span>PROOF SUBMITTED — AWAITING VERIFICATION</span>
+                    <span>PROOF SUBMITTED — AWAITING BUSINESS VERIFICATION</span>
                   </div>
                 )}
 
