@@ -137,6 +137,7 @@ export function BusinessCampaignOverview() {
         .eq("campaign_id", id);
       if (creatorsError) throw creatorsError;
       setCreators(creatorsData || []);
+      console.log("[fetchData] Creators loaded:", creatorsData);
 
       setLastUpdated(new Date());
       if (silent) toast.success("Data refreshed");
@@ -187,6 +188,7 @@ export function BusinessCampaignOverview() {
             filter: `campaign_id=eq.${id}`,
           },
           () => {
+            console.log("[realtime] campaign_creators changed, refreshing...");
             fetchData(true);
           }
         )
@@ -242,16 +244,20 @@ export function BusinessCampaignOverview() {
       }
       console.log("[Update] Success:", data);
 
-      // Optimistic UI update: change the creator's status locally
-      setCreators(prev => prev.map(c => 
-        c.id === campaignCreatorId 
-          ? { 
-              ...c, 
-              status: targetStatus,
-              streams_target: targetStatus === "active" ? (campaign?.streams_required || c.streams_target) : c.streams_target
-            }
-          : c
-      ));
+      // OPTIMISTIC UI UPDATE: change the creator's status locally
+      setCreators(prev => {
+        const updated = prev.map(c => 
+          c.id === campaignCreatorId 
+            ? { 
+                ...c, 
+                status: targetStatus,
+                streams_target: targetStatus === "active" ? (campaign?.streams_required || c.streams_target) : c.streams_target
+              }
+            : c
+        );
+        console.log("[Optimistic] New creators state:", updated);
+        return updated;
+      });
 
       // Notify the creator (non‑blocking)
       if (creatorUserId) {
@@ -272,8 +278,12 @@ export function BusinessCampaignOverview() {
       }
 
       toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
-      // Background refresh to ensure consistency
-      await fetchData(true);
+      
+      // Force a full refresh after a short delay to ensure UI is in sync
+      setTimeout(() => {
+        console.log("[Update] Performing background refresh...");
+        fetchData(true);
+      }, 500);
     } catch (err: any) {
       console.error("[Update] Error:", err);
       toast.error(err.message || "Failed to update status");
@@ -524,7 +534,7 @@ export function BusinessCampaignOverview() {
           </div>
         )}
 
-        {/* Creator Summary Card (unchanged) */}
+        {/* Creator Summary Card */}
         <div className="px-8 py-8">
           <div className="bg-white border-2 border-[#1D1D1D] overflow-hidden">
             <div className="p-6">
