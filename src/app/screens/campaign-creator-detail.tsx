@@ -107,11 +107,10 @@ export function CampaignCreatorDetail() {
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
 
-  // Log whenever creatorLink changes
+  // Log whenever creatorLink changes (for debugging)
   useEffect(() => {
     if (creatorLink) {
       console.log("[Debug] Creator status:", creatorLink.status);
-      console.log("[Debug] Creator object:", creatorLink);
     }
   }, [creatorLink]);
 
@@ -216,9 +215,19 @@ export function CampaignCreatorDetail() {
     if (!ok) return;
 
     setUpdatingStatus(true);
+    const previousStatus = creatorLink.status;
+    const targetStatus = newStatus === "active" ? "active" : "declined";
+
+    // Optimistic UI update: change status immediately
+    setCreatorLink(prev => prev ? {
+      ...prev,
+      status: targetStatus,
+      streams_target: newStatus === "active" ? (campaign?.streams_required || prev.streams_target) : prev.streams_target
+    } : prev);
+
     try {
       const updates: any = {
-        status: newStatus,
+        status: targetStatus,
         updated_at: new Date().toISOString(),
       };
       if (newStatus === "active") {
@@ -230,10 +239,12 @@ export function CampaignCreatorDetail() {
         .from("campaign_creators")
         .update(updates)
         .eq("id", creatorLink.id)
-        .select(); // return updated row
+        .select();
 
       if (error) {
         console.error("[Error] Supabase update error:", error);
+        // Revert optimistic update
+        setCreatorLink(prev => prev ? { ...prev, status: previousStatus } : prev);
         throw error;
       }
       console.log("[Debug] Update success:", data);
@@ -253,7 +264,8 @@ export function CampaignCreatorDetail() {
       }
 
       toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
-      fetchData(true); // refresh data
+      // Refresh to ensure consistency (the optimistic update already made UI change)
+      await fetchData(true);
     } catch (err: any) {
       console.error("[Error] updateCreatorStatus caught:", err);
       toast.error(err.message);
@@ -368,7 +380,6 @@ export function CampaignCreatorDetail() {
   });
 
   const isActiveOrCompleted = creatorLink.status === "active" || creatorLink.status === "completed";
-  // More robust pending detection (matches any case containing "pending", "not_started", or "not started")
   const isPending = creatorLink?.status && (
     creatorLink.status.toLowerCase().includes('pending') ||
     creatorLink.status.toLowerCase() === 'not_started' ||
