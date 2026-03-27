@@ -1,6 +1,6 @@
 import { createBrowserRouter, RouteObject } from "react-router";
 import { Home } from "./screens/home";
-import { Messages } from "./screens/message";
+import { Messages } from "./screens/messages";
 import { Dashboard } from "./screens/dashboard";
 import { Profile } from "./screens/profile";
 import { CampaignSummary } from "./screens/CampaignSummary";
