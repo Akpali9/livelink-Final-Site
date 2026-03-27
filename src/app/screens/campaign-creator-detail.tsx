@@ -19,7 +19,6 @@ import {
   Loader2,
   Eye,
   CheckCircle,
-  XCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
@@ -27,6 +26,10 @@ import { AppHeader } from "../components/app-header";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
+
+// ─────────────────────────────────────────────
+// INTERFACES
+// ─────────────────────────────────────────────
 
 interface Campaign {
   id: string;
@@ -71,6 +74,10 @@ interface StreamProof {
   verified_at?: string;
 }
 
+// ─────────────────────────────────────────────
+// CONFIRM TOAST HELPER
+// ─────────────────────────────────────────────
+
 function confirmToast(message: string): Promise<boolean> {
   return new Promise((resolve) => {
     toast(message, {
@@ -88,6 +95,10 @@ function confirmToast(message: string): Promise<boolean> {
   });
 }
 
+// ─────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────
+
 export function CampaignCreatorDetail() {
   const navigate = useNavigate();
   const { campaignId, creatorId } = useParams();
@@ -102,17 +113,9 @@ export function CampaignCreatorDetail() {
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
   const [selectedProof, setSelectedProof] = useState<{ url: string; streamNum: number } | null>(null);
   const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
-
-  // Log whenever creatorLink changes (for debugging)
-  useEffect(() => {
-    if (creatorLink) {
-      console.log("[Debug] Creator status:", creatorLink.status);
-    }
-  }, [creatorLink]);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !creatorId) return;
@@ -204,75 +207,6 @@ export function CampaignCreatorDetail() {
       creatorChannelRef.current?.unsubscribe();
     };
   }, [campaignId, creatorId, creatorLink?.id, fetchData]);
-
-  const updateCreatorStatus = async (newStatus: "active" | "declined") => {
-    if (!creatorLink) {
-      console.error("[Error] creatorLink is null");
-      return;
-    }
-    console.log("[Debug] Updating creator status to:", newStatus, "for id:", creatorLink.id);
-    const ok = await confirmToast(`${newStatus === "active" ? "Approve" : "Reject"} this creator?`);
-    if (!ok) return;
-
-    setUpdatingStatus(true);
-    const previousStatus = creatorLink.status;
-    const targetStatus = newStatus === "active" ? "active" : "declined";
-
-    // Optimistic UI update: change status immediately
-    setCreatorLink(prev => prev ? {
-      ...prev,
-      status: targetStatus,
-      streams_target: newStatus === "active" ? (campaign?.streams_required || prev.streams_target) : prev.streams_target
-    } : prev);
-
-    try {
-      const updates: any = {
-        status: targetStatus,
-        updated_at: new Date().toISOString(),
-      };
-      if (newStatus === "active") {
-        updates.accepted_at = new Date().toISOString();
-        updates.streams_target = campaign?.streams_required;
-      }
-
-      const { data, error } = await supabase
-        .from("campaign_creators")
-        .update(updates)
-        .eq("id", creatorLink.id)
-        .select();
-
-      if (error) {
-        console.error("[Error] Supabase update error:", error);
-        // Revert optimistic update
-        setCreatorLink(prev => prev ? { ...prev, status: previousStatus } : prev);
-        throw error;
-      }
-      console.log("[Debug] Update success:", data);
-
-      // Notify the creator
-      if (creatorProfile?.user_id) {
-        await supabase.from("notifications").insert({
-          user_id: creatorProfile.user_id,
-          type: newStatus === "active" ? "campaign_accepted" : "campaign_rejected",
-          title: newStatus === "active" ? "Campaign Invitation Accepted ✅" : "Campaign Application Rejected",
-          message: newStatus === "active"
-            ? `Your application for campaign "${campaign?.name}" has been approved!`
-            : `Your application for campaign "${campaign?.name}" was not accepted.`,
-          data: { campaign_id: campaign?.id },
-          created_at: new Date().toISOString(),
-        }).catch(console.error);
-      }
-
-      toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
-      // Refresh to ensure consistency (the optimistic update already made UI change)
-      await fetchData(true);
-    } catch (err: any) {
-      console.error("[Error] updateCreatorStatus caught:", err);
-      toast.error(err.message);
-    } finally {
-      setUpdatingStatus(false);
-    }
-  };
 
   const verifyProof = async (proofId: string, streamNum: number) => {
     const ok = await confirmToast(`Verify stream ${streamNum}? This will mark the stream as completed and add earnings.`);
@@ -380,11 +314,6 @@ export function CampaignCreatorDetail() {
   });
 
   const isActiveOrCompleted = creatorLink.status === "active" || creatorLink.status === "completed";
-  const isPending = creatorLink?.status && (
-    creatorLink.status.toLowerCase().includes('pending') ||
-    creatorLink.status.toLowerCase() === 'not_started' ||
-    creatorLink.status.toLowerCase() === 'not started'
-  );
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -426,27 +355,6 @@ export function CampaignCreatorDetail() {
                 </span>
               </div>
             </div>
-
-            {isPending && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => updateCreatorStatus("active")}
-                  disabled={updatingStatus}
-                  className="px-4 py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
-                >
-                  <CheckCircle className="w-3 h-3" />
-                  {updatingStatus ? "Processing..." : "Approve"}
-                </button>
-                <button
-                  onClick={() => updateCreatorStatus("declined")}
-                  disabled={updatingStatus}
-                  className="px-4 py-2 bg-red-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"
-                >
-                  <XCircle className="w-3 h-3" />
-                  {updatingStatus ? "Processing..." : "Reject"}
-                </button>
-              </div>
-            )}
           </div>
 
           {isActiveOrCompleted && (
@@ -499,7 +407,7 @@ export function CampaignCreatorDetail() {
           </h3>
           <div className="flex flex-col gap-4">
             {streamLog.map((stream) => {
-              if (!isActiveOrCompleted && (isPending || creatorLink.status === "declined")) {
+              if (!isActiveOrCompleted) {
                 return (
                   <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center justify-between">
                     <div>
