@@ -254,9 +254,30 @@ export function LiveCampaignUpdate() {
         }),
       });
 
+      // Handle non‑JSON responses (e.g., HTML errors)
+      let errorMsg = null;
+      let result = null;
+      const contentType = response.headers.get("content-type");
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to insert proof");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await response.json();
+          errorMsg = errorData.error || `HTTP ${response.status}`;
+        } else {
+          // Read raw text for non‑JSON errors
+          const rawText = await response.text();
+          errorMsg = rawText || `HTTP ${response.status}`;
+        }
+        throw new Error(`Failed to insert proof: ${errorMsg}`);
+      }
+
+      // Parse successful JSON response
+      if (contentType && contentType.includes("application/json")) {
+        result = await response.json();
+        console.log("Insert success:", result);
+      } else {
+        // If response is not JSON (shouldn't happen on success), just ignore
+        console.warn("Unexpected content type on success:", contentType);
       }
 
       toast.success(`Proof for Stream ${selectedStreamNumber} uploaded! The business will review it shortly.`);
