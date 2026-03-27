@@ -1,6 +1,6 @@
 import { createBrowserRouter, RouteObject } from "react-router";
 import { Home } from "./screens/home";
-import { Message } from "./screens/message";
+import { Messages } from "./screens/message";
 import { Dashboard } from "./screens/dashboard";
 import { Profile } from "./screens/profile";
 import { CampaignSummary } from "./screens/CampaignSummary";
@@ -51,7 +51,7 @@ export const routes: RouteObject[] = [
   { path: "/campaign/:id", element: protectCreator(CampaignDetails) }, // <-- NEW creator campaign detail route
   { path: "/browse-businesses", element: protectCreator(BrowseBusinesses) },
   { path: "/messages", element: protectCreator(Messages) },
-  { path: "/messages/:id", element: protectCreator(Message) },
+  { path: "/messages/:id", element: protectCreator(Messages) },
   { path: "/notifications", element: protectCreator(Notifications) },
   
   // Business routes
@@ -66,7 +66,7 @@ export const routes: RouteObject[] = [
   { path: "/business/create-campaign", element: protectBusiness(CampaignTypeSelection) },     // entry point
   { path: "/business/campaign/type", element: protectBusiness(CampaignTypeSelection) },       // alias
   { path: "/business/campaign/creation", element: protectBusiness(CampaignCreation) },
-  { path: "/messages/:campaignId/creator/:creatorId", element: protectCreator(Message) }, // brief & payment
+  { path: "/messages/:campaignId/creator/:creatorId", element: protectCreator(Messages) }, // brief & payment
   
   // Campaign detail routes
   { path: "/business/campaign/overview/:id", element: protectBusiness(BusinessCampaignOverview) },
@@ -81,7 +81,7 @@ export const routes: RouteObject[] = [
   { path: "/admin/dashboard", element: protectAdmin(AdminDashboard) },
   { path: "/admin/*", element: protectAdmin(AdminDashboard) },
   { path: "/campaign/:id/summary", element: protectCreator(CampaignSummary) },
-  { path: "/business/messages/:campaignId/creator/:creatorId", element: protectBusiness(Message) },
+  { path: "/business/messages/:campaignId/creator/:creatorId", element: protectBusiness(Messages) },
   // Catch all
   { path: "*", element: <LoginPortal /> },
 ];
