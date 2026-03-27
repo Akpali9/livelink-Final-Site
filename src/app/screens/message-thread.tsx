@@ -362,8 +362,8 @@ export function MessageThread() {
 
   if (loading) {
     return (
-      <div className="flex flex-col h-screen bg-white">
-        <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] h-14 bg-[#1D1D1D] flex items-center px-4 z-50">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+        <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
           <button onClick={() => navigate(-1)} className="p-1 -ml-1">
             <ArrowLeft className="w-6 h-6 text-white" />
           </button>
@@ -385,8 +385,8 @@ export function MessageThread() {
 
   if (!conversation) {
     return (
-      <div className="flex flex-col h-screen bg-white">
-        <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] h-14 bg-[#1D1D1D] flex items-center px-4 z-50">
+      <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
+        <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
           <button onClick={() => navigate(-1)} className="p-1 -ml-1">
             <ArrowLeft className="w-6 h-6 text-white" />
           </button>
