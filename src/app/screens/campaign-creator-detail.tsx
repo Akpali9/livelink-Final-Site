@@ -28,6 +28,10 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
+// ─────────────────────────────────────────────
+// INTERFACES
+// ─────────────────────────────────────────────
+
 interface Campaign {
   id: string;
   name: string;
@@ -58,7 +62,7 @@ interface CreatorProfile {
   full_name: string;
   username: string;
   avatar_url: string;
-  user_id?: string; // auth user ID
+  user_id?: string;
 }
 
 interface StreamProof {
@@ -71,7 +75,10 @@ interface StreamProof {
   verified_at?: string;
 }
 
-// Helper confirm toast
+// ─────────────────────────────────────────────
+// CONFIRM TOAST HELPER
+// ─────────────────────────────────────────────
+
 function confirmToast(message: string): Promise<boolean> {
   return new Promise((resolve) => {
     toast(message, {
@@ -88,6 +95,10 @@ function confirmToast(message: string): Promise<boolean> {
     });
   });
 }
+
+// ─────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────
 
 export function CampaignCreatorDetail() {
   const navigate = useNavigate();
@@ -108,13 +119,15 @@ export function CampaignCreatorDetail() {
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
 
+  // ─── FETCH DATA ─────────────────────────────────────────────────────────
+
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !creatorId) return;
     if (!silent) setLoading(true);
     else setRefreshing(true);
 
     try {
-      // Fetch campaign
+      // Campaign
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
         .select("*")
@@ -123,7 +136,7 @@ export function CampaignCreatorDetail() {
       if (campaignError) throw campaignError;
       setCampaign(campaignData);
 
-      // Fetch the creator's link to this campaign
+      // Creator link
       const { data: linkData, error: linkError } = await supabase
         .from("campaign_creators")
         .select("*")
@@ -138,7 +151,7 @@ export function CampaignCreatorDetail() {
       }
       setCreatorLink(linkData);
 
-      // Fetch creator profile (including user_id)
+      // Creator profile
       const { data: profileData, error: profileError } = await supabase
         .from("creator_profiles")
         .select("id, full_name, username, avatar_url, user_id")
@@ -147,7 +160,7 @@ export function CampaignCreatorDetail() {
       if (profileError) throw profileError;
       setCreatorProfile(profileData);
 
-      // Fetch stream proofs
+      // Stream proofs
       const { data: proofsData, error: proofsError } = await supabase
         .from("stream_proofs")
         .select("*")
@@ -164,6 +177,8 @@ export function CampaignCreatorDetail() {
       setRefreshing(false);
     }
   }, [campaignId, creatorId, navigate]);
+
+  // ─── REAL‑TIME SUBSCRIPTIONS ──────────────────────────────────────────
 
   useEffect(() => {
     if (!campaignId || !creatorId) return;
@@ -213,6 +228,8 @@ export function CampaignCreatorDetail() {
     };
   }, [campaignId, creatorId, creatorLink?.id, fetchData]);
 
+  // ─── UPDATE CREATOR STATUS (APPROVE / REJECT) ──────────────────────────
+
   const updateCreatorStatus = async (newStatus: "active" | "declined") => {
     if (!creatorLink) return;
     const ok = await confirmToast(`${newStatus === "active" ? "Approve" : "Reject"} this creator?`);
@@ -257,6 +274,8 @@ export function CampaignCreatorDetail() {
       setUpdatingStatus(false);
     }
   };
+
+  // ─── VERIFY A STREAM PROOF ─────────────────────────────────────────────
 
   const verifyProof = async (proofId: string, streamNum: number) => {
     const ok = await confirmToast(`Verify stream ${streamNum}? This will mark the stream as completed and add earnings.`);
@@ -314,6 +333,22 @@ export function CampaignCreatorDetail() {
     }
   };
 
+  // ─── HELPERS FOR RENDERING ─────────────────────────────────────────────
+
+  const handleViewProof = (proofUrl: string, streamNum: number) => {
+    setSelectedProof({ url: proofUrl, streamNum });
+    setIsProofModalOpen(true);
+  };
+
+  // Determine if the creator is in a pending state (eligible for approve/reject)
+  const isPending = creatorLink?.status && (
+    creatorLink.status.toLowerCase().includes('pending') ||
+    creatorLink.status.toLowerCase() === 'not_started' ||
+    creatorLink.status.toLowerCase() === 'not started'
+  );
+
+  // ─── LOADING & ERROR STATES ────────────────────────────────────────────
+
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -344,12 +379,14 @@ export function CampaignCreatorDetail() {
     );
   }
 
+  // ─── DERIVED VALUES ────────────────────────────────────────────────────
+
   const totalEarnings = creatorLink.total_earnings;
   const completedStreams = creatorLink.streams_completed;
   const totalStreams = campaign.streams_required;
   const progress = (completedStreams / totalStreams) * 100;
 
-  // Build stream log with proof status and URL
+  // Build stream log (used for active/completed creators)
   const streamLog = Array.from({ length: totalStreams }, (_, i) => {
     const streamNum = i + 1;
     const proof = streamProofs.find(p => p.stream_number === streamNum);
@@ -364,13 +401,9 @@ export function CampaignCreatorDetail() {
     }
   });
 
-  const handleViewProof = (proofUrl: string, streamNum: number) => {
-    setSelectedProof({ url: proofUrl, streamNum });
-    setIsProofModalOpen(true);
-  };
+  const isActiveOrCompleted = creatorLink.status === "active" || creatorLink.status === "completed";
 
-  // Determine if the creator status is pending (can be approved/rejected)
-  const isPending = creatorLink.status === "pending" || creatorLink.status === "not_started" || creatorLink.status === "PENDING";
+  // ─── RENDER ───────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -396,7 +429,7 @@ export function CampaignCreatorDetail() {
             </div>
           </div>
 
-          {/* Status and actions */}
+          {/* Status row with Approve/Reject buttons if pending */}
           <div className="flex justify-between items-center">
             <div>
               <span className="text-[9px] font-black uppercase tracking-widest opacity-40">Status</span>
@@ -437,7 +470,7 @@ export function CampaignCreatorDetail() {
           </div>
 
           {/* Progress bar (only show if active or completed) */}
-          {(creatorLink.status === "active" || creatorLink.status === "completed") && (
+          {isActiveOrCompleted && (
             <>
               <div className="flex justify-between items-center mt-6 mb-2">
                 <span className="text-[9px] font-black uppercase tracking-widest opacity-40">Stream Progress</span>
@@ -480,19 +513,15 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Stream Log (always visible, but content differs based on status) */}
+        {/* Stream Log – always visible */}
         <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
             Stream Log
           </h3>
           <div className="flex flex-col gap-4">
             {streamLog.map((stream) => {
-              // Determine what to show based on creator status and proof existence
-              const isActiveOrCompleted = creatorLink.status === "active" || creatorLink.status === "completed";
-              const isPendingStatus = isPending || creatorLink.status === "declined";
-
-              if (!isActiveOrCompleted && isPendingStatus) {
-                // For pending or declined, show a placeholder "Not started"
+              // If creator is not active/completed, show placeholder
+              if (!isActiveOrCompleted && (isPending || creatorLink.status === "declined")) {
                 return (
                   <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center justify-between">
                     <div>
