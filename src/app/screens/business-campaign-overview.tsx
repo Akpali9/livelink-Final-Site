@@ -81,7 +81,7 @@ interface CampaignCreator {
     name: string;
     username: string;
     avatar_url: string;
-    user_id: string; // added for notifications
+    user_id: string;
   };
 }
 
@@ -219,8 +219,10 @@ export function BusinessCampaignOverview() {
 
     setUpdatingCreatorId(campaignCreatorId);
     try {
+      // Normalize the status to lowercase (consistent with DB)
+      const targetStatus = newStatus === "active" ? "active" : "declined";
       const updates: any = {
-        status: newStatus,
+        status: targetStatus,
         updated_at: new Date().toISOString(),
       };
       if (newStatus === "active") {
@@ -228,31 +230,44 @@ export function BusinessCampaignOverview() {
         updates.streams_target = campaign?.streams_required;
       }
 
-      const { error } = await supabase
+      console.log(`[Update] Updating campaign_creator ${campaignCreatorId} to status: ${targetStatus}`);
+      const { data, error } = await supabase
         .from("campaign_creators")
         .update(updates)
-        .eq("id", campaignCreatorId);
-      if (error) throw error;
+        .eq("id", campaignCreatorId)
+        .select(); // return the updated row
 
-      // Notify the creator
+      if (error) {
+        console.error("[Update] Supabase error:", error);
+        throw error;
+      }
+      console.log("[Update] Success:", data);
+
+      // Notify the creator (wrap in try/catch so it doesn't break the main update)
       if (creatorUserId) {
-        await supabase.from("notifications").insert({
-          user_id: creatorUserId,
-          type: newStatus === "active" ? "campaign_accepted" : "campaign_rejected",
-          title: newStatus === "active" ? "Campaign Invitation Accepted ✅" : "Campaign Application Rejected",
-          message: newStatus === "active"
-            ? `Your application for campaign "${campaign?.name}" has been approved!`
-            : `Your application for campaign "${campaign?.name}" was not accepted.`,
-          data: { campaign_id: campaign?.id },
-          created_at: new Date().toISOString(),
-        }).catch(console.error);
+        try {
+          await supabase.from("notifications").insert({
+            user_id: creatorUserId,
+            type: newStatus === "active" ? "campaign_accepted" : "campaign_rejected",
+            title: newStatus === "active" ? "Campaign Invitation Accepted ✅" : "Campaign Application Rejected",
+            message: newStatus === "active"
+              ? `Your application for campaign "${campaign?.name}" has been approved!`
+              : `Your application for campaign "${campaign?.name}" was not accepted.`,
+            data: { campaign_id: campaign?.id },
+            created_at: new Date().toISOString(),
+          });
+        } catch (notifErr) {
+          console.warn("[Update] Notification failed:", notifErr);
+          // Don't throw, the status update already succeeded
+        }
       }
 
       toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
-      // The real‑time subscription will refresh the list automatically
+      // Force a refresh immediately (the real‑time subscription should also trigger it)
+      await fetchData(true);
     } catch (err: any) {
-      console.error("Error updating creator status:", err);
-      toast.error(err.message);
+      console.error("[Update] Error:", err);
+      toast.error(err.message || "Failed to update status");
     } finally {
       setUpdatingCreatorId(null);
     }
@@ -387,7 +402,10 @@ export function BusinessCampaignOverview() {
 
             <div className="flex flex-col gap-4">
               {creators.map((creator) => {
-                const isPending = creator.status === "pending" || creator.status === "not_started";
+                // Case‑insensitive pending detection
+                const statusLower = creator.status?.toLowerCase() || "";
+                const isPending = statusLower.includes('pending') || statusLower === 'not_started' || statusLower === 'not started';
+
                 return (
                   <div
                     key={creator.id}
@@ -493,7 +511,7 @@ export function BusinessCampaignOverview() {
           </div>
         )}
 
-        {/* Creator Summary Card */}
+        {/* Creator Summary Card (unchanged) */}
         <div className="px-8 py-8">
           <div className="bg-white border-2 border-[#1D1D1D] overflow-hidden">
             <div className="p-6">
