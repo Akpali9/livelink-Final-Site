@@ -203,7 +203,7 @@ export function LiveCampaignUpdate() {
     };
   }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
 
-  // ─── File upload handler using Vercel function (bypasses RLS) ───────────
+  // ─── File upload handler using Supabase Edge Function (bypasses RLS) ───
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || selectedStreamNumber === null) return;
@@ -239,45 +239,20 @@ export function LiveCampaignUpdate() {
         data: { publicUrl },
       } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      // ─── Call Vercel Serverless Function (bypasses RLS) ───
-      const response = await fetch("/api/insert-proof", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      // ─── Call Supabase Edge Function (bypasses RLS) ───
+      const { data, error } = await supabase.functions.invoke("insert-proof", {
+        body: {
           campaign_creator_id: creatorLink?.id,
           stream_number: selectedStreamNumber,
           proof_url: publicUrl,
           status: "pending",
           submitted_at: new Date().toISOString(),
-        }),
+        },
       });
 
-      // Handle non‑JSON responses (e.g., HTML errors)
-      let errorMsg = null;
-      let result = null;
-      const contentType = response.headers.get("content-type");
-
-      if (!response.ok) {
-        if (contentType && contentType.includes("application/json")) {
-          const errorData = await response.json();
-          errorMsg = errorData.error || `HTTP ${response.status}`;
-        } else {
-          // Read raw text for non‑JSON errors
-          const rawText = await response.text();
-          errorMsg = rawText || `HTTP ${response.status}`;
-        }
-        throw new Error(`Failed to insert proof: ${errorMsg}`);
-      }
-
-      // Parse successful JSON response
-      if (contentType && contentType.includes("application/json")) {
-        result = await response.json();
-        console.log("Insert success:", result);
-      } else {
-        // If response is not JSON (shouldn't happen on success), just ignore
-        console.warn("Unexpected content type on success:", contentType);
+      if (error) {
+        console.error("Edge function error:", error);
+        throw new Error(error.message || "Edge function failed");
       }
 
       toast.success(`Proof for Stream ${selectedStreamNumber} uploaded! The business will review it shortly.`);
