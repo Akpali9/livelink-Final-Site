@@ -402,7 +402,7 @@ export function MessageThread() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       {/* Top Bar */}
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] h-14 bg-[#1D1D1D] flex items-center px-4 z-50">
         <button onClick={() => navigate(-1)} className="p-1 -ml-1">
@@ -419,7 +419,7 @@ export function MessageThread() {
               className="w-full h-full object-cover grayscale"
             />
           </div>
-          <div className="flex flex-col leading-none">
+          <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full leading-none">
             <h3 className="text-[14px] font-black uppercase tracking-tight text-white">
               {conversation.participant_name}
             </h3>
@@ -495,7 +495,7 @@ export function MessageThread() {
         className="flex-1 pt-14 pb-[120px] overflow-y-auto px-4"
         style={{ scrollBehavior: 'smooth' }}
       >
-        <div className="flex flex-col space-y-6 py-6">
+        <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
           {Object.entries(groupedMessages).map(([date, dateMessages]) => (
             <div key={date} className="space-y-4">
               <div className="flex justify-center">
