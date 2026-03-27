@@ -18,6 +18,8 @@ import {
   Flag,
   Repeat,
   MessageSquare,
+  XCircle,
+  CheckCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { AppHeader } from "../components/app-header";
@@ -25,6 +27,31 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+
+// ─────────────────────────────────────────────
+// CONFIRM TOAST HELPER
+// ─────────────────────────────────────────────
+
+function confirmToast(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    toast(message, {
+      duration: 10000,
+      action: {
+        label: "Confirm",
+        onClick: () => resolve(true),
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => resolve(false),
+      },
+      onDismiss: () => resolve(false),
+    });
+  });
+}
+
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
 
 interface Campaign {
   id: string;
@@ -54,8 +81,13 @@ interface CampaignCreator {
     name: string;
     username: string;
     avatar_url: string;
+    user_id: string; // added for notifications
   };
 }
+
+// ─────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────
 
 export function BusinessCampaignOverview() {
   const navigate = useNavigate();
@@ -68,9 +100,12 @@ export function BusinessCampaignOverview() {
   const [refreshing, setRefreshing] = useState(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [updatingCreatorId, setUpdatingCreatorId] = useState<string | null>(null);
 
   const campaignChannelRef = useRef<any>(null);
   const creatorsChannelRef = useRef<any>(null);
+
+  // ─── FETCH DATA ─────────────────────────────────────────────────────────
 
   const fetchData = useCallback(async (silent = false) => {
     if (!id) return;
@@ -86,7 +121,7 @@ export function BusinessCampaignOverview() {
       if (campaignError) throw campaignError;
       setCampaign(campaignData);
 
-      // Fetch creators with their profile info
+      // Fetch creators with their profile info (including user_id for notifications)
       const { data: creatorsData, error: creatorsError } = await supabase
         .from("campaign_creators")
         .select(`
@@ -95,7 +130,8 @@ export function BusinessCampaignOverview() {
             id,
             name:full_name,
             username,
-            avatar_url
+            avatar_url,
+            user_id
           )
         `)
         .eq("campaign_id", id);
@@ -112,6 +148,8 @@ export function BusinessCampaignOverview() {
       setRefreshing(false);
     }
   }, [id]);
+
+  // ─── REAL‑TIME SUBSCRIPTIONS ───────────────────────────────────────────
 
   useEffect(() => {
     if (!id) return;
@@ -168,6 +206,60 @@ export function BusinessCampaignOverview() {
     };
   }, [id, fetchData, isRealtimeConnected]);
 
+  // ─── UPDATE CREATOR STATUS (APPROVE / REJECT) ──────────────────────────
+
+  const updateCreatorStatus = async (
+    campaignCreatorId: string,
+    newStatus: "active" | "declined",
+    creatorUserId?: string,
+    creatorName?: string
+  ) => {
+    const ok = await confirmToast(`${newStatus === "active" ? "Approve" : "Reject"} ${creatorName || "this creator"}?`);
+    if (!ok) return;
+
+    setUpdatingCreatorId(campaignCreatorId);
+    try {
+      const updates: any = {
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      };
+      if (newStatus === "active") {
+        updates.accepted_at = new Date().toISOString();
+        updates.streams_target = campaign?.streams_required;
+      }
+
+      const { error } = await supabase
+        .from("campaign_creators")
+        .update(updates)
+        .eq("id", campaignCreatorId);
+      if (error) throw error;
+
+      // Notify the creator
+      if (creatorUserId) {
+        await supabase.from("notifications").insert({
+          user_id: creatorUserId,
+          type: newStatus === "active" ? "campaign_accepted" : "campaign_rejected",
+          title: newStatus === "active" ? "Campaign Invitation Accepted ✅" : "Campaign Application Rejected",
+          message: newStatus === "active"
+            ? `Your application for campaign "${campaign?.name}" has been approved!`
+            : `Your application for campaign "${campaign?.name}" was not accepted.`,
+          data: { campaign_id: campaign?.id },
+          created_at: new Date().toISOString(),
+        }).catch(console.error);
+      }
+
+      toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
+      // The real‑time subscription will refresh the list automatically
+    } catch (err: any) {
+      console.error("Error updating creator status:", err);
+      toast.error(err.message);
+    } finally {
+      setUpdatingCreatorId(null);
+    }
+  };
+
+  // ─── LOADING & ERROR STATES ────────────────────────────────────────────
+
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] max-w-[480px] mx-auto w-full">
@@ -201,7 +293,8 @@ export function BusinessCampaignOverview() {
     );
   }
 
-  // Derived data
+  // ─── DERIVED DATA ───────────────────────────────────────────────────────
+
   const totalBudget = campaign.budget || 0;
   const totalCreators = creators.length;
   const activeCreators = creators.filter(c => c.status === "active").length;
@@ -243,6 +336,8 @@ export function BusinessCampaignOverview() {
   const startDate = campaign.start_date ? new Date(campaign.start_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "TBC";
   const endDate = campaign.end_date ? new Date(campaign.end_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "TBC";
 
+  // ─── RENDER ─────────────────────────────────────────────────────────────
+
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
       {/* Header with back button and title */}
@@ -283,7 +378,7 @@ export function BusinessCampaignOverview() {
           </p>
         </div>
 
-        {/* ALL CREATORS LIST - placed at the top */}
+        {/* ALL CREATORS LIST - with Approve/Reject buttons for pending creators */}
         {creators.length > 0 && (
           <div className="px-8 py-8 border-b border-[#1D1D1D]/10">
             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 italic mb-6">
@@ -291,55 +386,109 @@ export function BusinessCampaignOverview() {
             </h3>
 
             <div className="flex flex-col gap-4">
-              {creators.map((creator) => (
-                <div
-                  key={creator.id}
-                  onClick={() => navigate(`/business/campaign/${campaign.id}/creator/${creator.creator_id}`)}
-                  className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center gap-5 cursor-pointer active:scale-[0.98] transition-all group"
-                >
-                  <div className="w-14 h-14 border-2 border-[#1D1D1D] overflow-hidden shrink-0">
-                    <ImageWithFallback
-                      src={creator.creator?.avatar_url || "https://via.placeholder.com/100"}
-                      className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-black uppercase tracking-tight text-lg italic leading-none truncate">
-                      {creator.creator?.name || "Creator"}
-                    </h4>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 italic mb-2">
-                      {creator.creator?.username || "@creator"}
-                    </p>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1.5">
-                        <Tv className="w-3 h-3 text-[#389C9A]" />
-                        <span className="text-[9px] font-black uppercase tracking-tight italic">
-                          Streams: {creator.streams_completed}/{creator.streams_target}
-                        </span>
+              {creators.map((creator) => {
+                const isPending = creator.status === "pending" || creator.status === "not_started";
+                return (
+                  <div
+                    key={creator.id}
+                    className="bg-white border-2 border-[#1D1D1D] p-5 flex flex-col gap-4 cursor-pointer active:scale-[0.98] transition-all group"
+                    onClick={() => navigate(`/business/campaign/${campaign.id}/creator/${creator.creator_id}`)}
+                  >
+                    <div className="flex items-center gap-5">
+                      <div className="w-14 h-14 border-2 border-[#1D1D1D] overflow-hidden shrink-0">
+                        <ImageWithFallback
+                          src={creator.creator?.avatar_url || "https://via.placeholder.com/100"}
+                          className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-black uppercase tracking-tight text-lg italic leading-none truncate">
+                          {creator.creator?.name || "Creator"}
+                        </h4>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#1D1D1D]/40 italic mb-2">
+                          {creator.creator?.username || "@creator"}
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-1.5">
+                            <Tv className="w-3 h-3 text-[#389C9A]" />
+                            <span className="text-[9px] font-black uppercase tracking-tight italic">
+                              Streams: {creator.streams_completed}/{creator.streams_target}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-3">
+                        <div className={`px-2 py-0.5 text-[7px] font-black uppercase tracking-widest italic border ${
+                          creator.status === "active" ? "bg-[#389C9A] text-white border-[#389C9A]" :
+                          creator.status === "not_started" ? "bg-gray-100 text-gray-400 border-gray-200" :
+                          creator.status === "declined" ? "bg-red-100 text-red-400 border-red-200" :
+                          "bg-[#FEDB71] text-[#1D1D1D] border-[#FEDB71]"
+                        }`}>
+                          {creator.status === "active" ? "ACTIVE" :
+                           creator.status === "not_started" ? "NOT STARTED" :
+                           creator.status === "declined" ? "DECLINED" : "PENDING"}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/business/messages/${campaign.id}/creator/${creator.creator_id}`);
+                          }}
+                          className="p-1 hover:bg-[#F8F8F8] rounded transition-colors"
+                          title="Message this creator"
+                        >
+                          <MessageSquare className="w-4 h-4 text-[#389C9A]" />
+                        </button>
                       </div>
                     </div>
+
+                    {/* Approve/Reject buttons for pending creators */}
+                    {isPending && (
+                      <div className="flex gap-2 pt-2 border-t border-[#1D1D1D]/10">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateCreatorStatus(
+                              creator.id,
+                              "active",
+                              creator.creator?.user_id,
+                              creator.creator?.name
+                            );
+                          }}
+                          disabled={updatingCreatorId === creator.id}
+                          className="flex-1 py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center justify-center gap-1"
+                        >
+                          {updatingCreatorId === creator.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <CheckCircle className="w-3 h-3" />
+                          )}
+                          Approve
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateCreatorStatus(
+                              creator.id,
+                              "declined",
+                              creator.creator?.user_id,
+                              creator.creator?.name
+                            );
+                          }}
+                          disabled={updatingCreatorId === creator.id}
+                          className="flex-1 py-2 bg-red-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center justify-center gap-1"
+                        >
+                          {updatingCreatorId === creator.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <XCircle className="w-3 h-3" />
+                          )}
+                          Reject
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-col items-end gap-3">
-                    <div className={`px-2 py-0.5 text-[7px] font-black uppercase tracking-widest italic border ${
-                      creator.status === "active" ? "bg-[#389C9A] text-white border-[#389C9A]" :
-                      creator.status === "not_started" ? "bg-gray-100 text-gray-400 border-gray-200" :
-                      "bg-[#FEDB71] text-[#1D1D1D] border-[#FEDB71]"
-                    }`}>
-                      {creator.status === "active" ? "ACTIVE" : creator.status === "not_started" ? "NOT STARTED" : "PENDING"}
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/business/messages/${campaign.id}/creator/${creator.creator_id}`);
-                      }}
-                      className="p-1 hover:bg-[#F8F8F8] rounded transition-colors"
-                      title="Message this creator"
-                    >
-                      <MessageSquare className="w-4 h-4 text-[#389C9A]" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
