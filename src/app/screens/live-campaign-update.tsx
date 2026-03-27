@@ -52,7 +52,7 @@ interface Business {
   id: string;
   name: string;
   logo_url?: string;
-  user_id?: string; // added for messaging
+  user_id?: string;
 }
 
 interface StreamProof {
@@ -60,7 +60,7 @@ interface StreamProof {
   campaign_creator_id: string;
   stream_number: number;
   proof_url: string;
-  status: string; // 'pending' or 'verified'
+  status: string;
   submitted_at: string;
   verified_at?: string;
 }
@@ -84,7 +84,7 @@ export function LiveCampaignUpdate() {
   const [creatorProfileId, setCreatorProfileId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // First, fetch the creator's profile ID using the auth user ID
+  // ─── Fetch creator profile ID ──────────────────────────────────────────
   useEffect(() => {
     const fetchCreatorProfile = async () => {
       if (!user) return;
@@ -107,13 +107,13 @@ export function LiveCampaignUpdate() {
     fetchCreatorProfile();
   }, [user, navigate]);
 
+  // ─── Fetch campaign data ──────────────────────────────────────────────
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !user || !creatorProfileId) return;
     if (!silent) setLoading(true);
     else setRefreshing(true);
 
     try {
-      // 1. Fetch campaign
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
         .select("*")
@@ -122,7 +122,6 @@ export function LiveCampaignUpdate() {
       if (campaignError) throw campaignError;
       setCampaign(campaignData);
 
-      // 2. Fetch creator's link using creator profile ID
       const { data: linkData, error: linkError } = await supabase
         .from("campaign_creators")
         .select("*")
@@ -137,7 +136,6 @@ export function LiveCampaignUpdate() {
       }
       setCreatorLink(linkData);
 
-      // 3. Fetch business info (including user_id for messaging)
       const { data: businessData, error: businessError } = await supabase
         .from("businesses")
         .select("id, name, logo_url, user_id")
@@ -145,7 +143,6 @@ export function LiveCampaignUpdate() {
         .maybeSingle();
       if (!businessError && businessData) setBusiness(businessData);
 
-      // 4. Fetch stream proofs
       const { data: proofsData, error: proofsError } = await supabase
         .from("stream_proofs")
         .select("*")
@@ -163,11 +160,11 @@ export function LiveCampaignUpdate() {
     }
   }, [campaignId, user, creatorProfileId, navigate]);
 
+  // ─── Real‑time subscriptions ──────────────────────────────────────────
   useEffect(() => {
     if (!creatorProfileId) return;
     fetchData();
 
-    // Real‑time subscriptions
     const campaignChannel = supabase
       .channel(`campaign-${campaignId}`)
       .on(
@@ -195,7 +192,7 @@ export function LiveCampaignUpdate() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "stream_proofs", filter: `campaign_creator_id=eq.${creatorLink?.id}` },
-        () => fetchData(true) // refresh proofs
+        () => fetchData(true)
       )
       .subscribe();
 
@@ -206,16 +203,11 @@ export function LiveCampaignUpdate() {
     };
   }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
 
-  const triggerFileInput = (streamNum: number) => {
-    setSelectedStreamNumber(streamNum);
-    setIsUploadModalOpen(true);
-  };
-
+  // ─── File upload handler (direct insert, relies on RLS) ──────────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || selectedStreamNumber === null) return;
 
-    // Validate file type and size
     const allowedTypes = ["image/png", "image/jpeg"];
     if (!allowedTypes.includes(file.type)) {
       toast.error("Please upload PNG or JPG images only.");
@@ -228,13 +220,13 @@ export function LiveCampaignUpdate() {
 
     setUploading(true);
     try {
-      // Generate a unique file path
+      // Generate unique file path
       const fileExt = file.name.split(".").pop();
       const fileName = `${campaignId}_${selectedStreamNumber}_${Date.now()}.${fileExt}`;
       const filePath = `stream-proofs/${creatorProfileId}/${fileName}`;
 
       // Upload to Supabase Storage
-      const { data, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("campaign-assets")
         .upload(filePath, file, {
           cacheControl: "3600",
@@ -247,7 +239,7 @@ export function LiveCampaignUpdate() {
         data: { publicUrl },
       } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      // Insert proof record
+      // Insert proof record (this may fail if RLS is not correctly configured)
       const { error: insertError } = await supabase.from("stream_proofs").insert({
         campaign_creator_id: creatorLink?.id,
         stream_number: selectedStreamNumber,
@@ -255,7 +247,16 @@ export function LiveCampaignUpdate() {
         status: "pending",
         submitted_at: new Date().toISOString(),
       });
-      if (insertError) throw insertError;
+
+      if (insertError) {
+        // Check for RLS permission error
+        if (insertError.message?.includes("permission denied for table stream_proofs")) {
+          throw new Error(
+            "Permission denied. Please contact support. (RLS policy may need to be configured.)"
+          );
+        }
+        throw insertError;
+      }
 
       toast.success(`Proof for Stream ${selectedStreamNumber} uploaded! The business will review it shortly.`);
       setIsUploadModalOpen(false);
@@ -268,6 +269,11 @@ export function LiveCampaignUpdate() {
       setSelectedStreamNumber(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  const triggerFileInput = (streamNum: number) => {
+    setSelectedStreamNumber(streamNum);
+    setIsUploadModalOpen(true);
   };
 
   const handleViewProof = (proofUrl: string, streamNum: number) => {
