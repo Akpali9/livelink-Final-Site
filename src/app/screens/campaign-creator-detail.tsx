@@ -19,6 +19,7 @@ import {
   Loader2,
   Eye,
   CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
@@ -102,6 +103,7 @@ export function CampaignCreatorDetail() {
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
   const [selectedProof, setSelectedProof] = useState<{ url: string; streamNum: number } | null>(null);
   const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
@@ -210,6 +212,52 @@ export function CampaignCreatorDetail() {
       creatorChannelRef.current?.unsubscribe();
     };
   }, [campaignId, creatorId, creatorLink?.id, fetchData]);
+
+  const updateCreatorStatus = async (newStatus: "active" | "declined") => {
+    if (!creatorLink) return;
+    const ok = await confirmToast(`${newStatus === "active" ? "Approve" : "Reject"} this creator?`);
+    if (!ok) return;
+
+    setUpdatingStatus(true);
+    try {
+      const updates: any = {
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      };
+      if (newStatus === "active") {
+        updates.accepted_at = new Date().toISOString();
+        // Optionally set streams_target = campaign.streams_required
+        updates.streams_target = campaign?.streams_required;
+      }
+
+      const { error } = await supabase
+        .from("campaign_creators")
+        .update(updates)
+        .eq("id", creatorLink.id);
+      if (error) throw error;
+
+      // Notify the creator
+      if (creatorProfile?.user_id) {
+        await supabase.from("notifications").insert({
+          user_id: creatorProfile.user_id,
+          type: newStatus === "active" ? "campaign_accepted" : "campaign_rejected",
+          title: newStatus === "active" ? "Campaign Invitation Accepted ✅" : "Campaign Application Rejected",
+          message: newStatus === "active"
+            ? `Your application for campaign "${campaign?.name}" has been approved!`
+            : `Your application for campaign "${campaign?.name}" was not accepted.`,
+          data: { campaign_id: campaign?.id },
+          created_at: new Date().toISOString(),
+        }).catch(console.error);
+      }
+
+      toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
+      fetchData(true);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
 
   const verifyProof = async (proofId: string, streamNum: number) => {
     const ok = await confirmToast(`Verify stream ${streamNum}? This will mark the stream as completed and add earnings.`);
@@ -322,12 +370,15 @@ export function CampaignCreatorDetail() {
     setIsProofModalOpen(true);
   };
 
+  // Determine if the creator status is pending (can be approved/rejected)
+  const isPending = creatorLink.status === "pending" || creatorLink.status === "not_started" || creatorLink.status === "PENDING";
+
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
       <AppHeader showBack backPath={`/business/campaign/overview/${campaignId}`} title="Creator Breakdown" userType="business" />
 
       <main className="flex-1">
-        {/* Header with avatar */}
+        {/* Header with avatar and status */}
         <div className="px-8 py-8 border-b-2 border-[#1D1D1D]">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 border-2 border-[#1D1D1D] overflow-hidden">
@@ -345,18 +396,64 @@ export function CampaignCreatorDetail() {
               </p>
             </div>
           </div>
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-[9px] font-black uppercase tracking-widest opacity-40">Stream Progress</span>
-            <span className="text-[9px] font-black">{completedStreams} / {totalStreams}</span>
+
+          {/* Status and actions */}
+          <div className="flex justify-between items-center">
+            <div>
+              <span className="text-[9px] font-black uppercase tracking-widest opacity-40">Status</span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`px-2 py-1 text-[8px] font-black uppercase tracking-widest rounded-full ${
+                  creatorLink.status === "active" ? "bg-green-100 text-green-700" :
+                  creatorLink.status === "completed" ? "bg-blue-100 text-blue-700" :
+                  creatorLink.status === "declined" ? "bg-red-100 text-red-700" :
+                  "bg-yellow-100 text-yellow-700"
+                }`}>
+                  {creatorLink.status === "active" ? "Active" :
+                   creatorLink.status === "completed" ? "Completed" :
+                   creatorLink.status === "declined" ? "Declined" : "Pending"}
+                </span>
+              </div>
+            </div>
+
+            {isPending && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => updateCreatorStatus("active")}
+                  disabled={updatingStatus}
+                  className="px-4 py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
+                >
+                  <CheckCircle className="w-3 h-3" />
+                  {updatingStatus ? "Processing..." : "Approve"}
+                </button>
+                <button
+                  onClick={() => updateCreatorStatus("declined")}
+                  disabled={updatingStatus}
+                  className="px-4 py-2 bg-red-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"
+                >
+                  <XCircle className="w-3 h-3" />
+                  {updatingStatus ? "Processing..." : "Reject"}
+                </button>
+              </div>
+            )}
           </div>
-          <div className="h-1 bg-[#1D1D1D]/5 w-full rounded-none overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 1 }}
-              className="h-full bg-[#389C9A]"
-            />
-          </div>
+
+          {/* Progress bar (only show if active or completed) */}
+          {(creatorLink.status === "active" || creatorLink.status === "completed") && (
+            <>
+              <div className="flex justify-between items-center mt-6 mb-2">
+                <span className="text-[9px] font-black uppercase tracking-widest opacity-40">Stream Progress</span>
+                <span className="text-[9px] font-black">{completedStreams} / {totalStreams}</span>
+              </div>
+              <div className="h-1 bg-[#1D1D1D]/5 w-full rounded-none overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 1 }}
+                  className="h-full bg-[#389C9A]"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         {/* Campaign Overview Grid */}
@@ -384,68 +481,68 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Stream Log */}
-        <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
-            Stream Log
-          </h3>
-          <div className="flex flex-col gap-4">
-            {streamLog.map((stream) => (
-              <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center justify-between group">
-                <div>
-                  <span className="text-sm font-black uppercase italic tracking-tight">Stream {stream.num}</span>
-                  {stream.date !== 'TBC' && (
-                    <p className="text-[9px] font-bold uppercase tracking-widest opacity-30 mt-1">{stream.date}</p>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <div
-                    className={`px-2 py-1 text-[7px] font-black uppercase tracking-widest border italic ${
-                      stream.status === 'Verified'
-                        ? 'bg-[#389C9A] text-white border-[#389C9A]'
-                        : stream.status === 'Pending Verification'
-                        ? 'bg-[#FEDB71] text-[#1D1D1D] border-[#1D1D1D]/10'
-                        : stream.status === 'No Proof Uploaded'
-                        ? 'bg-gray-100 text-gray-400 border-gray-200'
-                        : 'bg-white text-[#1D1D1D]/20 border-[#1D1D1D]/10'
-                    }`}
-                  >
-                    {stream.status === 'Verified' && '✓ VERIFIED'}
-                    {stream.status === 'Pending Verification' && '⏳ PENDING VERIFICATION'}
-                    {stream.status === 'No Proof Uploaded' && '⚠️ NO PROOF'}
-                    {stream.status === 'Upcoming' && 'UPCOMING'}
+        {/* Stream Log (only show if active/completed) */}
+        {(creatorLink.status === "active" || creatorLink.status === "completed") && (
+          <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
+              Stream Log
+            </h3>
+            <div className="flex flex-col gap-4">
+              {streamLog.map((stream) => (
+                <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center justify-between group">
+                  <div>
+                    <span className="text-sm font-black uppercase italic tracking-tight">Stream {stream.num}</span>
+                    {stream.date !== 'TBC' && (
+                      <p className="text-[9px] font-bold uppercase tracking-widest opacity-30 mt-1">{stream.date}</p>
+                    )}
                   </div>
-                  {/* Always show View Proof button if proof exists */}
-                  {stream.proofUrl && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleViewProof(stream.proofUrl, stream.num)}
-                        className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] underline italic flex items-center gap-1"
-                      >
-                        <Eye className="w-3 h-3" /> View Proof
-                      </button>
-                      {/* Show verify button only if pending */}
-                      {stream.status === 'Pending Verification' && (
-                        <button
-                          onClick={() => stream.proofId && verifyProof(stream.proofId, stream.num)}
-                          disabled={verifyingProofId === stream.proofId}
-                          className="text-[8px] font-black uppercase tracking-widest bg-green-500 text-white px-2 py-1 rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-1"
-                        >
-                          {verifyingProofId === stream.proofId ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <CheckCircle className="w-3 h-3" />
-                          )}
-                          Verify
-                        </button>
-                      )}
+                  <div className="flex flex-col items-end gap-2">
+                    <div
+                      className={`px-2 py-1 text-[7px] font-black uppercase tracking-widest border italic ${
+                        stream.status === 'Verified'
+                          ? 'bg-[#389C9A] text-white border-[#389C9A]'
+                          : stream.status === 'Pending Verification'
+                          ? 'bg-[#FEDB71] text-[#1D1D1D] border-[#1D1D1D]/10'
+                          : stream.status === 'No Proof Uploaded'
+                          ? 'bg-gray-100 text-gray-400 border-gray-200'
+                          : 'bg-white text-[#1D1D1D]/20 border-[#1D1D1D]/10'
+                      }`}
+                    >
+                      {stream.status === 'Verified' && '✓ VERIFIED'}
+                      {stream.status === 'Pending Verification' && '⏳ PENDING VERIFICATION'}
+                      {stream.status === 'No Proof Uploaded' && '⚠️ NO PROOF'}
+                      {stream.status === 'Upcoming' && 'UPCOMING'}
                     </div>
-                  )}
+                    {stream.proofUrl && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleViewProof(stream.proofUrl, stream.num)}
+                          className="text-[8px] font-black uppercase tracking-widest text-[#389C9A] underline italic flex items-center gap-1"
+                        >
+                          <Eye className="w-3 h-3" /> View Proof
+                        </button>
+                        {stream.status === 'Pending Verification' && (
+                          <button
+                            onClick={() => stream.proofId && verifyProof(stream.proofId, stream.num)}
+                            disabled={verifyingProofId === stream.proofId}
+                            className="text-[8px] font-black uppercase tracking-widest bg-green-500 text-white px-2 py-1 rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {verifyingProofId === stream.proofId ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <CheckCircle className="w-3 h-3" />
+                            )}
+                            Verify
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Communication */}
         <div className="px-8 py-12">
