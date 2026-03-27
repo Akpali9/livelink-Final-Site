@@ -203,7 +203,7 @@ export function LiveCampaignUpdate() {
     };
   }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
 
-  // ─── File upload handler using Edge Function (bypasses RLS) ───────────
+  // ─── File upload handler using Vercel function (bypasses RLS) ───────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || selectedStreamNumber === null) return;
@@ -239,20 +239,24 @@ export function LiveCampaignUpdate() {
         data: { publicUrl },
       } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      // ─── Call Edge Function to insert the proof (bypasses RLS) ───
-      const { error: edgeError } = await supabase.functions.invoke("insert-proof", {
-        body: {
+      // ─── Call Vercel Serverless Function (bypasses RLS) ───
+      const response = await fetch("/api/insert-proof", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           campaign_creator_id: creatorLink?.id,
           stream_number: selectedStreamNumber,
           proof_url: publicUrl,
           status: "pending",
           submitted_at: new Date().toISOString(),
-        },
+        }),
       });
 
-      if (edgeError) {
-        console.error("Edge function error:", edgeError);
-        throw new Error(edgeError.message || "Failed to insert proof via edge function");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to insert proof");
       }
 
       toast.success(`Proof for Stream ${selectedStreamNumber} uploaded! The business will review it shortly.`);
