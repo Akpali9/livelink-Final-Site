@@ -28,10 +28,6 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
-// ─────────────────────────────────────────────
-// INTERFACES
-// ─────────────────────────────────────────────
-
 interface Campaign {
   id: string;
   name: string;
@@ -70,14 +66,10 @@ interface StreamProof {
   campaign_creator_id: string;
   stream_number: number;
   proof_url: string;
-  status: string; // 'pending' or 'verified'
+  status: string;
   submitted_at: string;
   verified_at?: string;
 }
-
-// ─────────────────────────────────────────────
-// CONFIRM TOAST HELPER
-// ─────────────────────────────────────────────
 
 function confirmToast(message: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -95,10 +87,6 @@ function confirmToast(message: string): Promise<boolean> {
     });
   });
 }
-
-// ─────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────
 
 export function CampaignCreatorDetail() {
   const navigate = useNavigate();
@@ -119,7 +107,13 @@ export function CampaignCreatorDetail() {
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
 
-  // ─── FETCH DATA ─────────────────────────────────────────────────────────
+  // Log whenever creatorLink changes
+  useEffect(() => {
+    if (creatorLink) {
+      console.log("[Debug] Creator status:", creatorLink.status);
+      console.log("[Debug] Creator object:", creatorLink);
+    }
+  }, [creatorLink]);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !creatorId) return;
@@ -127,7 +121,6 @@ export function CampaignCreatorDetail() {
     else setRefreshing(true);
 
     try {
-      // Campaign
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
         .select("*")
@@ -136,7 +129,6 @@ export function CampaignCreatorDetail() {
       if (campaignError) throw campaignError;
       setCampaign(campaignData);
 
-      // Creator link
       const { data: linkData, error: linkError } = await supabase
         .from("campaign_creators")
         .select("*")
@@ -151,7 +143,6 @@ export function CampaignCreatorDetail() {
       }
       setCreatorLink(linkData);
 
-      // Creator profile
       const { data: profileData, error: profileError } = await supabase
         .from("creator_profiles")
         .select("id, full_name, username, avatar_url, user_id")
@@ -160,7 +151,6 @@ export function CampaignCreatorDetail() {
       if (profileError) throw profileError;
       setCreatorProfile(profileData);
 
-      // Stream proofs
       const { data: proofsData, error: proofsError } = await supabase
         .from("stream_proofs")
         .select("*")
@@ -178,8 +168,6 @@ export function CampaignCreatorDetail() {
     }
   }, [campaignId, creatorId, navigate]);
 
-  // ─── REAL‑TIME SUBSCRIPTIONS ──────────────────────────────────────────
-
   useEffect(() => {
     if (!campaignId || !creatorId) return;
     fetchData();
@@ -189,12 +177,7 @@ export function CampaignCreatorDetail() {
         .channel(`campaign-${campaignId}`)
         .on(
           "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "campaigns",
-            filter: `id=eq.${campaignId}`,
-          },
+          { event: "UPDATE", schema: "public", table: "campaigns", filter: `id=eq.${campaignId}` },
           (payload) => {
             setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev));
           }
@@ -206,12 +189,7 @@ export function CampaignCreatorDetail() {
           .channel(`campaign-creator-${creatorLink.id}`)
           .on(
             "postgres_changes",
-            {
-              event: "UPDATE",
-              schema: "public",
-              table: "campaign_creators",
-              filter: `id=eq.${creatorLink.id}`,
-            },
+            { event: "UPDATE", schema: "public", table: "campaign_creators", filter: `id=eq.${creatorLink.id}` },
             (payload) => {
               setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev));
             }
@@ -228,10 +206,12 @@ export function CampaignCreatorDetail() {
     };
   }, [campaignId, creatorId, creatorLink?.id, fetchData]);
 
-  // ─── UPDATE CREATOR STATUS (APPROVE / REJECT) ──────────────────────────
-
   const updateCreatorStatus = async (newStatus: "active" | "declined") => {
-    if (!creatorLink) return;
+    if (!creatorLink) {
+      console.error("[Error] creatorLink is null");
+      return;
+    }
+    console.log("[Debug] Updating creator status to:", newStatus, "for id:", creatorLink.id);
     const ok = await confirmToast(`${newStatus === "active" ? "Approve" : "Reject"} this creator?`);
     if (!ok) return;
 
@@ -246,11 +226,17 @@ export function CampaignCreatorDetail() {
         updates.streams_target = campaign?.streams_required;
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("campaign_creators")
         .update(updates)
-        .eq("id", creatorLink.id);
-      if (error) throw error;
+        .eq("id", creatorLink.id)
+        .select(); // return updated row
+
+      if (error) {
+        console.error("[Error] Supabase update error:", error);
+        throw error;
+      }
+      console.log("[Debug] Update success:", data);
 
       // Notify the creator
       if (creatorProfile?.user_id) {
@@ -267,15 +253,14 @@ export function CampaignCreatorDetail() {
       }
 
       toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
-      fetchData(true);
+      fetchData(true); // refresh data
     } catch (err: any) {
+      console.error("[Error] updateCreatorStatus caught:", err);
       toast.error(err.message);
     } finally {
       setUpdatingStatus(false);
     }
   };
-
-  // ─── VERIFY A STREAM PROOF ─────────────────────────────────────────────
 
   const verifyProof = async (proofId: string, streamNum: number) => {
     const ok = await confirmToast(`Verify stream ${streamNum}? This will mark the stream as completed and add earnings.`);
@@ -283,25 +268,21 @@ export function CampaignCreatorDetail() {
 
     setVerifyingProofId(proofId);
     try {
-      // 1. Update the proof status
       const { error: proofError } = await supabase
         .from("stream_proofs")
         .update({ status: "verified", verified_at: new Date().toISOString() })
         .eq("id", proofId);
       if (proofError) throw proofError;
 
-      // 2. Calculate per‑stream earning (if not stored)
       let perStreamEarning = campaign?.pay_per_stream;
       if (!perStreamEarning && campaign) {
         perStreamEarning = campaign.budget / campaign.streams_required;
-        // Optional: store it for future use
         await supabase
           .from("campaigns")
           .update({ pay_per_stream: perStreamEarning })
           .eq("id", campaign.id);
       }
 
-      // 3. Increment streams_completed and total_earnings in campaign_creators
       const { error: updateError } = await supabase
         .from("campaign_creators")
         .update({
@@ -312,7 +293,6 @@ export function CampaignCreatorDetail() {
         .eq("id", creatorLink?.id);
       if (updateError) throw updateError;
 
-      // 4. Notify the creator
       if (creatorProfile?.user_id) {
         await supabase.from("notifications").insert({
           user_id: creatorProfile.user_id,
@@ -325,7 +305,7 @@ export function CampaignCreatorDetail() {
       }
 
       toast.success(`Stream ${streamNum} verified!`);
-      fetchData(true); // refresh all data
+      fetchData(true);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -333,21 +313,10 @@ export function CampaignCreatorDetail() {
     }
   };
 
-  // ─── HELPERS FOR RENDERING ─────────────────────────────────────────────
-
   const handleViewProof = (proofUrl: string, streamNum: number) => {
     setSelectedProof({ url: proofUrl, streamNum });
     setIsProofModalOpen(true);
   };
-
-  // Determine if the creator is in a pending state (eligible for approve/reject)
-  const isPending = creatorLink?.status && (
-    creatorLink.status.toLowerCase().includes('pending') ||
-    creatorLink.status.toLowerCase() === 'not_started' ||
-    creatorLink.status.toLowerCase() === 'not started'
-  );
-
-  // ─── LOADING & ERROR STATES ────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -379,14 +348,11 @@ export function CampaignCreatorDetail() {
     );
   }
 
-  // ─── DERIVED VALUES ────────────────────────────────────────────────────
-
   const totalEarnings = creatorLink.total_earnings;
   const completedStreams = creatorLink.streams_completed;
   const totalStreams = campaign.streams_required;
   const progress = (completedStreams / totalStreams) * 100;
 
-  // Build stream log (used for active/completed creators)
   const streamLog = Array.from({ length: totalStreams }, (_, i) => {
     const streamNum = i + 1;
     const proof = streamProofs.find(p => p.stream_number === streamNum);
@@ -402,8 +368,12 @@ export function CampaignCreatorDetail() {
   });
 
   const isActiveOrCompleted = creatorLink.status === "active" || creatorLink.status === "completed";
-
-  // ─── RENDER ───────────────────────────────────────────────────────────
+  // More robust pending detection (matches any case containing "pending", "not_started", or "not started")
+  const isPending = creatorLink?.status && (
+    creatorLink.status.toLowerCase().includes('pending') ||
+    creatorLink.status.toLowerCase() === 'not_started' ||
+    creatorLink.status.toLowerCase() === 'not started'
+  );
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -429,7 +399,6 @@ export function CampaignCreatorDetail() {
             </div>
           </div>
 
-          {/* Status row with Approve/Reject buttons if pending */}
           <div className="flex justify-between items-center">
             <div>
               <span className="text-[9px] font-black uppercase tracking-widest opacity-40">Status</span>
@@ -469,7 +438,6 @@ export function CampaignCreatorDetail() {
             )}
           </div>
 
-          {/* Progress bar (only show if active or completed) */}
           {isActiveOrCompleted && (
             <>
               <div className="flex justify-between items-center mt-6 mb-2">
@@ -513,14 +481,13 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Stream Log – always visible */}
+        {/* Stream Log */}
         <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
             Stream Log
           </h3>
           <div className="flex flex-col gap-4">
             {streamLog.map((stream) => {
-              // If creator is not active/completed, show placeholder
               if (!isActiveOrCompleted && (isPending || creatorLink.status === "declined")) {
                 return (
                   <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center justify-between">
@@ -533,8 +500,6 @@ export function CampaignCreatorDetail() {
                   </div>
                 );
               }
-
-              // Normal display for active/completed creators
               return (
                 <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center justify-between group">
                   <div>
