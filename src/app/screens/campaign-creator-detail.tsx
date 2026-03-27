@@ -38,7 +38,7 @@ interface Campaign {
   streams_required: number;
   business_id: string;
   banner_url?: string;
-  pay_per_stream?: number; // added
+  pay_per_stream?: number;
 }
 
 interface CampaignCreator {
@@ -415,6 +415,7 @@ export function CampaignCreatorDetail() {
                     {stream.status === 'No Proof Uploaded' && '⚠️ NO PROOF'}
                     {stream.status === 'Upcoming' && 'UPCOMING'}
                   </div>
+                  {/* Always show View Proof button if proof exists */}
                   {stream.proofUrl && (
                     <div className="flex gap-2">
                       <button
@@ -423,6 +424,7 @@ export function CampaignCreatorDetail() {
                       >
                         <Eye className="w-3 h-3" /> View Proof
                       </button>
+                      {/* Show verify button only if pending */}
                       {stream.status === 'Pending Verification' && (
                         <button
                           onClick={() => stream.proofId && verifyProof(stream.proofId, stream.num)}
@@ -450,7 +452,6 @@ export function CampaignCreatorDetail() {
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
             Communication
           </h3>
-          {/* FIX: Use creator's user_id instead of profile ID */}
           <Link
             to={`/business/messages/${campaignId}/creator/${creatorProfile.user_id}`}
             className="w-full flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest border-2 border-[#1D1D1D] bg-white py-6 px-8 hover:bg-[#1D1D1D] hover:text-white transition-all italic active:scale-[0.98]"
