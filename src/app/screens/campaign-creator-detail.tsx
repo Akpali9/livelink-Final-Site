@@ -226,7 +226,6 @@ export function CampaignCreatorDetail() {
       };
       if (newStatus === "active") {
         updates.accepted_at = new Date().toISOString();
-        // Optionally set streams_target = campaign.streams_required
         updates.streams_target = campaign?.streams_required;
       }
 
@@ -481,14 +480,33 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Stream Log (only show if active/completed) */}
-        {(creatorLink.status === "active" || creatorLink.status === "completed") && (
-          <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
-              Stream Log
-            </h3>
-            <div className="flex flex-col gap-4">
-              {streamLog.map((stream) => (
+        {/* Stream Log (always visible, but content differs based on status) */}
+        <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
+            Stream Log
+          </h3>
+          <div className="flex flex-col gap-4">
+            {streamLog.map((stream) => {
+              // Determine what to show based on creator status and proof existence
+              const isActiveOrCompleted = creatorLink.status === "active" || creatorLink.status === "completed";
+              const isPendingStatus = isPending || creatorLink.status === "declined";
+
+              if (!isActiveOrCompleted && isPendingStatus) {
+                // For pending or declined, show a placeholder "Not started"
+                return (
+                  <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-black uppercase italic tracking-tight">Stream {stream.num}</span>
+                    </div>
+                    <div className="text-[8px] font-black uppercase tracking-widest text-gray-400 italic">
+                      Not started
+                    </div>
+                  </div>
+                );
+              }
+
+              // Normal display for active/completed creators
+              return (
                 <div key={stream.num} className="bg-white border-2 border-[#1D1D1D] p-5 flex items-center justify-between group">
                   <div>
                     <span className="text-sm font-black uppercase italic tracking-tight">Stream {stream.num}</span>
@@ -539,10 +557,10 @@ export function CampaignCreatorDetail() {
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        )}
+        </div>
 
         {/* Communication */}
         <div className="px-8 py-12">
