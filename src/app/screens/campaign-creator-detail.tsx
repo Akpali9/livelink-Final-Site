@@ -89,7 +89,7 @@ export function CampaignCreatorDetail() {
   const [selectedProof, setSelectedProof] = useState<{ url: string; streamNum: number } | null>(null);
   const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
 
-  // Refs for async handlers
+  // Refs
   const creatorLinkRef = useRef<CampaignCreator | null>(null);
   const campaignRef = useRef<Campaign | null>(null);
   const creatorProfileRef = useRef<CreatorProfile | null>(null);
@@ -238,7 +238,7 @@ export function CampaignCreatorDetail() {
     setVerifyingProofId(proofId);
 
     try {
-      // 1. Mark proof as verified (critical)
+      // Critical: mark proof as verified
       console.log("⏳ [Business] Updating proof status to 'verified'...");
       const { error: proofError } = await supabase
         .from("stream_proofs")
@@ -247,22 +247,28 @@ export function CampaignCreatorDetail() {
       if (proofError) throw proofError;
       console.log("✅ [Business] Proof updated.");
 
-      // 2. Calculate per-stream earnings
+      // Calculate per-stream earnings
       let perStreamEarning = currentCampaign.pay_per_stream;
       if (!perStreamEarning) {
         perStreamEarning = currentCampaign.budget / currentCampaign.streams_required;
-        // Non‑critical: fire and forget, only log if fails
-        supabase
-          .from("campaigns")
-          .update({ pay_per_stream: perStreamEarning })
-          .eq("id", currentCampaign.id)
-          .catch((err) => console.warn("Could not persist pay_per_stream:", err.message));
+        // Non‑critical: update campaign (fire and forget with safe catch)
+        (async () => {
+          try {
+            const { error } = await supabase
+              .from("campaigns")
+              .update({ pay_per_stream: perStreamEarning })
+              .eq("id", currentCampaign.id);
+            if (error) console.warn("Could not persist pay_per_stream:", error.message);
+          } catch (err) {
+            console.warn("Could not persist pay_per_stream:", err);
+          }
+        })();
       }
 
       const newStreamsCompleted = (currentLink.streams_completed || 0) + 1;
       const newTotalEarnings = (currentLink.total_earnings || 0) + perStreamEarning;
 
-      // 3. Update creator link (critical)
+      // Critical: update creator link
       console.log("⏳ [Business] Updating creator link...");
       const { error: updateError } = await supabase
         .from("campaign_creators")
@@ -279,19 +285,22 @@ export function CampaignCreatorDetail() {
       if (updateError) throw updateError;
       console.log("✅ [Business] Creator link updated.");
 
-      // 4. Notify creator (non‑critical, fire and forget)
+      // Non‑critical: notify creator
       if (currentProfile?.user_id) {
-        supabase
-          .from("notifications")
-          .insert({
-            user_id: currentProfile.user_id,
-            type: "stream_verified",
-            title: "Stream Verified! 🎉",
-            message: `Stream ${streamNum} for "${currentCampaign.name}" has been verified. ₦${perStreamEarning.toLocaleString()} added to your earnings.`,
-            data: { campaign_id: currentCampaign.id, stream_number: streamNum },
-            created_at: new Date().toISOString(),
-          })
-          .catch((err) => console.warn("Notification failed:", err.message));
+        (async () => {
+          try {
+            await supabase.from("notifications").insert({
+              user_id: currentProfile.user_id,
+              type: "stream_verified",
+              title: "Stream Verified! 🎉",
+              message: `Stream ${streamNum} for "${currentCampaign.name}" has been verified. ₦${perStreamEarning.toLocaleString()} added to your earnings.`,
+              data: { campaign_id: currentCampaign.id, stream_number: streamNum },
+              created_at: new Date().toISOString(),
+            });
+          } catch (err) {
+            console.warn("Notification failed:", err);
+          }
+        })();
       }
 
       toast.success(`Stream ${streamNum} verified! ₦${perStreamEarning.toLocaleString()} added.`);
@@ -309,6 +318,7 @@ export function CampaignCreatorDetail() {
     setIsProofModalOpen(true);
   };
 
+  // Loading and error states (unchanged)
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
