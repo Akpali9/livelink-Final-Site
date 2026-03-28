@@ -18,6 +18,9 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
+// ─────────────────────────────────────────────
+// INTERFACES
+// ─────────────────────────────────────────────
 interface Campaign {
   id: string;
   name: string;
@@ -59,6 +62,9 @@ interface StreamProof {
   verified_at?: string;
 }
 
+// ─────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────
 export function LiveCampaignUpdate() {
   const { id: campaignId } = useParams();
   const navigate = useNavigate();
@@ -78,7 +84,7 @@ export function LiveCampaignUpdate() {
   const [creatorProfileId, setCreatorProfileId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch creator profile ID
+  // ─── Fetch creator profile ID ──────────────────────────────────────────
   useEffect(() => {
     const fetchCreatorProfile = async () => {
       if (!user) return;
@@ -101,7 +107,7 @@ export function LiveCampaignUpdate() {
     fetchCreatorProfile();
   }, [user, navigate]);
 
-  // Fetch campaign data
+  // ─── Fetch campaign data ──────────────────────────────────────────────
   const fetchData = useCallback(
     async (silent = false) => {
       if (!campaignId || !user || !creatorProfileId) return;
@@ -153,7 +159,7 @@ export function LiveCampaignUpdate() {
     [campaignId, user, creatorProfileId, navigate]
   );
 
-  // Real‑time subscriptions
+  // ─── Real‑time subscriptions ──────────────────────────────────────────
   useEffect(() => {
     if (!creatorProfileId) return;
     fetchData();
@@ -206,6 +212,7 @@ export function LiveCampaignUpdate() {
     };
   }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
 
+  // ─── Trigger file picker ─────────────────────────────────────────────
   const triggerFileInput = (streamNum: number) => {
     setSelectedStreamNumber(streamNum);
     setTimeout(() => {
@@ -213,6 +220,7 @@ export function LiveCampaignUpdate() {
     }, 0);
   };
 
+  // ─── File upload handler (direct insert) ─────────────────────────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -238,6 +246,7 @@ export function LiveCampaignUpdate() {
       const fileName = `${campaignId}_${streamNum}_${Date.now()}.${fileExt}`;
       const filePath = `stream-proofs/${creatorProfileId}/${fileName}`;
 
+      // 1. Upload to storage
       const { error: uploadError } = await supabase.storage
         .from("campaign-assets")
         .upload(filePath, file, { cacheControl: "3600", upsert: false });
@@ -247,23 +256,23 @@ export function LiveCampaignUpdate() {
         data: { publicUrl },
       } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      const { data, error: invokeError } = await supabase.functions.invoke("insert-proof", {
-        body: {
+      // 2. Direct insert into stream_proofs (requires RLS policy)
+      const { data, error: insertError } = await supabase
+        .from("stream_proofs")
+        .insert({
           campaign_creator_id: creatorLink?.id,
           stream_number: streamNum,
           proof_url: publicUrl,
           status: "pending",
           submitted_at: new Date().toISOString(),
-        },
-      });
+        })
+        .select();
 
-      if (invokeError) {
-        console.error("Edge function error:", invokeError);
-        throw new Error(invokeError.message || "Edge function failed");
-      }
+      if (insertError) throw insertError;
 
-      console.log("insert-proof response:", data);
+      console.log("Insert success:", data);
 
+      // 3. Visual feedback
       setJustUploadedStream(streamNum);
       setTimeout(() => setJustUploadedStream(null), 3000);
 
@@ -284,6 +293,7 @@ export function LiveCampaignUpdate() {
     setIsProofModalOpen(true);
   };
 
+  // ─── Loading & error states ──────────────────────────────────────────
   if (!creatorProfileId || loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
