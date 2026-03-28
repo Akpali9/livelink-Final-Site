@@ -19,7 +19,6 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
-// Interfaces (same as before)
 interface Campaign {
   id: string;
   name: string;
@@ -101,14 +100,12 @@ export function CampaignCreatorDetail() {
   useEffect(() => { campaignRef.current = campaign; }, [campaign]);
   useEffect(() => { creatorProfileRef.current = creatorProfile; }, [creatorProfile]);
 
-  // ─── Fetch all data ────────────────────────────────────────────────────
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !creatorId) return;
     if (!silent) setLoading(true);
     else setRefreshing(true);
 
     try {
-      console.log("📡 Fetching campaign data...");
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
         .select("*")
@@ -116,7 +113,6 @@ export function CampaignCreatorDetail() {
         .single();
       if (campaignError) throw campaignError;
       setCampaign(campaignData);
-      console.log("✅ Campaign fetched:", campaignData.id);
 
       const { data: linkData, error: linkError } = await supabase
         .from("campaign_creators")
@@ -131,7 +127,6 @@ export function CampaignCreatorDetail() {
         return;
       }
       setCreatorLink(linkData);
-      console.log("✅ Creator link fetched:", linkData.id);
 
       const { data: profileData, error: profileError } = await supabase
         .from("creator_profiles")
@@ -140,21 +135,16 @@ export function CampaignCreatorDetail() {
         .single();
       if (profileError) throw profileError;
       setCreatorProfile(profileData);
-      console.log("✅ Creator profile fetched:", profileData.id);
 
       const { data: proofsData, error: proofsError } = await supabase
         .from("stream_proofs")
         .select("*")
         .eq("campaign_creator_id", linkData.id)
         .order("stream_number", { ascending: true });
-      if (!proofsError) {
-        setStreamProofs(proofsData || []);
-        console.log(`✅ Stream proofs fetched: ${proofsData?.length || 0} proofs`);
-      } else {
-        console.error("❌ Error fetching proofs:", proofsError);
-      }
+      if (proofsError) throw proofsError;
+      setStreamProofs(proofsData || []);
     } catch (error: any) {
-      console.error("❌ Error fetching creator details:", error);
+      console.error("Error fetching creator details:", error);
       toast.error(error.message || "Failed to load data");
     } finally {
       setLoading(false);
@@ -162,21 +152,17 @@ export function CampaignCreatorDetail() {
     }
   }, [campaignId, creatorId, navigate]);
 
-  // ─── Real‑time subscriptions ──────────────────────────────────────────
+  // Real‑time subscriptions
   useEffect(() => {
     if (!campaignId || !creatorId) return;
     fetchData();
 
-    // Subscribe to campaign updates
     campaignChannelRef.current = supabase
       .channel(`biz-campaign-${campaignId}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "campaigns", filter: `id=eq.${campaignId}` },
-        (payload) => {
-          console.log("📡 Campaign updated:", payload.new);
-          setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev));
-        }
+        (payload) => setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev))
       )
       .subscribe();
 
@@ -187,7 +173,6 @@ export function CampaignCreatorDetail() {
     };
   }, [campaignId, creatorId, fetchData]);
 
-  // Subscribe to creator link changes
   useEffect(() => {
     if (!creatorLink?.id) return;
     creatorChannelRef.current?.unsubscribe();
@@ -201,15 +186,11 @@ export function CampaignCreatorDetail() {
           table: "campaign_creators",
           filter: `id=eq.${creatorLink.id}`,
         },
-        (payload) => {
-          console.log("📡 Creator link updated:", payload.new);
-          setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev));
-        }
+        (payload) => setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev))
       )
       .subscribe();
   }, [creatorLink?.id]);
 
-  // Subscribe to stream_proofs changes
   useEffect(() => {
     if (!creatorLink?.id) return;
     proofsChannelRef.current?.unsubscribe();
@@ -223,15 +204,11 @@ export function CampaignCreatorDetail() {
           table: "stream_proofs",
           filter: `campaign_creator_id=eq.${creatorLink.id}`,
         },
-        (payload) => {
-          console.log("📡 Proof change detected:", payload);
-          fetchData(true); // silent refresh
-        }
+        () => fetchData(true)
       )
       .subscribe();
   }, [creatorLink?.id, fetchData]);
 
-  // ─── Verify proof ──────────────────────────────────────────────────────
   const verifyProof = async (proofId: string, streamNum: number) => {
     const ok = await confirmToast(
       `Verify stream ${streamNum}? This will mark it as completed and add earnings.`
@@ -250,14 +227,12 @@ export function CampaignCreatorDetail() {
     setVerifyingProofId(proofId);
 
     try {
-      // 1. Mark proof as verified
       const { error: proofError } = await supabase
         .from("stream_proofs")
         .update({ status: "verified", verified_at: new Date().toISOString() })
         .eq("id", proofId);
       if (proofError) throw proofError;
 
-      // 2. Calculate per-stream earnings
       let perStreamEarning = currentCampaign.pay_per_stream;
       if (!perStreamEarning) {
         perStreamEarning = currentCampaign.budget / currentCampaign.streams_required;
@@ -268,7 +243,6 @@ export function CampaignCreatorDetail() {
           .catch((err) => console.warn("Could not persist pay_per_stream:", err.message));
       }
 
-      // 3. Update creator link
       const newStreamsCompleted = (currentLink.streams_completed || 0) + 1;
       const newTotalEarnings = (currentLink.total_earnings || 0) + perStreamEarning;
 
@@ -287,7 +261,6 @@ export function CampaignCreatorDetail() {
 
       if (updateError) throw updateError;
 
-      // 4. Notify creator
       if (currentProfile?.user_id) {
         await supabase
           .from("notifications")
@@ -317,7 +290,6 @@ export function CampaignCreatorDetail() {
     setIsProofModalOpen(true);
   };
 
-  // ─── Loading and error states ─────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -403,47 +375,32 @@ export function CampaignCreatorDetail() {
       />
 
       <main className="flex-1">
-        {/* Manual Refresh Button */}
         <div className="flex justify-end px-8 pt-4">
           <button
             onClick={() => fetchData(false)}
             disabled={refreshing}
             className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#389C9A] italic disabled:opacity-50"
           >
-            {refreshing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
+            {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Refresh
           </button>
         </div>
 
-        {/* Creator Header */}
         <div className="px-8 py-8 border-b-2 border-[#1D1D1D]">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 border-2 border-[#1D1D1D] overflow-hidden shrink-0">
-              <ImageWithFallback
-                src={creatorProfile.avatar_url}
-                className="w-full h-full object-cover grayscale"
-              />
+              <ImageWithFallback src={creatorProfile.avatar_url} className="w-full h-full object-cover grayscale" />
             </div>
             <div>
-              <h2 className="text-2xl font-black uppercase tracking-tighter italic leading-none mb-1">
-                {creatorProfile.full_name}
-              </h2>
-              <p className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] italic">
-                {creatorProfile.username}
-              </p>
+              <h2 className="text-2xl font-black uppercase tracking-tighter italic leading-none mb-1">{creatorProfile.full_name}</h2>
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#389C9A] italic">{creatorProfile.username}</p>
             </div>
           </div>
 
           <div className="flex justify-between items-center mb-6">
             <div>
               <span className="text-[9px] font-black uppercase tracking-widest opacity-40 block mb-1">Status</span>
-              <span className={`px-2 py-1 text-[8px] font-black uppercase tracking-widest rounded-full ${statusColour}`}>
-                {getStatusLabel()}
-              </span>
+              <span className={`px-2 py-1 text-[8px] font-black uppercase tracking-widest rounded-full ${statusColour}`}>{getStatusLabel()}</span>
             </div>
             {pendingCount > 0 && (
               <div className="bg-[#FEDB71] text-[#1D1D1D] px-3 py-1 text-[8px] font-black uppercase tracking-widest italic">
@@ -457,28 +414,20 @@ export function CampaignCreatorDetail() {
             <span className="text-[9px] font-black">{completedStreams} / {totalStreams}</span>
           </div>
           <div className="h-1 bg-[#1D1D1D]/5 w-full overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 1 }}
-              className="h-full bg-[#389C9A]"
-            />
+            <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 1 }} className="h-full bg-[#389C9A]" />
           </div>
         </div>
 
-        {/* Campaign Overview Grid */}
         <div className="px-8 py-12">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
-            Campaign Overview
-          </h3>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Campaign Overview</h3>
           <div className="grid grid-cols-2 gap-[2px] bg-[#1D1D1D]/10 border border-[#1D1D1D]/10">
             {[
               { icon: Calendar, label: "Start Date", val: campaign.start_date ? new Date(campaign.start_date).toLocaleDateString() : "TBC" },
-              { icon: Calendar, label: "End Date",   val: campaign.end_date   ? new Date(campaign.end_date).toLocaleDateString()   : "TBC" },
-              { icon: Tag,      label: "Package",    val: `${campaign.streams_required} Streams` },
-              { icon: Tv,       label: "Type",       val: campaign.type || "Banner Only" },
-              { icon: Pound,    label: "Total Budget",  val: `₦${campaign.budget?.toLocaleString()}` },
-              { icon: Pound,    label: "Earned So Far", val: `₦${totalEarnings.toLocaleString()}` },
+              { icon: Calendar, label: "End Date", val: campaign.end_date ? new Date(campaign.end_date).toLocaleDateString() : "TBC" },
+              { icon: Tag, label: "Package", val: `${campaign.streams_required} Streams` },
+              { icon: Tv, label: "Type", val: campaign.type || "Banner Only" },
+              { icon: Pound, label: "Total Budget", val: `₦${campaign.budget?.toLocaleString()}` },
+              { icon: Pound, label: "Earned So Far", val: `₦${totalEarnings.toLocaleString()}` },
             ].map((tile, i) => (
               <div key={i} className="bg-white p-5 flex items-start gap-4">
                 <tile.icon className="w-4 h-4 mt-0.5 text-[#389C9A] shrink-0" />
@@ -491,11 +440,8 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Stream Log */}
         <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
-            Stream Log
-          </h3>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Stream Log</h3>
           <div className="flex flex-col gap-4">
             {streamLog.map((stream) => (
               <div
@@ -509,14 +455,8 @@ export function CampaignCreatorDetail() {
                 }`}
               >
                 <div>
-                  <span className="text-sm font-black uppercase italic tracking-tight">
-                    Stream {stream.num}
-                  </span>
-                  {stream.date !== "TBC" && (
-                    <p className="text-[9px] font-bold uppercase tracking-widest opacity-30 mt-1">
-                      {stream.date}
-                    </p>
-                  )}
+                  <span className="text-sm font-black uppercase italic tracking-tight">Stream {stream.num}</span>
+                  {stream.date !== "TBC" && <p className="text-[9px] font-bold uppercase tracking-widest opacity-30 mt-1">{stream.date}</p>}
                 </div>
 
                 <div className="flex flex-col items-end gap-2">
@@ -531,10 +471,10 @@ export function CampaignCreatorDetail() {
                         : "bg-white text-[#1D1D1D]/20 border-[#1D1D1D]/10"
                     }`}
                   >
-                    {stream.status === "Verified"            && "✓ VERIFIED"}
+                    {stream.status === "Verified" && "✓ VERIFIED"}
                     {stream.status === "Pending Verification" && "⏳ PENDING VERIFICATION"}
-                    {stream.status === "No Proof Uploaded"   && "⚠️ NO PROOF"}
-                    {stream.status === "Upcoming"            && "UPCOMING"}
+                    {stream.status === "No Proof Uploaded" && "⚠️ NO PROOF"}
+                    {stream.status === "Upcoming" && "UPCOMING"}
                   </div>
 
                   {stream.proofUrl && (
@@ -552,11 +492,12 @@ export function CampaignCreatorDetail() {
                           disabled={verifyingProofId === stream.proofId}
                           className="text-[8px] font-black uppercase tracking-widest bg-green-500 text-white px-2 py-1 rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
                         >
-                          {verifyingProofId === stream.proofId
-                            ? <Loader2 className="w-3 h-3 animate-spin" />
-                            : <CheckCircle className="w-3 h-3" />
-                          }
-                          {" "}Verify
+                          {verifyingProofId === stream.proofId ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <CheckCircle className="w-3 h-3" />
+                          )}{" "}
+                          Verify
                         </button>
                       )}
                     </div>
@@ -567,11 +508,8 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Communication */}
         <div className="px-8 py-12">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">
-            Communication
-          </h3>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Communication</h3>
           <Link
             to={`/business/messages/${campaignId}/creator/${creatorProfile.user_id}`}
             className="w-full flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest border-2 border-[#1D1D1D] bg-white py-6 px-8 hover:bg-[#1D1D1D] hover:text-white transition-all italic active:scale-[0.98]"
@@ -581,7 +519,6 @@ export function CampaignCreatorDetail() {
         </div>
       </main>
 
-      {/* Proof Modal */}
       <AnimatePresence>
         {isProofModalOpen && selectedProof && (
           <>
@@ -601,14 +538,9 @@ export function CampaignCreatorDetail() {
             >
               <div className="w-12 h-1 bg-[#1D1D1D]/10 mx-auto mt-4 rounded-full" />
               <div className="p-8 text-center">
-                <h3 className="text-2xl font-black uppercase tracking-tighter italic mb-4">
-                  Stream Proof — Stream {selectedProof.streamNum}
-                </h3>
+                <h3 className="text-2xl font-black uppercase tracking-tighter italic mb-4">Stream Proof — Stream {selectedProof.streamNum}</h3>
                 <div className="mb-8 border-2 border-[#1D1D1D] aspect-video bg-black overflow-hidden">
-                  <ImageWithFallback
-                    src={selectedProof.url}
-                    className="w-full h-full object-cover grayscale opacity-80"
-                  />
+                  <ImageWithFallback src={selectedProof.url} className="w-full h-full object-cover grayscale opacity-80" />
                 </div>
                 <button
                   onClick={() => setIsProofModalOpen(false)}
