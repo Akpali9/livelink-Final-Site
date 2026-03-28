@@ -316,7 +316,7 @@ export function LiveCampaignUpdate() {
   const totalStreams = campaign.streams_required;
   const progress = (completedStreams / totalStreams) * 100;
 
-  // Build stream log – show "Upload Required" for any stream without a proof (all at once)
+  // Build stream log – only the next unverified stream shows "Upload Required"
   const streamLog = Array.from({ length: totalStreams }, (_, i) => {
     const streamNum = i + 1;
     const proof = streamProofs.find((p) => p.stream_number === streamNum);
@@ -331,8 +331,10 @@ export function LiveCampaignUpdate() {
         proofUrl = proof.proof_url;
       }
     } else {
-      // Allow upload for any stream that doesn't have a proof
-      status = "Upload Required";
+      // Only the next stream without a proof is uploadable
+      if (streamNum === completedStreams + 1) {
+        status = "Upload Required";
+      }
     }
     return { num: streamNum, status, proofUrl };
   });
