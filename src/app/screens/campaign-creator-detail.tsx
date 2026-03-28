@@ -238,7 +238,7 @@ export function CampaignCreatorDetail() {
     setVerifyingProofId(proofId);
 
     try {
-      // 1. Mark proof as verified
+      // 1. Mark proof as verified (critical)
       console.log("⏳ [Business] Updating proof status to 'verified'...");
       const { error: proofError } = await supabase
         .from("stream_proofs")
@@ -251,7 +251,7 @@ export function CampaignCreatorDetail() {
       let perStreamEarning = currentCampaign.pay_per_stream;
       if (!perStreamEarning) {
         perStreamEarning = currentCampaign.budget / currentCampaign.streams_required;
-        // Non‑critical: fire and forget
+        // Non‑critical: fire and forget, only log if fails
         supabase
           .from("campaigns")
           .update({ pay_per_stream: perStreamEarning })
@@ -262,7 +262,7 @@ export function CampaignCreatorDetail() {
       const newStreamsCompleted = (currentLink.streams_completed || 0) + 1;
       const newTotalEarnings = (currentLink.total_earnings || 0) + perStreamEarning;
 
-      // 3. Update creator link
+      // 3. Update creator link (critical)
       console.log("⏳ [Business] Updating creator link...");
       const { error: updateError } = await supabase
         .from("campaign_creators")
@@ -279,7 +279,7 @@ export function CampaignCreatorDetail() {
       if (updateError) throw updateError;
       console.log("✅ [Business] Creator link updated.");
 
-      // 4. Notify creator (non‑critical)
+      // 4. Notify creator (non‑critical, fire and forget)
       if (currentProfile?.user_id) {
         supabase
           .from("notifications")
@@ -344,7 +344,6 @@ export function CampaignCreatorDetail() {
   const totalStreams = campaign.streams_required || 0;
   const progress = totalStreams > 0 ? (completedStreams / totalStreams) * 100 : 0;
 
-  // Build stream log for ALL required streams, regardless of proofs or completed count
   const streamLog = Array.from({ length: totalStreams }, (_, i) => {
     const streamNum = i + 1;
     const proof = streamProofs.find((p) => p.stream_number === streamNum);
@@ -358,7 +357,6 @@ export function CampaignCreatorDetail() {
       };
     }
     if (streamNum <= completedStreams) {
-      // This case should not happen if proof exists, but just in case
       return { num: streamNum, status: "No Proof Uploaded", proofUrl: null, date: "TBC", proofId: null };
     }
     return { num: streamNum, status: "Upcoming", proofUrl: null, date: "TBC", proofId: null };
@@ -407,7 +405,7 @@ export function CampaignCreatorDetail() {
           </button>
         </div>
 
-        {/* Creator Header (unchanged) */}
+        {/* Creator Header */}
         <div className="px-8 py-8 border-b-2 border-[#1D1D1D]">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 border-2 border-[#1D1D1D] overflow-hidden shrink-0">
@@ -440,7 +438,7 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Campaign Overview Grid (unchanged) */}
+        {/* Campaign Overview Grid */}
         <div className="px-8 py-12">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Campaign Overview</h3>
           <div className="grid grid-cols-2 gap-[2px] bg-[#1D1D1D]/10 border border-[#1D1D1D]/10">
@@ -532,7 +530,7 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Communication (unchanged) */}
+        {/* Communication */}
         <div className="px-8 py-12">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Communication</h3>
           <Link
