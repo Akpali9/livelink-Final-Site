@@ -238,7 +238,7 @@ export function CampaignCreatorDetail() {
     setVerifyingProofId(proofId);
 
     try {
-      // 1. Mark proof as verified
+      // 1. Mark proof as verified (critical)
       console.log("⏳ [Business] Updating proof status to 'verified'...");
       const { error: proofError } = await supabase
         .from("stream_proofs")
@@ -251,7 +251,7 @@ export function CampaignCreatorDetail() {
       let perStreamEarning = currentCampaign.pay_per_stream;
       if (!perStreamEarning) {
         perStreamEarning = currentCampaign.budget / currentCampaign.streams_required;
-        // Fire and forget – we don't need to wait for this update
+        // Non‑critical: fire and forget, only log if fails
         supabase
           .from("campaigns")
           .update({ pay_per_stream: perStreamEarning })
@@ -262,7 +262,7 @@ export function CampaignCreatorDetail() {
       const newStreamsCompleted = (currentLink.streams_completed || 0) + 1;
       const newTotalEarnings = (currentLink.total_earnings || 0) + perStreamEarning;
 
-      // 3. Update creator link
+      // 3. Update creator link (critical)
       console.log("⏳ [Business] Updating creator link...");
       const { error: updateError } = await supabase
         .from("campaign_creators")
@@ -279,7 +279,7 @@ export function CampaignCreatorDetail() {
       if (updateError) throw updateError;
       console.log("✅ [Business] Creator link updated.");
 
-      // 4. Notify creator (fire and forget)
+      // 4. Notify creator (non‑critical, fire and forget)
       if (currentProfile?.user_id) {
         supabase
           .from("notifications")
