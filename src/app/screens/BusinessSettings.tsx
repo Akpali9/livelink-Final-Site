@@ -149,11 +149,15 @@ export function BusinessSettings() {
   const [ownerTitle, setOwnerTitle]       = useState("");
   const [ownerPassword, setOwnerPassword] = useState("");
 
-  // Payment details
+  // Payment details – CARD
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentAccount, setPaymentAccount] = useState("");
   const [showPaymentEdit, setShowPaymentEdit] = useState(false);
   const [paymentPassword, setPaymentPassword] = useState("");
+  // Card input fields
+  const [cardNumber, setCardNumber] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [cvc, setCvc] = useState("");
 
   // Campaign prefs
   const [campaignType, setCampaignType]   = useState("banner");
@@ -269,17 +273,35 @@ export function BusinessSettings() {
     setShowOwnerEdit(false);
   };
 
-  // ── Payment update ────────────────────────────────────────────────────────
+  // ── Payment update (CARD) ────────────────────────────────────────────────
 
   const handlePaymentUpdate = async () => {
-    // Optional: verify password with Supabase
-    // For now, just save
+    // Basic validation
+    const digitsOnly = cardNumber.replace(/\D/g, '');
+    if (digitsOnly.length !== 16) {
+      toast.error("Card number must be 16 digits");
+      return;
+    }
+    if (!expiry.match(/^(0[1-9]|1[0-2])\/\d{2}$/)) {
+      toast.error("Expiry must be in MM/YY format");
+      return;
+    }
+    if (cvc.length < 3 || cvc.length > 4) {
+      toast.error("CVC must be 3 or 4 digits");
+      return;
+    }
+    // Optional: verify password with Supabase (we'll just store for demo)
+    // In production, you should call an endpoint that verifies the password.
+    const last4 = digitsOnly.slice(-4);
     await patch({
-      payment_method: paymentMethod,
-      payment_account: paymentAccount,
+      payment_method: "card",
+      payment_account: last4,
     });
     setShowPaymentEdit(false);
     setPaymentPassword("");
+    setCardNumber("");
+    setExpiry("");
+    setCvc("");
   };
 
   if (loading) {
@@ -442,25 +464,19 @@ export function BusinessSettings() {
           </Row>
         </Card>
 
-        {/* ── PAYMENT DETAILS ─────────────────────────────────────────── */}
+        {/* ── PAYMENT DETAILS (CARD) ─────────────────────────────────────────── */}
         <SectionLabel>Payment Details</SectionLabel>
 
         <Card title="Payment Details">
           <Row>
             {!showPaymentEdit ? (
               <>
-                {paymentMethod && paymentAccount ? (
+                {paymentMethod === "card" && paymentAccount ? (
                   <div className="space-y-2">
                     <div>
-                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Method</p>
-                      <p className="text-sm font-medium">{paymentMethod}</p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Account</p>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-40">Card</p>
                       <p className="text-sm font-medium">
-                        {paymentMethod === "PayPal"
-                          ? paymentAccount
-                          : `****${paymentAccount.slice(-4)}`}
+                        **** **** **** {paymentAccount}
                       </p>
                     </div>
                     <span className="inline-block mt-1 text-[8px] font-black px-2 py-0.5 rounded-full bg-green-100 text-green-700">
@@ -483,34 +499,54 @@ export function BusinessSettings() {
               <div className="space-y-3 mt-1">
                 <div>
                   <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">
-                    Payment Method
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm bg-white"
-                  >
-                    <option value="">Select method</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="PayPal">PayPal</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">
-                    {paymentMethod === "PayPal" ? "PayPal Email" : "Bank Account Number"}
+                    Card Number
                   </label>
                   <input
                     type="text"
-                    value={paymentAccount}
-                    onChange={(e) => setPaymentAccount(e.target.value)}
-                    placeholder={
-                      paymentMethod === "PayPal"
-                        ? "your@email.com"
-                        : "Last 4 digits visible"
-                    }
-                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm"
+                    placeholder="1234 5678 9012 3456"
+                    value={cardNumber}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      if (val.length <= 16) setCardNumber(val);
+                    }}
+                    className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm font-mono"
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">
+                      Expiry (MM/YY)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="MM/YY"
+                      value={expiry}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/\D/g, '');
+                        if (val.length >= 3) {
+                          val = val.slice(0,2) + '/' + val.slice(2,4);
+                        }
+                        setExpiry(val);
+                      }}
+                      className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">
+                      CVC
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="123"
+                      value={cvc}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '');
+                        if (val.length <= 4) setCvc(val);
+                      }}
+                      className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -531,7 +567,7 @@ export function BusinessSettings() {
                     onClick={handlePaymentUpdate}
                     className="flex-1 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors"
                   >
-                    Save Payment Details
+                    Save Card
                   </button>
                   <button
                     onClick={() => setShowPaymentEdit(false)}
