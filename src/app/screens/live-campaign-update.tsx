@@ -78,7 +78,7 @@ export function LiveCampaignUpdate() {
   const [creatorProfileId, setCreatorProfileId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ─── Fetch creator profile ID ──────────────────────────────────────────
+  // Fetch creator profile ID
   useEffect(() => {
     const fetchCreatorProfile = async () => {
       if (!user) return;
@@ -101,7 +101,7 @@ export function LiveCampaignUpdate() {
     fetchCreatorProfile();
   }, [user, navigate]);
 
-  // ─── Fetch campaign data ──────────────────────────────────────────────
+  // Fetch campaign data
   const fetchData = useCallback(
     async (silent = false) => {
       if (!campaignId || !user || !creatorProfileId) return;
@@ -153,7 +153,7 @@ export function LiveCampaignUpdate() {
     [campaignId, user, creatorProfileId, navigate]
   );
 
-  // ─── Real‑time subscriptions ──────────────────────────────────────────
+  // Real‑time subscriptions
   useEffect(() => {
     if (!creatorProfileId) return;
     fetchData();
@@ -206,19 +206,15 @@ export function LiveCampaignUpdate() {
     };
   }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
 
-  // ─── Trigger file input (same as CampaignCreation) ────────────────────
   const triggerFileInput = (streamNum: number) => {
     setSelectedStreamNumber(streamNum);
-    // Small delay to ensure state is updated before click
     setTimeout(() => {
       fileInputRef.current?.click();
     }, 0);
   };
 
-  // ─── File upload handler (identical to CampaignCreation, plus edge function) ───
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // Reset input value so the same file can be re‑selected if needed
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     if (!file || selectedStreamNumber === null) return;
@@ -238,7 +234,6 @@ export function LiveCampaignUpdate() {
     setUploadingStreamNum(streamNum);
 
     try {
-      // 1. Upload to storage (same bucket as CampaignCreation)
       const fileExt = file.name.split(".").pop();
       const fileName = `${campaignId}_${streamNum}_${Date.now()}.${fileExt}`;
       const filePath = `stream-proofs/${creatorProfileId}/${fileName}`;
@@ -252,8 +247,7 @@ export function LiveCampaignUpdate() {
         data: { publicUrl },
       } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      // 2. Insert proof record via Edge Function (bypasses RLS)
-      const { error: invokeError } = await supabase.functions.invoke("insert-proof", {
+      const { data, error: invokeError } = await supabase.functions.invoke("insert-proof", {
         body: {
           campaign_creator_id: creatorLink?.id,
           stream_number: streamNum,
@@ -265,16 +259,15 @@ export function LiveCampaignUpdate() {
 
       if (invokeError) {
         console.error("Edge function error:", invokeError);
-        throw new Error(invokeError.message || "Failed to save proof record");
+        throw new Error(invokeError.message || "Edge function failed");
       }
 
-      // 3. Visual feedback: green flash and success message
+      console.log("insert-proof response:", data);
+
       setJustUploadedStream(streamNum);
       setTimeout(() => setJustUploadedStream(null), 3000);
 
       toast.success(`Stream ${streamNum} proof uploaded! Awaiting business review.`);
-
-      // 4. Refresh proofs (real‑time will also update, but force refresh)
       await fetchData(true);
     } catch (error: any) {
       console.error("Upload error:", error);
@@ -625,7 +618,7 @@ export function LiveCampaignUpdate() {
           </div>
         </div>
 
-        {/* Hidden file input – same as CampaignCreation */}
+        {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"
