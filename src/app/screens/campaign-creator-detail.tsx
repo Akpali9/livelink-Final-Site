@@ -101,7 +101,6 @@ export function CampaignCreatorDetail() {
   useEffect(() => { campaignRef.current = campaign; }, [campaign]);
   useEffect(() => { creatorProfileRef.current = creatorProfile; }, [creatorProfile]);
 
-  // Fetch data
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !creatorId) return;
     if (!silent) setLoading(true);
@@ -156,7 +155,7 @@ export function CampaignCreatorDetail() {
     }
   }, [campaignId, creatorId, navigate]);
 
-  // Real‑time subscriptions (optional, but nice)
+  // Real‑time subscriptions
   useEffect(() => {
     if (!campaignId || !creatorId) return;
     fetchData();
@@ -216,7 +215,6 @@ export function CampaignCreatorDetail() {
       .subscribe();
   }, [creatorLink?.id, fetchData]);
 
-  // Verify proof function
   const verifyProof = async (proofId: string, streamNum: number) => {
     console.log("🔘 [Business] Verify clicked for proof", proofId, "stream", streamNum);
     const ok = await confirmToast(
@@ -240,6 +238,7 @@ export function CampaignCreatorDetail() {
     setVerifyingProofId(proofId);
 
     try {
+      // 1. Mark proof as verified
       console.log("⏳ [Business] Updating proof status to 'verified'...");
       const { error: proofError } = await supabase
         .from("stream_proofs")
@@ -248,11 +247,12 @@ export function CampaignCreatorDetail() {
       if (proofError) throw proofError;
       console.log("✅ [Business] Proof updated.");
 
-      // Calculate per-stream earnings
+      // 2. Calculate per-stream earnings
       let perStreamEarning = currentCampaign.pay_per_stream;
       if (!perStreamEarning) {
         perStreamEarning = currentCampaign.budget / currentCampaign.streams_required;
-        await supabase
+        // Fire and forget – we don't need to wait for this update
+        supabase
           .from("campaigns")
           .update({ pay_per_stream: perStreamEarning })
           .eq("id", currentCampaign.id)
@@ -262,6 +262,7 @@ export function CampaignCreatorDetail() {
       const newStreamsCompleted = (currentLink.streams_completed || 0) + 1;
       const newTotalEarnings = (currentLink.total_earnings || 0) + perStreamEarning;
 
+      // 3. Update creator link
       console.log("⏳ [Business] Updating creator link...");
       const { error: updateError } = await supabase
         .from("campaign_creators")
@@ -278,9 +279,9 @@ export function CampaignCreatorDetail() {
       if (updateError) throw updateError;
       console.log("✅ [Business] Creator link updated.");
 
-      // Notify creator
+      // 4. Notify creator (fire and forget)
       if (currentProfile?.user_id) {
-        await supabase
+        supabase
           .from("notifications")
           .insert({
             user_id: currentProfile.user_id,
@@ -405,7 +406,6 @@ export function CampaignCreatorDetail() {
           </button>
         </div>
 
-        {/* Creator Header */}
         <div className="px-8 py-8 border-b-2 border-[#1D1D1D]">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 border-2 border-[#1D1D1D] overflow-hidden shrink-0">
@@ -438,7 +438,6 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Campaign Overview Grid */}
         <div className="px-8 py-12">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Campaign Overview</h3>
           <div className="grid grid-cols-2 gap-[2px] bg-[#1D1D1D]/10 border border-[#1D1D1D]/10">
@@ -461,7 +460,6 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Stream Log */}
         <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Stream Log</h3>
           <div className="flex flex-col gap-4">
@@ -530,7 +528,6 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
-        {/* Communication */}
         <div className="px-8 py-12">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Communication</h3>
           <Link
@@ -542,7 +539,6 @@ export function CampaignCreatorDetail() {
         </div>
       </main>
 
-      {/* Proof Modal */}
       <AnimatePresence>
         {isProofModalOpen && selectedProof && (
           <>
