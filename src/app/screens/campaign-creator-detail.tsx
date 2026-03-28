@@ -93,7 +93,7 @@ export function CampaignCreatorDetail() {
   const creatorProfileRef = useRef<CreatorProfile | null>(null);
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
-  const proofsChannelRef = useRef<any>(null); // <-- new subscription reference
+  const proofsChannelRef = useRef<any>(null); // <-- new
 
   useEffect(() => { creatorLinkRef.current = creatorLink; }, [creatorLink]);
   useEffect(() => { campaignRef.current = campaign; }, [campaign]);
@@ -149,7 +149,7 @@ export function CampaignCreatorDetail() {
     }
   }, [campaignId, creatorId, navigate]);
 
-  // ─── Initial fetch + campaign real-time ───────────────────────────────
+  // ─── Initial fetch + campaign real‑time ───────────────────────────────
   useEffect(() => {
     if (!campaignId || !creatorId) return;
     fetchData();
@@ -166,11 +166,11 @@ export function CampaignCreatorDetail() {
     return () => {
       campaignChannelRef.current?.unsubscribe();
       creatorChannelRef.current?.unsubscribe();
-      proofsChannelRef.current?.unsubscribe(); // cleanup new subscription
+      proofsChannelRef.current?.unsubscribe(); // cleanup
     };
   }, [campaignId, creatorId, fetchData]);
 
-  // ─── Subscribe to creator link changes once ID is available ───────────
+  // ─── Subscribe to creator link changes ────────────────────────────────
   useEffect(() => {
     if (!creatorLink?.id) return;
     creatorChannelRef.current?.unsubscribe();
@@ -189,7 +189,7 @@ export function CampaignCreatorDetail() {
       .subscribe();
   }, [creatorLink?.id]);
 
-  // ─── NEW: Subscribe to stream_proofs changes for this campaign_creator ─
+  // ─── NEW: Subscribe to stream_proofs changes ──────────────────────────
   useEffect(() => {
     if (!creatorLink?.id) return;
     proofsChannelRef.current?.unsubscribe();
@@ -198,12 +198,13 @@ export function CampaignCreatorDetail() {
       .on(
         "postgres_changes",
         {
-          event: "*", // catch all events (INSERT, UPDATE, DELETE)
+          event: "*", // catch all events: INSERT, UPDATE, DELETE
           schema: "public",
           table: "stream_proofs",
           filter: `campaign_creator_id=eq.${creatorLink.id}`,
         },
-        () => {
+        (payload) => {
+          console.log("📡 Proof change detected:", payload);
           // Silent refresh to get the latest proofs
           fetchData(true);
         }
@@ -230,14 +231,12 @@ export function CampaignCreatorDetail() {
     setVerifyingProofId(proofId);
 
     try {
-      // Step 1: Mark proof as verified
       const { error: proofError } = await supabase
         .from("stream_proofs")
         .update({ status: "verified", verified_at: new Date().toISOString() })
         .eq("id", proofId);
       if (proofError) throw proofError;
 
-      // Step 2: Calculate per-stream earnings
       let perStreamEarning = currentCampaign.pay_per_stream;
       if (!perStreamEarning) {
         perStreamEarning = currentCampaign.budget / currentCampaign.streams_required;
@@ -248,7 +247,6 @@ export function CampaignCreatorDetail() {
           .catch((err) => console.warn("Could not persist pay_per_stream:", err.message));
       }
 
-      // Step 3: Update creator link counts + auto-complete if all streams done
       const newStreamsCompleted = (currentLink.streams_completed || 0) + 1;
       const newTotalEarnings = (currentLink.total_earnings || 0) + perStreamEarning;
 
@@ -267,7 +265,6 @@ export function CampaignCreatorDetail() {
 
       if (updateError) throw updateError;
 
-      // Step 4: Notify creator
       if (currentProfile?.user_id) {
         await supabase
           .from("notifications")
