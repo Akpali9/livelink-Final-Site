@@ -101,6 +101,7 @@ export function CampaignCreatorDetail() {
   useEffect(() => { campaignRef.current = campaign; }, [campaign]);
   useEffect(() => { creatorProfileRef.current = creatorProfile; }, [creatorProfile]);
 
+  // Fetch data
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !creatorId) return;
     if (!silent) setLoading(true);
@@ -155,7 +156,7 @@ export function CampaignCreatorDetail() {
     }
   }, [campaignId, creatorId, navigate]);
 
-  // Real‑time subscriptions
+  // Real‑time subscriptions (optional, but nice)
   useEffect(() => {
     if (!campaignId || !creatorId) return;
     fetchData();
@@ -215,6 +216,7 @@ export function CampaignCreatorDetail() {
       .subscribe();
   }, [creatorLink?.id, fetchData]);
 
+  // Verify proof function
   const verifyProof = async (proofId: string, streamNum: number) => {
     console.log("🔘 [Business] Verify clicked for proof", proofId, "stream", streamNum);
     const ok = await confirmToast(
@@ -306,7 +308,7 @@ export function CampaignCreatorDetail() {
     setIsProofModalOpen(true);
   };
 
-  // Loading and error states (unchanged)
+  // Loading and error states
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -403,6 +405,7 @@ export function CampaignCreatorDetail() {
           </button>
         </div>
 
+        {/* Creator Header */}
         <div className="px-8 py-8 border-b-2 border-[#1D1D1D]">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 border-2 border-[#1D1D1D] overflow-hidden shrink-0">
@@ -435,6 +438,7 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
+        {/* Campaign Overview Grid */}
         <div className="px-8 py-12">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Campaign Overview</h3>
           <div className="grid grid-cols-2 gap-[2px] bg-[#1D1D1D]/10 border border-[#1D1D1D]/10">
@@ -457,6 +461,7 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
+        {/* Stream Log */}
         <div className="px-8 py-12 bg-[#F8F8F8] border-y border-[#1D1D1D]/10">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Stream Log</h3>
           <div className="flex flex-col gap-4">
@@ -525,6 +530,7 @@ export function CampaignCreatorDetail() {
           </div>
         </div>
 
+        {/* Communication */}
         <div className="px-8 py-12">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40 mb-8 italic">Communication</h3>
           <Link
@@ -536,6 +542,7 @@ export function CampaignCreatorDetail() {
         </div>
       </main>
 
+      {/* Proof Modal */}
       <AnimatePresence>
         {isProofModalOpen && selectedProof && (
           <>
