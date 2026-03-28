@@ -10,6 +10,7 @@ import {
   Loader2,
   Eye,
   CheckCircle,
+  RefreshCw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
@@ -83,17 +84,18 @@ export function CampaignCreatorDetail() {
   const [creatorProfile, setCreatorProfile] = useState<CreatorProfile | null>(null);
   const [streamProofs, setStreamProofs] = useState<StreamProof[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
   const [selectedProof, setSelectedProof] = useState<{ url: string; streamNum: number } | null>(null);
   const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
 
-  // Refs
+  // Refs for async handlers
   const creatorLinkRef = useRef<CampaignCreator | null>(null);
   const campaignRef = useRef<Campaign | null>(null);
   const creatorProfileRef = useRef<CreatorProfile | null>(null);
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
-  const proofsChannelRef = useRef<any>(null); // <-- new
+  const proofsChannelRef = useRef<any>(null);
 
   useEffect(() => { creatorLinkRef.current = creatorLink; }, [creatorLink]);
   useEffect(() => { campaignRef.current = campaign; }, [campaign]);
@@ -103,8 +105,10 @@ export function CampaignCreatorDetail() {
   const fetchData = useCallback(async (silent = false) => {
     if (!campaignId || !creatorId) return;
     if (!silent) setLoading(true);
+    else setRefreshing(true);
 
     try {
+      console.log("📡 Fetching campaign data...");
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
         .select("*")
@@ -112,6 +116,7 @@ export function CampaignCreatorDetail() {
         .single();
       if (campaignError) throw campaignError;
       setCampaign(campaignData);
+      console.log("✅ Campaign fetched:", campaignData.id);
 
       const { data: linkData, error: linkError } = await supabase
         .from("campaign_creators")
@@ -126,6 +131,7 @@ export function CampaignCreatorDetail() {
         return;
       }
       setCreatorLink(linkData);
+      console.log("✅ Creator link fetched:", linkData.id);
 
       const { data: profileData, error: profileError } = await supabase
         .from("creator_profiles")
@@ -134,43 +140,54 @@ export function CampaignCreatorDetail() {
         .single();
       if (profileError) throw profileError;
       setCreatorProfile(profileData);
+      console.log("✅ Creator profile fetched:", profileData.id);
 
       const { data: proofsData, error: proofsError } = await supabase
         .from("stream_proofs")
         .select("*")
         .eq("campaign_creator_id", linkData.id)
         .order("stream_number", { ascending: true });
-      if (!proofsError) setStreamProofs(proofsData || []);
+      if (!proofsError) {
+        setStreamProofs(proofsData || []);
+        console.log(`✅ Stream proofs fetched: ${proofsData?.length || 0} proofs`);
+      } else {
+        console.error("❌ Error fetching proofs:", proofsError);
+      }
     } catch (error: any) {
-      console.error("Error fetching creator details:", error);
+      console.error("❌ Error fetching creator details:", error);
       toast.error(error.message || "Failed to load data");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [campaignId, creatorId, navigate]);
 
-  // ─── Initial fetch + campaign real‑time ───────────────────────────────
+  // ─── Real‑time subscriptions ──────────────────────────────────────────
   useEffect(() => {
     if (!campaignId || !creatorId) return;
     fetchData();
 
+    // Subscribe to campaign updates
     campaignChannelRef.current = supabase
       .channel(`biz-campaign-${campaignId}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "campaigns", filter: `id=eq.${campaignId}` },
-        (payload) => setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev))
+        (payload) => {
+          console.log("📡 Campaign updated:", payload.new);
+          setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev));
+        }
       )
       .subscribe();
 
     return () => {
       campaignChannelRef.current?.unsubscribe();
       creatorChannelRef.current?.unsubscribe();
-      proofsChannelRef.current?.unsubscribe(); // cleanup
+      proofsChannelRef.current?.unsubscribe();
     };
   }, [campaignId, creatorId, fetchData]);
 
-  // ─── Subscribe to creator link changes ────────────────────────────────
+  // Subscribe to creator link changes
   useEffect(() => {
     if (!creatorLink?.id) return;
     creatorChannelRef.current?.unsubscribe();
@@ -184,12 +201,15 @@ export function CampaignCreatorDetail() {
           table: "campaign_creators",
           filter: `id=eq.${creatorLink.id}`,
         },
-        (payload) => setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev))
+        (payload) => {
+          console.log("📡 Creator link updated:", payload.new);
+          setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev));
+        }
       )
       .subscribe();
   }, [creatorLink?.id]);
 
-  // ─── NEW: Subscribe to stream_proofs changes ──────────────────────────
+  // Subscribe to stream_proofs changes
   useEffect(() => {
     if (!creatorLink?.id) return;
     proofsChannelRef.current?.unsubscribe();
@@ -198,21 +218,20 @@ export function CampaignCreatorDetail() {
       .on(
         "postgres_changes",
         {
-          event: "*", // catch all events: INSERT, UPDATE, DELETE
+          event: "*",
           schema: "public",
           table: "stream_proofs",
           filter: `campaign_creator_id=eq.${creatorLink.id}`,
         },
         (payload) => {
           console.log("📡 Proof change detected:", payload);
-          // Silent refresh to get the latest proofs
-          fetchData(true);
+          fetchData(true); // silent refresh
         }
       )
       .subscribe();
   }, [creatorLink?.id, fetchData]);
 
-  // ─── Verify proof (unchanged) ─────────────────────────────────────────
+  // ─── Verify proof ──────────────────────────────────────────────────────
   const verifyProof = async (proofId: string, streamNum: number) => {
     const ok = await confirmToast(
       `Verify stream ${streamNum}? This will mark it as completed and add earnings.`
@@ -231,12 +250,14 @@ export function CampaignCreatorDetail() {
     setVerifyingProofId(proofId);
 
     try {
+      // 1. Mark proof as verified
       const { error: proofError } = await supabase
         .from("stream_proofs")
         .update({ status: "verified", verified_at: new Date().toISOString() })
         .eq("id", proofId);
       if (proofError) throw proofError;
 
+      // 2. Calculate per-stream earnings
       let perStreamEarning = currentCampaign.pay_per_stream;
       if (!perStreamEarning) {
         perStreamEarning = currentCampaign.budget / currentCampaign.streams_required;
@@ -247,6 +268,7 @@ export function CampaignCreatorDetail() {
           .catch((err) => console.warn("Could not persist pay_per_stream:", err.message));
       }
 
+      // 3. Update creator link
       const newStreamsCompleted = (currentLink.streams_completed || 0) + 1;
       const newTotalEarnings = (currentLink.total_earnings || 0) + perStreamEarning;
 
@@ -265,6 +287,7 @@ export function CampaignCreatorDetail() {
 
       if (updateError) throw updateError;
 
+      // 4. Notify creator
       if (currentProfile?.user_id) {
         await supabase
           .from("notifications")
@@ -294,7 +317,7 @@ export function CampaignCreatorDetail() {
     setIsProofModalOpen(true);
   };
 
-  // ─── Loading and error states (unchanged) ─────────────────────────────
+  // ─── Loading and error states ─────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
@@ -380,6 +403,22 @@ export function CampaignCreatorDetail() {
       />
 
       <main className="flex-1">
+        {/* Manual Refresh Button */}
+        <div className="flex justify-end px-8 pt-4">
+          <button
+            onClick={() => fetchData(false)}
+            disabled={refreshing}
+            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#389C9A] italic disabled:opacity-50"
+          >
+            {refreshing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            Refresh
+          </button>
+        </div>
+
         {/* Creator Header */}
         <div className="px-8 py-8 border-b-2 border-[#1D1D1D]">
           <div className="flex items-center gap-4 mb-6">
