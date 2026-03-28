@@ -206,21 +206,19 @@ export function LiveCampaignUpdate() {
     };
   }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
 
-  // ─── FIX 1: triggerFileInput now directly calls .click() ─────────────
-  // No modal needed — just set the stream number and open the native picker.
+  // ─── Trigger file input (same as CampaignCreation) ────────────────────
   const triggerFileInput = (streamNum: number) => {
     setSelectedStreamNumber(streamNum);
-    // Small timeout ensures state is set before the input fires onChange
+    // Small delay to ensure state is updated before click
     setTimeout(() => {
       fileInputRef.current?.click();
     }, 0);
   };
 
-  // ─── File upload handler ──────────────────────────────────────────────
+  // ─── File upload handler (identical to CampaignCreation, plus edge function) ───
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-
-    // Reset input value so the same file can be re-selected if needed
+    // Reset input value so the same file can be re‑selected if needed
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     if (!file || selectedStreamNumber === null) return;
@@ -240,6 +238,7 @@ export function LiveCampaignUpdate() {
     setUploadingStreamNum(streamNum);
 
     try {
+      // 1. Upload to storage (same bucket as CampaignCreation)
       const fileExt = file.name.split(".").pop();
       const fileName = `${campaignId}_${streamNum}_${Date.now()}.${fileExt}`;
       const filePath = `stream-proofs/${creatorProfileId}/${fileName}`;
@@ -253,7 +252,8 @@ export function LiveCampaignUpdate() {
         data: { publicUrl },
       } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      const { data, error } = await supabase.functions.invoke("insert-proof", {
+      // 2. Insert proof record via Edge Function (bypasses RLS)
+      const { error: invokeError } = await supabase.functions.invoke("insert-proof", {
         body: {
           campaign_creator_id: creatorLink?.id,
           stream_number: streamNum,
@@ -263,20 +263,18 @@ export function LiveCampaignUpdate() {
         },
       });
 
-      if (error) {
-        console.error("Edge function error:", error);
-        throw new Error(error.message || "Edge function failed");
+      if (invokeError) {
+        console.error("Edge function error:", invokeError);
+        throw new Error(invokeError.message || "Failed to save proof record");
       }
 
-      console.log("insert-proof response:", data);
-
-      // FIX 3: Flash a "just uploaded" success state on the card
+      // 3. Visual feedback: green flash and success message
       setJustUploadedStream(streamNum);
       setTimeout(() => setJustUploadedStream(null), 3000);
 
       toast.success(`Stream ${streamNum} proof uploaded! Awaiting business review.`);
 
-      // Refresh proofs so card immediately shows "Under Review"
+      // 4. Refresh proofs (real‑time will also update, but force refresh)
       await fetchData(true);
     } catch (error: any) {
       console.error("Upload error:", error);
@@ -506,7 +504,6 @@ export function LiveCampaignUpdate() {
                     </div>
                   </div>
 
-                  {/* FIX 3: Success confirmation shown immediately after upload */}
                   {justUploaded && (
                     <motion.div
                       initial={{ opacity: 0, y: -6 }}
@@ -537,7 +534,6 @@ export function LiveCampaignUpdate() {
 
                   {stream.status === "Upload Required" && (
                     <div className="flex flex-col gap-5">
-                      {/* FIX 1 & 2: Button directly triggers triggerFileInput — no modal needed */}
                       <button
                         onClick={() => triggerFileInput(stream.num)}
                         disabled={isUploadingThis}
@@ -629,10 +625,7 @@ export function LiveCampaignUpdate() {
           </div>
         </div>
 
-        {/*
-          FIX 2: Input is NOT hidden via display:none / className="hidden".
-          Uses opacity:0 + pointer-events:none instead so .click() works on mobile.
-        */}
+        {/* Hidden file input – same as CampaignCreation */}
         <input
           ref={fileInputRef}
           type="file"
