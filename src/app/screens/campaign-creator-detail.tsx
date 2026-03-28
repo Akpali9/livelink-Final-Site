@@ -62,7 +62,6 @@ interface StreamProof {
   verified_at?: string;
 }
 
-// Helper function
 function confirmToast(message: string): Promise<boolean> {
   return new Promise((resolve) => {
     toast(message, {
@@ -74,54 +73,34 @@ function confirmToast(message: string): Promise<boolean> {
   });
 }
 
-// Accept optional props to receive data from parent
-interface CampaignCreatorDetailProps {
-  campaign?: Campaign | null;
-  creatorLink?: CampaignCreator | null;
-  creatorProfile?: CreatorProfile | null;
-  streamProofs?: StreamProof[];
-  loading?: boolean;
-  onClose?: () => void; // for modal usage
-  isModal?: boolean; // if used in a modal, we don't show AppHeader
-}
-
-export function CampaignCreatorDetail({
-  campaign: propCampaign,
-  creatorLink: propCreatorLink,
-  creatorProfile: propCreatorProfile,
-  streamProofs: propStreamProofs,
-  loading: propLoading,
-  onClose,
-  isModal = false,
-}: CampaignCreatorDetailProps) {
+export function CampaignCreatorDetail() {
   const navigate = useNavigate();
   const { campaignId, creatorId } = useParams();
   const { user } = useAuth();
 
-  // State for internal data if not provided via props
-  const [campaign, setCampaign] = useState<Campaign | null>(propCampaign ?? null);
-  const [creatorLink, setCreatorLink] = useState<CampaignCreator | null>(propCreatorLink ?? null);
-  const [creatorProfile, setCreatorProfile] = useState<CreatorProfile | null>(propCreatorProfile ?? null);
-  const [streamProofs, setStreamProofs] = useState<StreamProof[]>(propStreamProofs ?? []);
-  const [loading, setLoading] = useState(propLoading ?? true);
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [creatorLink, setCreatorLink] = useState<CampaignCreator | null>(null);
+  const [creatorProfile, setCreatorProfile] = useState<CreatorProfile | null>(null);
+  const [streamProofs, setStreamProofs] = useState<StreamProof[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
   const [selectedProof, setSelectedProof] = useState<{ url: string; streamNum: number } | null>(null);
   const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
 
-  // Refs for async handlers
-  const creatorLinkRef = useRef<CampaignCreator | null>(creatorLink);
-  const campaignRef = useRef<Campaign | null>(campaign);
-  const creatorProfileRef = useRef<CreatorProfile | null>(creatorProfile);
+  // Refs
+  const creatorLinkRef = useRef<CampaignCreator | null>(null);
+  const campaignRef = useRef<Campaign | null>(null);
+  const creatorProfileRef = useRef<CreatorProfile | null>(null);
   const campaignChannelRef = useRef<any>(null);
   const creatorChannelRef = useRef<any>(null);
+  const proofsChannelRef = useRef<any>(null); // <-- new subscription reference
 
   useEffect(() => { creatorLinkRef.current = creatorLink; }, [creatorLink]);
   useEffect(() => { campaignRef.current = campaign; }, [campaign]);
   useEffect(() => { creatorProfileRef.current = creatorProfile; }, [creatorProfile]);
 
-  // Fetch data only if not provided via props
+  // ─── Fetch all data ────────────────────────────────────────────────────
   const fetchData = useCallback(async (silent = false) => {
-    if (propCampaign && propCreatorLink && propCreatorProfile && propStreamProofs) return; // data already provided
     if (!campaignId || !creatorId) return;
     if (!silent) setLoading(true);
 
@@ -168,14 +147,10 @@ export function CampaignCreatorDetail({
     } finally {
       setLoading(false);
     }
-  }, [campaignId, creatorId, navigate, propCampaign, propCreatorLink, propCreatorProfile, propStreamProofs]);
+  }, [campaignId, creatorId, navigate]);
 
-  // Initial fetch + real-time only if not using props
+  // ─── Initial fetch + campaign real-time ───────────────────────────────
   useEffect(() => {
-    if (propCampaign && propCreatorLink && propCreatorProfile && propStreamProofs) {
-      setLoading(false);
-      return;
-    }
     if (!campaignId || !creatorId) return;
     fetchData();
 
@@ -191,12 +166,12 @@ export function CampaignCreatorDetail({
     return () => {
       campaignChannelRef.current?.unsubscribe();
       creatorChannelRef.current?.unsubscribe();
+      proofsChannelRef.current?.unsubscribe(); // cleanup new subscription
     };
-  }, [campaignId, creatorId, fetchData, propCampaign, propCreatorLink, propCreatorProfile, propStreamProofs]);
+  }, [campaignId, creatorId, fetchData]);
 
-  // Subscribe to creator link changes if not using props and link exists
+  // ─── Subscribe to creator link changes once ID is available ───────────
   useEffect(() => {
-    if (propCampaign && propCreatorLink && propCreatorProfile && propStreamProofs) return;
     if (!creatorLink?.id) return;
     creatorChannelRef.current?.unsubscribe();
     creatorChannelRef.current = supabase
@@ -212,9 +187,31 @@ export function CampaignCreatorDetail({
         (payload) => setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev))
       )
       .subscribe();
-  }, [creatorLink?.id, propCampaign, propCreatorLink, propCreatorProfile, propStreamProofs]);
+  }, [creatorLink?.id]);
 
-  // Verify proof function (unchanged)
+  // ─── NEW: Subscribe to stream_proofs changes for this campaign_creator ─
+  useEffect(() => {
+    if (!creatorLink?.id) return;
+    proofsChannelRef.current?.unsubscribe();
+    proofsChannelRef.current = supabase
+      .channel(`biz-proofs-${creatorLink.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // catch all events (INSERT, UPDATE, DELETE)
+          schema: "public",
+          table: "stream_proofs",
+          filter: `campaign_creator_id=eq.${creatorLink.id}`,
+        },
+        () => {
+          // Silent refresh to get the latest proofs
+          fetchData(true);
+        }
+      )
+      .subscribe();
+  }, [creatorLink?.id, fetchData]);
+
+  // ─── Verify proof (unchanged) ─────────────────────────────────────────
   const verifyProof = async (proofId: string, streamNum: number) => {
     const ok = await confirmToast(
       `Verify stream ${streamNum}? This will mark it as completed and add earnings.`
@@ -286,13 +283,7 @@ export function CampaignCreatorDetail({
       }
 
       toast.success(`Stream ${streamNum} verified! ₦${perStreamEarning.toLocaleString()} added.`);
-      // Refresh data (if using props, we rely on parent to update)
-      if (propCampaign && propCreatorLink && propCreatorProfile && propStreamProofs) {
-        // If parent passed data, we assume parent will refresh; else we refetch
-        // In modal scenario, parent is expected to update its own state via real-time
-      } else {
-        await fetchData(true);
-      }
+      await fetchData(true);
     } catch (err: any) {
       console.error("Verify error:", err);
       toast.error(err.message || "Failed to verify stream. Please try again.");
@@ -306,11 +297,11 @@ export function CampaignCreatorDetail({
     setIsProofModalOpen(true);
   };
 
-  // Loading state
+  // ─── Loading and error states (unchanged) ─────────────────────────────
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
-        {!isModal && <AppHeader showBack backPath={`/business/campaign/overview/${campaignId}`} title="Creator Breakdown" userType="business" />}
+        <AppHeader showBack backPath={`/business/campaign/overview/${campaignId}`} title="Creator Breakdown" userType="business" />
         <div className="flex items-center justify-center h-[80vh]">
           <Loader2 className="w-12 h-12 animate-spin text-[#389C9A]" />
         </div>
@@ -321,16 +312,13 @@ export function CampaignCreatorDetail({
   if (!campaign || !creatorLink || !creatorProfile) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
-        {!isModal && <AppHeader showBack backPath={`/business/campaign/overview/${campaignId}`} title="Creator Breakdown" userType="business" />}
+        <AppHeader showBack backPath={`/business/campaign/overview/${campaignId}`} title="Creator Breakdown" userType="business" />
         <div className="flex flex-col items-center justify-center h-[80vh] px-8 text-center">
           <AlertTriangle className="w-16 h-16 text-gray-200 mb-4" />
           <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Data Not Found</h2>
           <p className="text-gray-400 mb-8">This creator may not be part of this campaign.</p>
           <button
-            onClick={() => {
-              if (isModal && onClose) onClose();
-              else navigate(`/business/campaign/overview/${campaignId}`);
-            }}
+            onClick={() => navigate(`/business/campaign/overview/${campaignId}`)}
             className="bg-[#1D1D1D] text-white px-8 py-4 text-sm font-black uppercase tracking-widest rounded-xl"
           >
             Back to Campaign
@@ -386,15 +374,13 @@ export function CampaignCreatorDetail({
     "bg-yellow-100 text-yellow-700";
 
   return (
-    <div className={`flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full ${isModal ? 'relative' : ''}`}>
-      {!isModal && (
-        <AppHeader
-          showBack
-          backPath={`/business/campaign/overview/${campaignId}`}
-          title="Creator Breakdown"
-          userType="business"
-        />
-      )}
+    <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
+      <AppHeader
+        showBack
+        backPath={`/business/campaign/overview/${campaignId}`}
+        title="Creator Breakdown"
+        userType="business"
+      />
 
       <main className="flex-1">
         {/* Creator Header */}
