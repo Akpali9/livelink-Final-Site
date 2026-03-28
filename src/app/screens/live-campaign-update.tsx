@@ -84,26 +84,10 @@ export function LiveCampaignUpdate() {
   const [creatorProfileId, setCreatorProfileId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ─── Check authentication (critical!) ──────────────────────────────────
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error("Auth error:", error);
-        toast.error("Authentication error. Please log in again.");
-        navigate("/login");
-        return;
-      }
-      if (!session) {
-        console.warn("No active session. User not logged in.");
-        toast.error("Please log in to upload proofs.");
-        navigate("/login");
-        return;
-      }
-      console.log("✅ User is logged in:", session.user.email);
-    };
-    checkAuth();
-  }, [navigate]);
+  // Real‑time channel refs
+  const campaignChannelRef = useRef<any>(null);
+  const creatorChannelRef = useRef<any>(null);
+  const proofsChannelRef = useRef<any>(null);
 
   // ─── Fetch creator profile ID ──────────────────────────────────────────
   useEffect(() => {
@@ -135,6 +119,7 @@ export function LiveCampaignUpdate() {
       if (!silent) setLoading(true);
 
       try {
+        // Campaign
         const { data: campaignData, error: campaignError } = await supabase
           .from("campaigns")
           .select("*")
@@ -143,6 +128,7 @@ export function LiveCampaignUpdate() {
         if (campaignError) throw campaignError;
         setCampaign(campaignData);
 
+        // Creator link
         const { data: linkData, error: linkError } = await supabase
           .from("campaign_creators")
           .select("*")
@@ -157,6 +143,7 @@ export function LiveCampaignUpdate() {
         }
         setCreatorLink(linkData);
 
+        // Business
         const { data: businessData, error: businessError } = await supabase
           .from("businesses")
           .select("id, name, logo_url, user_id")
@@ -164,6 +151,7 @@ export function LiveCampaignUpdate() {
           .maybeSingle();
         if (!businessError && businessData) setBusiness(businessData);
 
+        // Stream proofs
         const { data: proofsData, error: proofsError } = await supabase
           .from("stream_proofs")
           .select("*")
@@ -185,18 +173,16 @@ export function LiveCampaignUpdate() {
     if (!creatorProfileId) return;
     fetchData();
 
-    const campaignChannel = supabase
+    campaignChannelRef.current = supabase
       .channel(`campaign-${campaignId}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "campaigns", filter: `id=eq.${campaignId}` },
-        (payload) => {
-          setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev));
-        }
+        (payload) => setCampaign((prev) => (prev ? { ...prev, ...payload.new } : prev))
       )
       .subscribe();
 
-    const creatorChannel = supabase
+    creatorChannelRef.current = supabase
       .channel(`creator-link-${creatorProfileId}-${campaignId}`)
       .on(
         "postgres_changes",
@@ -206,34 +192,38 @@ export function LiveCampaignUpdate() {
           table: "campaign_creators",
           filter: `creator_id=eq.${creatorProfileId}`,
         },
-        (payload) => {
-          setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev));
-        }
+        (payload) => setCreatorLink((prev) => (prev ? { ...prev, ...payload.new } : prev))
       )
       .subscribe();
 
-    const proofsChannel = supabase
-      .channel(`proofs-${campaignId}`)
+    // Subscribe to proofs for this creator link (when it's known)
+    return () => {
+      campaignChannelRef.current?.unsubscribe();
+      creatorChannelRef.current?.unsubscribe();
+      proofsChannelRef.current?.unsubscribe();
+    };
+  }, [campaignId, creatorProfileId, fetchData]);
+
+  // Subscribe to stream_proofs once we have the creatorLink.id
+  useEffect(() => {
+    if (!creatorLink?.id) return;
+    proofsChannelRef.current?.unsubscribe();
+    proofsChannelRef.current = supabase
+      .channel(`proofs-${creatorLink.id}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "stream_proofs",
-          filter: `campaign_creator_id=eq.${creatorLink?.id}`,
+          filter: `campaign_creator_id=eq.${creatorLink.id}`,
         },
-        () => fetchData(true)
+        () => fetchData(true) // silent refresh
       )
       .subscribe();
+  }, [creatorLink?.id, fetchData]);
 
-    return () => {
-      campaignChannel.unsubscribe();
-      creatorChannel.unsubscribe();
-      proofsChannel.unsubscribe();
-    };
-  }, [campaignId, creatorProfileId, creatorLink?.id, fetchData]);
-
-  // ─── Trigger file picker ─────────────────────────────────────────────
+  // ─── File upload handler ─────────────────────────────────────────────
   const triggerFileInput = (streamNum: number) => {
     setSelectedStreamNumber(streamNum);
     setTimeout(() => {
@@ -241,7 +231,6 @@ export function LiveCampaignUpdate() {
     }, 0);
   };
 
-  // ─── File upload handler (direct insert) ─────────────────────────────
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -277,11 +266,11 @@ export function LiveCampaignUpdate() {
         data: { publicUrl },
       } = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
 
-      // 2. Direct insert into stream_proofs (requires authenticated user)
+      // 2. Insert into stream_proofs (requires authenticated user)
       const { data, error: insertError } = await supabase
         .from("stream_proofs")
         .insert({
-          campaign_creator_id: creatorLink?.id,
+          campaign_creator_id: creatorLink?.id, // must be set
           stream_number: streamNum,
           proof_url: publicUrl,
           status: "pending",
@@ -292,8 +281,6 @@ export function LiveCampaignUpdate() {
       if (insertError) throw insertError;
 
       console.log("Insert success:", data);
-
-      // 3. Visual feedback
       setJustUploadedStream(streamNum);
       setTimeout(() => setJustUploadedStream(null), 3000);
 
