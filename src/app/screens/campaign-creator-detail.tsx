@@ -19,6 +19,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { toast } from "sonner";
 
+// Interfaces
 interface Campaign {
   id: string;
   name: string;
@@ -106,6 +107,7 @@ export function CampaignCreatorDetail() {
     else setRefreshing(true);
 
     try {
+      console.log("📡 [Business] Fetching campaign data...");
       const { data: campaignData, error: campaignError } = await supabase
         .from("campaigns")
         .select("*")
@@ -143,8 +145,9 @@ export function CampaignCreatorDetail() {
         .order("stream_number", { ascending: true });
       if (proofsError) throw proofsError;
       setStreamProofs(proofsData || []);
+      console.log(`✅ [Business] Fetched ${proofsData?.length || 0} proofs.`);
     } catch (error: any) {
-      console.error("Error fetching creator details:", error);
+      console.error("❌ Error fetching creator details:", error);
       toast.error(error.message || "Failed to load data");
     } finally {
       setLoading(false);
@@ -204,22 +207,30 @@ export function CampaignCreatorDetail() {
           table: "stream_proofs",
           filter: `campaign_creator_id=eq.${creatorLink.id}`,
         },
-        () => fetchData(true)
+        () => {
+          console.log("📡 [Business] Proof change detected, refreshing...");
+          fetchData(true);
+        }
       )
       .subscribe();
   }, [creatorLink?.id, fetchData]);
 
   const verifyProof = async (proofId: string, streamNum: number) => {
+    console.log("🔘 [Business] Verify clicked for proof", proofId, "stream", streamNum);
     const ok = await confirmToast(
       `Verify stream ${streamNum}? This will mark it as completed and add earnings.`
     );
-    if (!ok) return;
+    if (!ok) {
+      console.log("❌ [Business] User cancelled verification.");
+      return;
+    }
 
     const currentLink = creatorLinkRef.current;
     const currentCampaign = campaignRef.current;
     const currentProfile = creatorProfileRef.current;
 
     if (!currentLink || !currentCampaign) {
+      console.error("Missing data:", { currentLink, currentCampaign });
       toast.error("Campaign data not loaded. Please refresh.");
       return;
     }
@@ -227,12 +238,15 @@ export function CampaignCreatorDetail() {
     setVerifyingProofId(proofId);
 
     try {
+      console.log("⏳ [Business] Updating proof status to 'verified'...");
       const { error: proofError } = await supabase
         .from("stream_proofs")
         .update({ status: "verified", verified_at: new Date().toISOString() })
         .eq("id", proofId);
       if (proofError) throw proofError;
+      console.log("✅ [Business] Proof updated.");
 
+      // Calculate per-stream earnings
       let perStreamEarning = currentCampaign.pay_per_stream;
       if (!perStreamEarning) {
         perStreamEarning = currentCampaign.budget / currentCampaign.streams_required;
@@ -246,6 +260,7 @@ export function CampaignCreatorDetail() {
       const newStreamsCompleted = (currentLink.streams_completed || 0) + 1;
       const newTotalEarnings = (currentLink.total_earnings || 0) + perStreamEarning;
 
+      console.log("⏳ [Business] Updating creator link...");
       const { error: updateError } = await supabase
         .from("campaign_creators")
         .update({
@@ -258,9 +273,10 @@ export function CampaignCreatorDetail() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", currentLink.id);
-
       if (updateError) throw updateError;
+      console.log("✅ [Business] Creator link updated.");
 
+      // Notify creator
       if (currentProfile?.user_id) {
         await supabase
           .from("notifications")
@@ -278,7 +294,7 @@ export function CampaignCreatorDetail() {
       toast.success(`Stream ${streamNum} verified! ₦${perStreamEarning.toLocaleString()} added.`);
       await fetchData(true);
     } catch (err: any) {
-      console.error("Verify error:", err);
+      console.error("❌ [Business] Verify error:", err);
       toast.error(err.message || "Failed to verify stream. Please try again.");
     } finally {
       setVerifyingProofId(null);
@@ -290,6 +306,7 @@ export function CampaignCreatorDetail() {
     setIsProofModalOpen(true);
   };
 
+  // Loading and error states (unchanged)
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-24 max-w-[480px] mx-auto w-full">
