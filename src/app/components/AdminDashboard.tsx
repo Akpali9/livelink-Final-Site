@@ -25,14 +25,8 @@ function confirmToast(message: string): Promise<boolean> {
   return new Promise((resolve) => {
     toast(message, {
       duration: 10000,
-      action: {
-        label: "Confirm",
-        onClick: () => resolve(true),
-      },
-      cancel: {
-        label: "Cancel",
-        onClick: () => resolve(false),
-      },
+      action: { label: "Confirm", onClick: () => resolve(true) },
+      cancel: { label: "Cancel", onClick: () => resolve(false) },
       onDismiss: () => resolve(false),
     });
   });
@@ -606,7 +600,7 @@ export function AdminDashboard() {
               className={`w-full flex items-center justify-between px-4 py-3 text-xs font-black uppercase tracking-widest transition-all rounded-lg ${
                 activeTab === item.tab
                   ? "bg-[#1D1D1D] text-white"
-                  : "hover:bg-[#F4F4F4] text-[#1D1DD1D]/60 hover:text-[#1D1D1D]"
+                  : "hover:bg-[#F4F4F4] text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
               }`}
             >
               <div className="flex items-center gap-3">
@@ -1713,8 +1707,7 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
 }
 
 // ─────────────────────────────────────────────
-// MESSAGES, SUPPORT, REPORTS, TRANSACTIONS, SETTINGS, MODALS
-// (Keep your existing implementations – they are unchanged)
+// MESSAGES TAB (unchanged – keep your existing implementation)
 // ─────────────────────────────────────────────
 
 function AdminMessages({ adminUser }: { adminUser: any }) {
@@ -1727,32 +1720,478 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
   );
 }
 
+// ─────────────────────────────────────────────
+// SUPPORT TICKETS (enhanced for any report)
+// ─────────────────────────────────────────────
+
 function AdminSupport() {
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"all" | "open" | "in_progress" | "resolved" | "closed">("open");
+  const [selected, setSelected] = useState<any | null>(null);
+  const [adminReply, setAdminReply] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  useEffect(() => { fetchTickets(); }, []);
+
+  const fetchTickets = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("support_tickets")
+        .select("id, user_id, subject, message, status, category, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setTickets(data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const updateStatus = async (id: string, status: string) => {
+    setUpdatingId(id);
+    try {
+      const { error } = await supabase.from("support_tickets").update({ status }).eq("id", id);
+      if (error) throw error;
+      setTickets(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+      if (selected?.id === id) setSelected((prev: any) => prev ? { ...prev, status } : null);
+      toast.success(`Ticket marked as ${status.replace("_", " ")}`);
+    } catch (e: any) { toast.error(e.message); }
+    finally { setUpdatingId(null); }
+  };
+
+  const sendReply = async () => {
+    if (!adminReply.trim() || !selected) return;
+    setSendingReply(true);
+    try {
+      const timestamp = new Date().toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      const updatedMsg = `${selected.message || ""}\n\n--- Admin Reply (${timestamp}) ---\n${adminReply.trim()}`;
+      const { error } = await supabase.from("support_tickets").update({ message: updatedMsg, status: "in_progress" }).eq("id", selected.id);
+      if (error) throw error;
+      if (selected.user_id) {
+        (async () => {
+          try {
+            await supabase.from("notifications").insert({
+              user_id: selected.user_id, type: "system", title: "Support Update",
+              message: `Admin replied to your support ticket: "${adminReply.trim().slice(0, 80)}${adminReply.length > 80 ? "…" : ""}"`,
+              data: { ticket_id: selected.id }, created_at: new Date().toISOString(),
+            });
+          } catch (err) { console.error("Notification failed:", err); }
+        })();
+      }
+      const updated = { ...selected, message: updatedMsg, status: "in_progress" };
+      setSelected(updated);
+      setTickets(prev => prev.map(t => t.id === selected.id ? updated : t));
+      setAdminReply("");
+      toast.success("Reply sent to user");
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSendingReply(false); }
+  };
+
+  const deleteTicket = async (id: string) => {
+    const ok = await confirmToast("Delete this ticket permanently?");
+    if (!ok) return;
+    const { error } = await supabase.from("support_tickets").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    setTickets(prev => prev.filter(t => t.id !== id));
+    if (selected?.id === id) setSelected(null);
+    toast.success("Ticket deleted");
+  };
+
+  const filtered = filter === "all" ? tickets : tickets.filter(t => t.status === filter);
+  const filterCounts = {
+    all: tickets.length,
+    open: tickets.filter(t => t.status === "open").length,
+    in_progress: tickets.filter(t => t.status === "in_progress").length,
+    resolved: tickets.filter(t => t.status === "resolved").length,
+    closed: tickets.filter(t => t.status === "closed").length,
+  };
+
+  const statusBadge = (s: string) => {
+    const base = "text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full";
+    if (s === "open") return `${base} bg-red-100 text-red-700`;
+    if (s === "in_progress") return `${base} bg-yellow-100 text-yellow-700`;
+    if (s === "resolved") return `${base} bg-green-100 text-green-700`;
+    return `${base} bg-gray-100 text-gray-500`;
+  };
+
+  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  const parseMessage = (msg: string) => {
+    const parts = (msg || "").split(/\n\n--- Admin Reply \(/);
+    const original = parts[0].trim();
+    const replies = parts.slice(1).map(p => {
+      const closeParen = p.indexOf(") ---\n");
+      const ts = closeParen >= 0 ? p.slice(0, closeParen) : "";
+      const txt = closeParen >= 0 ? p.slice(closeParen + 6).trim() : p.trim();
+      return { ts, txt };
+    });
+    return { original, replies };
+  };
+
+  if (loading) return <div className="bg-white border-2 border-[#1D1D1D] p-10 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" /></div>;
+
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-8 text-center text-gray-500">
-      <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-      <p>Support tickets – implement as original.</p>
+    <div className="space-y-4">
+      <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black uppercase tracking-tight text-lg flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#389C9A]" /> Support Tickets</h3>
+          <button onClick={fetchTickets} className="p-2 hover:bg-[#F8F8F8] rounded-lg"><RefreshCw className="w-4 h-4 text-gray-400" /></button>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {(["all", "open", "in_progress", "resolved", "closed"] as const).map(tab => (
+            <button key={tab} onClick={() => setFilter(tab)} className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 ${filter === tab ? "bg-[#1D1D1D] text-white" : "bg-[#F8F8F8] text-gray-500 hover:bg-gray-200"}`}>
+              {tab.replace("_", " ")} <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black ${filter === tab ? "bg-white/20 text-white" : "bg-gray-200 text-gray-500"}`}>{filterCounts[tab]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl"><MessageCircle className="w-12 h-12 text-gray-200 mx-auto mb-3" /><p className="text-gray-400 text-sm">No {filter === "all" ? "" : filter.replace("_", " ")} tickets</p></div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(ticket => {
+            const { original, replies } = parseMessage(ticket.message);
+            return (
+              <motion.div key={ticket.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`bg-white border-2 rounded-xl overflow-hidden transition-all ${selected?.id === ticket.id ? "border-[#389C9A]" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"}`}>
+                <div className="p-4 cursor-pointer" onClick={() => setSelected(selected?.id === ticket.id ? null : ticket)}>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Flag className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                        <h4 className="font-black text-sm uppercase tracking-tight truncate">{ticket.subject || "Support Ticket"}</h4>
+                        {ticket.category && <span className="text-[8px] bg-gray-100 px-2 py-0.5 rounded-full">{ticket.category}</span>}
+                      </div>
+                      <p className="text-[9px] text-gray-400">{formatDate(ticket.created_at)}</p>
+                    </div>
+                    <span className={statusBadge(ticket.status || "open")}>{(ticket.status || "open").replace("_", " ")}</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 line-clamp-2">{original}</p>
+                </div>
+                <AnimatePresence>
+                  {selected?.id === ticket.id && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t-2 border-[#1D1D1D]/10 overflow-hidden">
+                      <div className="p-4 space-y-4 bg-[#F8F8F8]">
+                        <div><p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-1">Ticket Details</p><div className="bg-white border-2 border-[#1D1D1D]/10 rounded-xl p-3"><p className="text-[10px] text-[#1D1D1D]/70 leading-relaxed whitespace-pre-line">{original}</p></div></div>
+                        {replies.length > 0 && (<div className="space-y-2"><p className="text-[9px] font-black uppercase tracking-widest opacity-50">Admin Replies</p>{replies.map((r, i) => (<div key={i} className="bg-[#389C9A]/10 border-2 border-[#389C9A]/20 rounded-xl p-3"><p className="text-[10px] text-[#1D1D1D]/70 leading-relaxed whitespace-pre-line">{r.txt}</p>{r.ts && <p className="text-[8px] text-gray-400 mt-1">{r.ts}</p>}</div>))}</div>)}
+                        <div><p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Reply to User</p><textarea value={adminReply} onChange={e => setAdminReply(e.target.value)} placeholder="Write a reply..." rows={3} className="w-full px-3 py-2.5 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm resize-none bg-white" /><button onClick={sendReply} disabled={!adminReply.trim() || sendingReply} className="mt-2 w-full bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-2 hover:bg-[#389C9A] transition-colors disabled:opacity-50">{sendingReply ? <><Loader2 className="w-3 h-3 animate-spin" /> Sending...</> : <><Send className="w-3 h-3" /> Send Reply</>}</button></div>
+                        <div><p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">Update Status</p><div className="grid grid-cols-2 gap-2">{ticket.status !== "in_progress" && <button onClick={() => updateStatus(ticket.id, "in_progress")} disabled={updatingId === ticket.id} className="py-2 border-2 border-yellow-400 text-yellow-600 text-[9px] font-black uppercase hover:bg-yellow-400 hover:text-white rounded-lg flex items-center justify-center gap-1">{updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "In Progress"}</button>}{ticket.status !== "resolved" && <button onClick={() => updateStatus(ticket.id, "resolved")} disabled={updatingId === ticket.id} className="py-2 border-2 border-green-500 text-green-600 text-[9px] font-black uppercase hover:bg-green-500 hover:text-white rounded-lg flex items-center justify-center gap-1">{updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Resolve"}</button>}{ticket.status !== "closed" && <button onClick={() => updateStatus(ticket.id, "closed")} disabled={updatingId === ticket.id} className="py-2 border-2 border-gray-400 text-gray-500 text-[9px] font-black uppercase hover:bg-gray-400 hover:text-white rounded-lg flex items-center justify-center gap-1">{updatingId === ticket.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Close"}</button>}<button onClick={() => deleteTicket(ticket.id)} className="py-2 border-2 border-red-200 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 rounded-lg flex items-center justify-center gap-1"><Trash2 className="w-3 h-3" /> Delete</button></div></div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
+
+// ─────────────────────────────────────────────
+// REPORTS TAB (unchanged)
+// ─────────────────────────────────────────────
 
 function AdminReports() {
+  const [reports, setReports]   = useState<any[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState<"all" | "open" | "resolved">("all");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  useEffect(() => { fetchReports(); }, []);
+
+  const fetchReports = async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase
+        .from("support_tickets")
+        .select("id, user_id, subject, message, status, created_at")
+        .ilike("subject", "Report:%")
+        .order("created_at", { ascending: false });
+      setReports(data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const resolve = async (id: string) => {
+    setUpdatingId(id);
+    try {
+      await supabase.from("support_tickets").update({ status: "resolved" }).eq("id", id);
+      setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: "resolved" } : r));
+      toast.success("Report resolved");
+    } catch (e: any) { toast.error(e.message); }
+    finally { setUpdatingId(null); }
+  };
+
+  const dismiss = async (id: string) => {
+    const ok = await confirmToast("Dismiss this report?");
+    if (!ok) return;
+    setUpdatingId(id);
+    try {
+      await supabase.from("support_tickets").update({ status: "closed" }).eq("id", id);
+      setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: "closed" } : r));
+      toast.success("Report dismissed");
+    } catch (e: any) { toast.error(e.message); }
+    finally { setUpdatingId(null); }
+  };
+
+  const filtered = filter === "all" ? reports : reports.filter((r) => {
+    if (filter === "open")     return r.status === "open" || r.status === "in_progress";
+    if (filter === "resolved") return r.status === "resolved" || r.status === "closed";
+    return true;
+  });
+
+  const statusBadge = (s: string) => {
+    const base = "text-[8px] font-black uppercase px-2 py-1 rounded-full";
+    if (s === "open")        return `${base} bg-red-100 text-red-700`;
+    if (s === "in_progress") return `${base} bg-yellow-100 text-yellow-700`;
+    if (s === "resolved")    return `${base} bg-green-100 text-green-700`;
+    return `${base} bg-gray-100 text-gray-500`;
+  };
+
+  if (loading) return <div className="bg-white border-2 border-[#1D1D1D] p-10 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" /></div>;
+
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-8 text-center text-gray-500">
-      <Flag className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-      <p>Reports – implement as original.</p>
+    <div className="space-y-4">
+      <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black uppercase tracking-tight text-lg flex items-center gap-2"><Flag className="w-5 h-5 text-red-400" /> Reported Content</h3>
+          <button onClick={fetchReports} className="p-2 hover:bg-[#F8F8F8] rounded-lg"><RefreshCw className="w-4 h-4 text-gray-400" /></button>
+        </div>
+        <div className="flex gap-2">
+          {(["all", "open", "resolved"] as const).map(tab => (
+            <button key={tab} onClick={() => setFilter(tab)} className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors ${filter === tab ? "bg-[#1D1D1D] text-white" : "bg-[#F8F8F8] text-gray-500 hover:bg-gray-200"}`}>{tab}</button>
+          ))}
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="bg-white border-2 border-[#1D1D1D] p-12 text-center rounded-xl"><Flag className="w-12 h-12 text-gray-200 mx-auto mb-3" /><p className="text-gray-400 text-sm">No reports found</p></div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(report => (
+            <motion.div key={report.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white border-2 border-[#1D1D1D]/10 hover:border-[#1D1D1D] p-4 rounded-xl transition-all">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-black text-sm uppercase tracking-tight truncate mb-1">{report.subject}</h4>
+                  {report.message && <p className="text-[10px] text-gray-500 line-clamp-3 whitespace-pre-line mt-1">{report.message}</p>}
+                  <p className="text-[8px] text-gray-400 mt-1.5">{new Date(report.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                </div>
+                <span className={statusBadge(report.status)}>{report.status?.replace("_", " ")}</span>
+              </div>
+              {(report.status === "open" || report.status === "in_progress") && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5">
+                  <button onClick={() => resolve(report.id)} disabled={updatingId === report.id} className="py-2 bg-green-500 text-white text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">{updatingId === report.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><CheckCircle className="w-3 h-3" /> Resolve</>}</button>
+                  <button onClick={() => dismiss(report.id)} disabled={updatingId === report.id} className="py-2 border-2 border-gray-300 text-gray-500 text-[9px] font-black uppercase hover:bg-gray-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">{updatingId === report.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><XCircle className="w-3 h-3" /> Dismiss</>}</button>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
+// ─────────────────────────────────────────────
+// TRANSACTIONS TAB (enhanced with payment details and history)
+// ─────────────────────────────────────────────
+
 function AdminTransactions() {
+  const [creators, setCreators] = useState<any[]>([]);
+  const [businesses, setBusinesses] = useState<any[]>([]);
+  const [creatorPayouts, setCreatorPayouts] = useState<any[]>([]);
+  const [businessTransactions, setBusinessTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "creators" | "businesses">("all");
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutCreatorId, setPayoutCreatorId] = useState("");
+  const [payoutCreatorName, setPayoutCreatorName] = useState("");
+  const [processing, setProcessing] = useState(false);
+
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      const [creatorsRes, businessesRes, payoutsRes, transactionsRes] = await Promise.all([
+        supabase.from("creator_profiles").select("id, full_name, username, email, payment_method, payment_account, status"),
+        supabase.from("businesses").select("id, business_name, email, payment_method, payment_account, status"),
+        supabase.from("creator_payouts").select("*, creator_profiles(full_name, username)").order("created_at", { ascending: false }),
+        supabase.from("business_transactions").select("*, businesses(business_name)").order("created_at", { ascending: false }),
+      ]);
+      if (creatorsRes.data) setCreators(creatorsRes.data);
+      if (businessesRes.data) setBusinesses(businessesRes.data);
+      if (payoutsRes.data) setCreatorPayouts(payoutsRes.data);
+      if (transactionsRes.data) setBusinessTransactions(transactionsRes.data);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const handleManualPayout = async () => {
+    if (!payoutAmount || parseFloat(payoutAmount) <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setProcessing(true);
+    try {
+      const { error } = await supabase.from("creator_payouts").insert({
+        creator_id: payoutCreatorId,
+        amount: parseFloat(payoutAmount),
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      toast.success(`Paid ₦${payoutAmount} to ${payoutCreatorName}`);
+      setShowPayoutModal(false);
+      fetchAllData();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const filteredCreators = creators.filter(c =>
+    (filterType === "all" || filterType === "creators") &&
+    (c.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+     c.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+     c.payment_account?.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const filteredBusinesses = businesses.filter(b =>
+    (filterType === "all" || filterType === "businesses") &&
+    (b.business_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+     b.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+     b.payment_account?.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  if (loading) return <div className="bg-white border-2 border-[#1D1D1D] p-10 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" /></div>;
+
   return (
-    <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-8 text-center text-gray-500">
-      <CreditCard className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-      <p>Transactions – implement as original.</p>
+    <div className="space-y-6">
+      {/* Search and filter */}
+      <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl flex flex-col gap-3">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input type="text" placeholder="Search by name, email, account number..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm" />
+          </div>
+          <div className="flex gap-1">
+            {(["all", "creators", "businesses"] as const).map(tab => (
+              <button key={tab} onClick={() => setFilterType(tab)} className={`px-4 py-2 text-[10px] font-black uppercase rounded-lg transition-colors ${filterType === tab ? "bg-[#1D1D1D] text-white" : "bg-gray-100"}`}>{tab === "all" ? "All" : tab}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Creators section */}
+      <div className="bg-white border-2 border-[#1D1D1D] rounded-xl overflow-hidden">
+        <div className="px-5 py-3 bg-[#F8F8F8] border-b border-[#1D1D1D]/10">
+          <h3 className="font-black text-sm uppercase tracking-tight flex items-center gap-2"><Users className="w-4 h-4 text-[#389C9A]" /> Creators Payment Details</h3>
+        </div>
+        {filteredCreators.length === 0 ? (
+          <div className="p-8 text-center text-gray-400">No creators found</div>
+        ) : (
+          <div className="divide-y divide-[#1D1D1D]/10">
+            {filteredCreators.map(creator => (
+              <div key={creator.id} className="p-4 hover:bg-gray-50 transition-colors">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-black text-sm">{creator.full_name || "Unnamed"} <span className="text-xs text-gray-400">@{creator.username}</span></p>
+                    <p className="text-[10px] text-gray-500">{creator.email}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-gray-100">{creator.payment_method || "No method"}</span>
+                      <span className="text-[9px] font-mono">{creator.payment_account || "No account"}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => { setPayoutCreatorId(creator.id); setPayoutCreatorName(creator.full_name); setPayoutAmount(""); setShowPayoutModal(true); }} className="px-3 py-1.5 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600">Record Payout</button>
+                </div>
+                {/* Show recent payouts for this creator */}
+                <div className="mt-3 text-xs text-gray-500">
+                  <p className="font-black text-[9px] uppercase">Recent Payouts</p>
+                  {creatorPayouts.filter(p => p.creator_id === creator.id).slice(0, 3).map(p => (
+                    <div key={p.id} className="flex justify-between border-t border-gray-100 py-1">
+                      <span>{new Date(p.created_at).toLocaleDateString()}</span>
+                      <span className="font-black">₦{p.amount.toLocaleString()}</span>
+                      <span className={`text-[8px] px-1.5 rounded-full ${p.status === "completed" ? "bg-green-100 text-green-700" : "bg-yellow-100"}`}>{p.status}</span>
+                    </div>
+                  ))}
+                  {creatorPayouts.filter(p => p.creator_id === creator.id).length === 0 && <p className="text-gray-400 text-[9px]">No payouts yet</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Businesses section */}
+      <div className="bg-white border-2 border-[#1D1D1D] rounded-xl overflow-hidden">
+        <div className="px-5 py-3 bg-[#F8F8F8] border-b border-[#1D1D1D]/10">
+          <h3 className="font-black text-sm uppercase tracking-tight flex items-center gap-2"><Building2 className="w-4 h-4 text-[#389C9A]" /> Businesses Payment Details</h3>
+        </div>
+        {filteredBusinesses.length === 0 ? (
+          <div className="p-8 text-center text-gray-400">No businesses found</div>
+        ) : (
+          <div className="divide-y divide-[#1D1D1D]/10">
+            {filteredBusinesses.map(business => (
+              <div key={business.id} className="p-4 hover:bg-gray-50 transition-colors">
+                <div className="flex justify-between">
+                  <div>
+                    <p className="font-black text-sm">{business.business_name}</p>
+                    <p className="text-[10px] text-gray-500">{business.email}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-gray-100">{business.payment_method || "Card"}</span>
+                      <span className="text-[9px] font-mono">{business.payment_account ? `**** ${business.payment_account.slice(-4)}` : "No card"}</span>
+                    </div>
+                  </div>
+                </div>
+                {/* Show recent transactions for this business */}
+                <div className="mt-3 text-xs text-gray-500">
+                  <p className="font-black text-[9px] uppercase">Recent Transactions</p>
+                  {businessTransactions.filter(t => t.business_id === business.id).slice(0, 3).map(t => (
+                    <div key={t.id} className="flex justify-between border-t border-gray-100 py-1">
+                      <span>{new Date(t.created_at).toLocaleDateString()}</span>
+                      <span className="font-black">₦{t.amount.toLocaleString()}</span>
+                      <span className="text-[8px]">{t.type}</span>
+                      <span className={`text-[8px] px-1.5 rounded-full ${t.status === "completed" ? "bg-green-100 text-green-700" : "bg-yellow-100"}`}>{t.status}</span>
+                    </div>
+                  ))}
+                  {businessTransactions.filter(t => t.business_id === business.id).length === 0 && <p className="text-gray-400 text-[9px]">No transactions yet</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Payout Modal */}
+      {showPayoutModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl max-w-md w-full">
+            <h3 className="text-lg font-black mb-2">Record Payout</h3>
+            <p className="text-sm text-gray-600 mb-4">Paying: <span className="font-bold">{payoutCreatorName}</span></p>
+            <input type="number" value={payoutAmount} onChange={e => setPayoutAmount(e.target.value)} placeholder="Amount (₦)" className="w-full p-3 border-2 rounded-lg mb-4" />
+            <div className="flex gap-2">
+              <button onClick={handleManualPayout} disabled={processing} className="flex-1 bg-green-500 text-white py-2 rounded-lg font-black disabled:opacity-50">{processing ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Confirm Payout"}</button>
+              <button onClick={() => setShowPayoutModal(false)} className="flex-1 border-2 py-2 rounded-lg">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// ─────────────────────────────────────────────
+// SETTINGS
+// ─────────────────────────────────────────────
 
 function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: any }) {
   const [platformFee, setPlatformFee] = useState(stats.platformFee);
@@ -1775,6 +2214,10 @@ function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: a
     </div>
   );
 }
+
+// ─────────────────────────────────────────────
+// MODALS
+// ─────────────────────────────────────────────
 
 function CreatorDetailModal({ creator, onClose }: { creator: any; onClose: () => void }) {
   return (
