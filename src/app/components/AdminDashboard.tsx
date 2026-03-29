@@ -606,7 +606,7 @@ export function AdminDashboard() {
               className={`w-full flex items-center justify-between px-4 py-3 text-xs font-black uppercase tracking-widest transition-all rounded-lg ${
                 activeTab === item.tab
                   ? "bg-[#1D1D1D] text-white"
-                  : "hover:bg-[#F4F4F4] text-[#1D1D1D]/60 hover:text-[#1D1D1D]"
+                  : "hover:bg-[#F4F4F4] text-[#1D1DD1D]/60 hover:text-[#1D1D1D]"
               }`}
             >
               <div className="flex items-center gap-3">
@@ -1146,7 +1146,6 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
       if (error) throw error;
 
       if (biz?.user_id) {
-        // Non‑critical notification – wrap in IIFE to avoid breaking the flow
         (async () => {
           try {
             await supabase.from("notifications").insert({
@@ -1159,9 +1158,7 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
               data:       { business_id: id },
               created_at: new Date().toISOString(),
             });
-          } catch (err) {
-            console.error("Notification failed:", err);
-          }
+          } catch (err) { console.error("Notification failed:", err); }
         })();
       }
 
@@ -1238,9 +1235,7 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
                 <XCircle className="w-3 h-3" /> Reject
               </button>
               <button onClick={() => onToggleSelectAll([])}
-                className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase rounded-lg hover:bg-white/10">
-                Clear
-              </button>
+                className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase rounded-lg hover:bg-white/10">Clear</button>
             </div>
           </div>
         )}
@@ -1427,7 +1422,7 @@ function AdminBusinesses({ businesses, onStatsChange, selectedItems, onToggleSel
 }
 
 // ─────────────────────────────────────────────
-// CAMPAIGNS TAB (with all fixes for notifications)
+// CAMPAIGNS TAB (with all fixes)
 // ─────────────────────────────────────────────
 
 function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSelectAll, onApproveSelected, onRejectSelected, actionLoading, onRefresh }: {
@@ -1446,7 +1441,6 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
   const [verifyingProofId, setVerifyingProofId] = useState<string | null>(null);
   const [payingCreatorId, setPayingCreatorId] = useState<string | null>(null);
 
-  // ── Shared refresh helper ──────────────────────────────────────────────
   const refreshExpandedCampaign = async (campaignId: string) => {
     const { data: creators, error } = await supabase
       .from("campaign_creators")
@@ -1460,7 +1454,6 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
       .eq("campaign_id", campaignId);
     if (!error && creators) {
       setCampaignCreators(prev => ({ ...prev, [campaignId]: creators }));
-
       const proofsMap: Record<string, any[]> = {};
       for (const creator of creators) {
         const { data: proofs } = await supabase
@@ -1474,58 +1467,28 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
     }
   };
 
-  // ── Realtime subscription for expanded campaign ────────────────────────
   useEffect(() => {
     if (!expandedCampaignId) return;
-
     const channel = supabase
       .channel(`admin-campaign-${expandedCampaignId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "campaign_creators",
-          filter: `campaign_id=eq.${expandedCampaignId}`,
-        },
-        () => {
-          refreshExpandedCampaign(expandedCampaignId);
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "stream_proofs",
-        },
-        (payload) => {
-          const creatorId = payload.new?.campaign_creator_id;
-          if (creatorId && campaignCreators[expandedCampaignId]?.some(c => c.id === creatorId)) {
-            refreshExpandedCampaign(expandedCampaignId);
-          }
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "campaign_creators", filter: `campaign_id=eq.${expandedCampaignId}` }, () => refreshExpandedCampaign(expandedCampaignId))
+      .on("postgres_changes", { event: "*", schema: "public", table: "stream_proofs" }, (payload) => {
+        const creatorId = payload.new?.campaign_creator_id;
+        if (creatorId && campaignCreators[expandedCampaignId]?.some(c => c.id === creatorId)) refreshExpandedCampaign(expandedCampaignId);
+      })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [expandedCampaignId]);
 
-  // ── Initial load when campaign is expanded ─────────────────────────────
   useEffect(() => {
-    if (!expandedCampaignId) return;
-    refreshExpandedCampaign(expandedCampaignId);
+    if (expandedCampaignId) refreshExpandedCampaign(expandedCampaignId);
   }, [expandedCampaignId]);
 
-  // ── Campaign status update ─────────────────────────────────────────────
   const updateStatus = async (id: string, newStatus: "active" | "rejected" | "completed") => {
-    const camp  = campaigns.find(c => c.id === id);
+    const camp = campaigns.find(c => c.id === id);
     const label = newStatus === "active" ? "approve" : newStatus === "completed" ? "mark complete" : "reject";
-    const ok    = await confirmToast(`${label.charAt(0).toUpperCase() + label.slice(1)} "${camp?.name || "campaign"}"?`);
+    const ok = await confirmToast(`${label.charAt(0).toUpperCase() + label.slice(1)} "${camp?.name || "campaign"}"?`);
     if (!ok) return;
-
     setUpdating(id);
     try {
       const updates: any = {
@@ -1535,44 +1498,34 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
         ...(newStatus === "completed" ? { completed_at: new Date().toISOString() } : {}),
         updated_at: new Date().toISOString(),
       };
-
       const { error } = await supabase.from("campaigns").update(updates).eq("id", id);
       if (error) throw error;
-
       if (camp?.businesses?.id) {
         const { data: biz } = await supabase.from("businesses").select("user_id").eq("id", camp.businesses.id).maybeSingle();
         if (biz?.user_id) {
-          // Non‑critical notification – wrap in IIFE
           (async () => {
             try {
               await supabase.from("notifications").insert({
                 user_id: biz.user_id,
                 type: newStatus === "active" ? "campaign_approved" : "campaign_rejected",
                 title: newStatus === "active" ? "Campaign Approved! ✅" : "Campaign Rejected",
-                message: newStatus === "active"
-                  ? `Your campaign "${camp.name}" is now live!`
-                  : `Your campaign "${camp.name}" was not approved.`,
+                message: newStatus === "active" ? `Your campaign "${camp.name}" is now live!` : `Your campaign "${camp.name}" was not approved.`,
                 data: { campaign_id: id },
                 created_at: new Date().toISOString(),
               });
-            } catch (err) {
-              console.error("Notification failed:", err);
-            }
+            } catch (err) { console.error("Notification failed:", err); }
           })();
         }
       }
-
       toast.success(`Campaign ${newStatus === "active" ? "approved ✅" : newStatus}`);
       onRefresh();
-    } catch (e: any) {
-      toast.error(`Failed: ${e.message}`);
-    } finally { setUpdating(null); }
+    } catch (e: any) { toast.error(`Failed: ${e.message}`); }
+    finally { setUpdating(null); }
   };
 
-  // ── Delete campaign ────────────────────────────────────────────────────
   const deleteCampaign = async (id: string) => {
     const camp = campaigns.find(c => c.id === id);
-    const ok   = await confirmToast(`Delete "${camp?.name || "campaign"}"? This cannot be undone.`);
+    const ok = await confirmToast(`Delete "${camp?.name || "campaign"}"? This cannot be undone.`);
     if (!ok) return;
     const { error } = await supabase.from("campaigns").delete().eq("id", id);
     if (error) { toast.error("Failed"); return; }
@@ -1580,157 +1533,89 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
     onRefresh();
   };
 
-  // ── Verify stream proof ────────────────────────────────────────────────
   const verifyProof = async (proofId: string, creatorId: string, streamNum: number) => {
     const ok = await confirmToast(`Verify stream ${streamNum} for this creator?`);
     if (!ok) return;
-
     setVerifyingProofId(proofId);
     try {
-      const { error: proofError } = await supabase
-        .from("stream_proofs")
-        .update({ status: "verified", verified_at: new Date().toISOString() })
-        .eq("id", proofId);
+      const { error: proofError } = await supabase.from("stream_proofs").update({ status: "verified", verified_at: new Date().toISOString() }).eq("id", proofId);
       if (proofError) throw proofError;
-
-      const { data: campaign } = await supabase
-        .from("campaigns")
-        .select("budget, streams_required, pay_per_stream")
-        .eq("id", expandedCampaignId)
-        .single();
-
+      const { data: campaign } = await supabase.from("campaigns").select("budget, streams_required, pay_per_stream").eq("id", expandedCampaignId).single();
       const perStream = campaign?.pay_per_stream || (campaign?.budget / campaign?.streams_required);
-
-      const { data: cc } = await supabase
-        .from("campaign_creators")
-        .select("streams_completed, total_earnings")
-        .eq("id", creatorId)
-        .single();
-
-      const { error: updateError } = await supabase
-        .from("campaign_creators")
-        .update({
-          streams_completed: (cc?.streams_completed || 0) + 1,
-          total_earnings: (cc?.total_earnings || 0) + perStream,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", creatorId);
+      const { data: cc } = await supabase.from("campaign_creators").select("streams_completed, total_earnings").eq("id", creatorId).single();
+      const { error: updateError } = await supabase.from("campaign_creators").update({
+        streams_completed: (cc?.streams_completed || 0) + 1,
+        total_earnings: (cc?.total_earnings || 0) + perStream,
+        updated_at: new Date().toISOString(),
+      }).eq("id", creatorId);
       if (updateError) throw updateError;
-
-      const { data: profile } = await supabase
-        .from("creator_profiles")
-        .select("user_id")
-        .eq("id", creatorId)
-        .single();
+      const { data: profile } = await supabase.from("creator_profiles").select("user_id").eq("id", creatorId).single();
       if (profile?.user_id) {
-        // Non‑critical notification
         (async () => {
           try {
             await supabase.from("notifications").insert({
-              user_id: profile.user_id,
-              type: "stream_verified",
-              title: "Stream Verified! 🎉",
+              user_id: profile.user_id, type: "stream_verified", title: "Stream Verified! 🎉",
               message: `Stream ${streamNum} for your campaign has been verified by admin. ₦${perStream.toLocaleString()} added.`,
               data: { campaign_id: expandedCampaignId, stream_number: streamNum },
               created_at: new Date().toISOString(),
             });
-          } catch (err) {
-            console.warn("Notification failed:", err);
-          }
+          } catch (err) { console.warn("Notification failed:", err); }
         })();
       }
-
       toast.success(`Stream ${streamNum} verified!`);
       if (expandedCampaignId) refreshExpandedCampaign(expandedCampaignId);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setVerifyingProofId(null);
-    }
+    } catch (err: any) { toast.error(err.message); }
+    finally { setVerifyingProofId(null); }
   };
 
-  // ── Pay creator (only if all streams completed) ─────────────────────────
   const payCreator = async (creatorId: string, creatorUserId: string, campaignCreatorId: string, totalEarnings: number, paidOut: number) => {
     const pending = totalEarnings - paidOut;
-    if (pending <= 0) {
-      toast.info("No pending earnings to pay.");
-      return;
-    }
-
-    // Check if all streams are verified
+    if (pending <= 0) { toast.info("No pending earnings to pay."); return; }
     const creator = (campaignCreators[expandedCampaignId!] || []).find(c => c.id === campaignCreatorId);
     const allStreamsCompleted = (creator?.streams_completed || 0) >= (creator?.streams_target || 0);
-    if (!allStreamsCompleted) {
-      toast.warning("All required streams must be verified before payment.");
-      return;
-    }
-
+    if (!allStreamsCompleted) { toast.warning("All required streams must be verified before payment."); return; }
     const ok = await confirmToast(`Pay ₦${pending.toLocaleString()} to this creator?`);
     if (!ok) return;
-
     setPayingCreatorId(creatorId);
     try {
-      const { error: updateError } = await supabase
-        .from("campaign_creators")
-        .update({ paid_out: totalEarnings, updated_at: new Date().toISOString() })
-        .eq("id", campaignCreatorId);
+      const { error: updateError } = await supabase.from("campaign_creators").update({ paid_out: totalEarnings, updated_at: new Date().toISOString() }).eq("id", campaignCreatorId);
       if (updateError) throw updateError;
-
-      const { error: payoutError } = await supabase
-        .from("creator_payouts")
-        .insert({
-          creator_id: creatorId,
-          campaign_creator_id: campaignCreatorId,
-          amount: pending,
-          status: "completed",
-          completed_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-        });
+      const { error: payoutError } = await supabase.from("creator_payouts").insert({
+        creator_id: creatorId, campaign_creator_id: campaignCreatorId, amount: pending, status: "completed",
+        completed_at: new Date().toISOString(), created_at: new Date().toISOString(),
+      });
       if (payoutError) throw payoutError;
-
       if (creatorUserId) {
-        // Non‑critical notification
         (async () => {
           try {
             await supabase.from("notifications").insert({
-              user_id: creatorUserId,
-              type: "payout",
-              title: "Payout Completed! 💰",
+              user_id: creatorUserId, type: "payout", title: "Payout Completed! 💰",
               message: `₦${pending.toLocaleString()} has been paid out for your campaign work.`,
               data: { campaign_creator_id: campaignCreatorId, amount: pending },
               created_at: new Date().toISOString(),
             });
-          } catch (err) {
-            console.warn("Payout notification failed:", err);
-          }
+          } catch (err) { console.warn("Payout notification failed:", err); }
         })();
       }
-
       toast.success(`Paid ₦${pending.toLocaleString()}`);
       if (expandedCampaignId) refreshExpandedCampaign(expandedCampaignId);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setPayingCreatorId(null);
-    }
+    } catch (err: any) { toast.error(err.message); }
+    finally { setPayingCreatorId(null); }
   };
 
-  const getName  = (c: any) => c.name || c.title || "Unnamed Campaign";
-  const getBiz   = (c: any) => c.businesses?.business_name || "Unknown Business";
+  const getName = (c: any) => c.name || c.title || "Unnamed Campaign";
+  const getBiz = (c: any) => c.businesses?.business_name || "Unknown Business";
   const getPrice = (c: any) => c.pay_rate ?? c.bid_amount ?? c.budget ?? 0;
-
   const filtered = campaigns.filter(c => {
     const matchFilter = filter === "all" || c.status === filter;
-    const matchSearch = getName(c).toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        getBiz(c).toLowerCase().includes(searchTerm.toLowerCase());
+    const matchSearch = getName(c).toLowerCase().includes(searchTerm.toLowerCase()) || getBiz(c).toLowerCase().includes(searchTerm.toLowerCase());
     return matchFilter && matchSearch;
   });
-
   const statusBadge = (s: string) => {
     const base = "text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-full";
-    if (s === "active")         return `${base} bg-green-100 text-green-700`;
-    if (s === "completed")      return `${base} bg-blue-100 text-blue-700`;
-    if (s === "rejected")       return `${base} bg-red-100 text-red-700`;
+    if (s === "active") return `${base} bg-green-100 text-green-700`;
+    if (s === "completed") return `${base} bg-blue-100 text-blue-700`;
+    if (s === "rejected") return `${base} bg-red-100 text-red-700`;
     if (s === "pending_review") return `${base} bg-yellow-100 text-yellow-700`;
     return `${base} bg-gray-100 text-gray-500`;
   };
@@ -1739,273 +1624,85 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
     <div className="bg-white border-2 border-[#1D1D1D] p-4 rounded-xl">
       <div className="flex flex-col gap-3 mb-4">
         <h3 className="font-black uppercase tracking-tight text-lg">Campaigns</h3>
-
         {selectedItems.length > 0 && (
           <div className="bg-[#1D1D1D] text-white p-3 rounded-xl flex items-center justify-between">
             <span className="text-xs font-black">{selectedItems.length} selected</span>
             <div className="flex gap-2">
-              <button onClick={onApproveSelected} disabled={actionLoading}
-                className="px-3 py-1.5 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" /> Approve
-              </button>
-              <button onClick={onRejectSelected} disabled={actionLoading}
-                className="px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center gap-1">
-                <XCircle className="w-3 h-3" /> Reject
-              </button>
-              <button onClick={() => onToggleSelectAll([])}
-                className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase rounded-lg">Clear</button>
+              <button onClick={onApproveSelected} disabled={actionLoading} className="px-3 py-1.5 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Approve</button>
+              <button onClick={onRejectSelected} disabled={actionLoading} className="px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"><XCircle className="w-3 h-3" /> Reject</button>
+              <button onClick={() => onToggleSelectAll([])} className="px-3 py-1.5 border border-white/30 text-white text-[9px] font-black uppercase rounded-lg">Clear</button>
             </div>
           </div>
         )}
-
         <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            <input type="text" placeholder="Search campaigns..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-sm rounded-xl transition-colors" />
-          </div>
-          <button onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 border-2 rounded-xl transition-colors ${showFilters ? "bg-[#1D1D1D] text-white border-[#1D1D1D]" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"}`}>
-            <Filter className="w-5 h-5" />
-          </button>
+          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" /><input type="text" placeholder="Search campaigns..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none text-sm rounded-xl transition-colors" /></div>
+          <button onClick={() => setShowFilters(!showFilters)} className={`px-4 border-2 rounded-xl transition-colors ${showFilters ? "bg-[#1D1D1D] text-white border-[#1D1D1D]" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"}`}><Filter className="w-5 h-5" /></button>
         </div>
-
         {showFilters ? (
           <div className="flex flex-wrap gap-2 p-3 bg-[#F8F8F8] rounded-xl">
-            {(["pending_review", "active", "completed", "rejected", "all"] as const).map(tab => (
-              <button key={tab} onClick={() => setFilter(tab)}
-                className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg flex-1 transition-colors ${
-                  filter === tab ? "bg-[#1D1D1D] text-white" : "bg-white border-2 border-[#1D1D1D]/10"
-                }`}>
-                {tab === "all" ? "All" : tab.replace("_", " ")}
-              </button>
-            ))}
+            {(["pending_review", "active", "completed", "rejected", "all"] as const).map(tab => <button key={tab} onClick={() => setFilter(tab)} className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg flex-1 transition-colors ${filter === tab ? "bg-[#1D1D1D] text-white" : "bg-white border-2 border-[#1D1D1D]/10"}`}>{tab === "all" ? "All" : tab.replace("_", " ")}</button>)}
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">{filter.replace("_", " ")}</span>
-            <span className="text-xs text-gray-400">({filtered.length})</span>
-            {filter === "pending_review" && filtered.length > 0 && (
-              <button onClick={() => onToggleSelectAll(filtered)}
-                className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] underline">Select all</button>
-            )}
-          </div>
+          <div className="flex items-center gap-2"><span className="text-xs font-black uppercase tracking-widest text-[#389C9A]">{filter.replace("_", " ")}</span><span className="text-xs text-gray-400">({filtered.length})</span>{filter === "pending_review" && filtered.length > 0 && <button onClick={() => onToggleSelectAll(filtered)} className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] underline">Select all</button>}</div>
         )}
       </div>
-
       {filtered.length === 0 ? (
-        <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl">
-          <Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">No campaigns found</p>
-        </div>
+        <div className="border-2 border-dashed border-gray-200 p-12 text-center rounded-xl"><Megaphone className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-400 text-sm">No campaigns found</p></div>
       ) : (
         <div className="space-y-3">
           {filtered.map(camp => (
-            <motion.div key={camp.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className={`border-2 p-4 rounded-xl transition-all ${
-                selectedItems.includes(camp.id) ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"
-              }`}>
+            <motion.div key={camp.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`border-2 p-4 rounded-xl transition-all ${selectedItems.includes(camp.id) ? "border-[#389C9A] bg-[#389C9A]/5" : "border-[#1D1D1D]/10 hover:border-[#1D1D1D]"}`}>
               <div className="flex items-start gap-3 mb-3">
-                <button onClick={() => onToggleSelect(camp.id)} className="mt-1 shrink-0">
-                  {selectedItems.includes(camp.id)
-                    ? <CheckSquare className="w-5 h-5 text-[#389C9A]" />
-                    : <Square className="w-5 h-5 text-gray-400" />}
-                </button>
-                <div className="w-11 h-11 border-2 border-[#1D1D1D]/10 bg-[#F8F8F8] rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
-                  {camp.businesses?.logo_url
-                    ? <img src={camp.businesses.logo_url} alt={getBiz(camp)} className="w-full h-full object-cover" />
-                    : <Building2 className="w-4 h-4 text-gray-400" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-black text-sm uppercase tracking-tight truncate">{getName(camp)}</h4>
-                  <p className="text-[10px] text-gray-500 mt-0.5">{getBiz(camp)}</p>
-                </div>
+                <button onClick={() => onToggleSelect(camp.id)} className="mt-1 shrink-0">{selectedItems.includes(camp.id) ? <CheckSquare className="w-5 h-5 text-[#389C9A]" /> : <Square className="w-5 h-5 text-gray-400" />}</button>
+                <div className="w-11 h-11 border-2 border-[#1D1D1D]/10 bg-[#F8F8F8] rounded-xl overflow-hidden shrink-0 flex items-center justify-center">{camp.businesses?.logo_url ? <img src={camp.businesses.logo_url} alt={getBiz(camp)} className="w-full h-full object-cover" /> : <Building2 className="w-4 h-4 text-gray-400" />}</div>
+                <div className="flex-1 min-w-0"><h4 className="font-black text-sm uppercase tracking-tight truncate">{getName(camp)}</h4><p className="text-[10px] text-gray-500 mt-0.5">{getBiz(camp)}</p></div>
                 <span className={statusBadge(camp.status)}>{camp.status?.replace("_", " ")}</span>
               </div>
-
-              <div className="flex items-center justify-between mb-3 ml-8">
-                <p className="font-black text-xl text-[#389C9A]">₦{Number(getPrice(camp)).toLocaleString()}</p>
-                <p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p>
-              </div>
-
-              {/* Expand / collapse button */}
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  onClick={() => setExpandedCampaignId(expandedCampaignId === camp.id ? null : camp.id)}
-                  className="p-1 hover:bg-gray-100 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
-                >
-                  {expandedCampaignId === camp.id ? (
-                    <ChevronRight className="w-4 h-4 rotate-90" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                  {expandedCampaignId === camp.id ? "Hide Details" : "Show Creators"}
-                </button>
-              </div>
-
-              {/* ── Expanded creator / proof / pay section ── */}
+              <div className="flex items-center justify-between mb-3 ml-8"><p className="font-black text-xl text-[#389C9A]">₦{Number(getPrice(camp)).toLocaleString()}</p><p className="text-[8px] text-gray-400">{new Date(camp.created_at).toLocaleDateString()}</p></div>
+              <div className="flex items-center gap-2 mt-2"><button onClick={() => setExpandedCampaignId(expandedCampaignId === camp.id ? null : camp.id)} className="p-1 hover:bg-gray-100 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1">{expandedCampaignId === camp.id ? <ChevronRight className="w-4 h-4 rotate-90" /> : <ChevronRight className="w-4 h-4" />}{expandedCampaignId === camp.id ? "Hide Details" : "Show Creators"}</button></div>
               {expandedCampaignId === camp.id && (
                 <div className="mt-4 border-t pt-4 space-y-4">
-                  {(campaignCreators[expandedCampaignId] || []).length === 0 ? (
-                    <p className="text-xs text-gray-400 text-center py-4">No creators joined yet</p>
-                  ) : (
-                    campaignCreators[expandedCampaignId].map(creator => {
-                      const proofs = campaignProofs[creator.id] || [];
-                      const streamStatuses = Array.from({ length: creator.streams_target }, (_, i) => {
-                        const streamNum = i + 1;
-                        const proof = proofs.find(p => p.stream_number === streamNum);
-                        return { streamNum, proof };
-                      });
-                      const pendingPay = (creator.total_earnings || 0) - (creator.paid_out || 0);
-                      const allStreamsCompleted = (creator.streams_completed || 0) >= (creator.streams_target || 0);
-
-                      return (
-                        <div key={creator.id} className="border rounded-lg p-3 bg-gray-50">
-                          {/* Creator header */}
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="flex items-center gap-2">
-                              {creator.creator_profiles?.avatar_url ? (
-                                <img src={creator.creator_profiles.avatar_url} className="w-8 h-8 rounded-full object-cover" alt="" />
-                              ) : (
-                                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-black text-xs">
-                                  {creator.creator_profiles?.full_name?.[0] || "C"}
-                                </div>
-                              )}
-                              <div>
-                                <p className="font-bold text-sm">{creator.creator_profiles?.full_name || "Unknown"}</p>
-                                {/* Show full payment account */}
-                                {creator.creator_profiles?.payment_method && (
-                                  <p className="text-[8px] text-gray-500 flex items-center gap-1">
-                                    <CreditCard className="w-3 h-3" />
-                                    {creator.creator_profiles.payment_method} &nbsp;
-                                    <span className="font-mono text-xs">
-                                      {creator.creator_profiles.payment_account || "No account set"}
-                                    </span>
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs font-black text-[#389C9A]">
-                                ₦{(creator.total_earnings || 0).toLocaleString()} earned
-                              </p>
-                              {pendingPay > 0 && !allStreamsCompleted && (
-                                <p className="text-[9px] text-orange-500">⚠️ Not all streams completed</p>
-                              )}
-                            </div>
+                  {(campaignCreators[expandedCampaignId] || []).length === 0 ? <p className="text-xs text-gray-400 text-center py-4">No creators joined yet</p> : campaignCreators[expandedCampaignId].map(creator => {
+                    const proofs = campaignProofs[creator.id] || [];
+                    const streamStatuses = Array.from({ length: creator.streams_target }, (_, i) => ({ streamNum: i+1, proof: proofs.find(p => p.stream_number === i+1) }));
+                    const pendingPay = (creator.total_earnings || 0) - (creator.paid_out || 0);
+                    const allStreamsCompleted = (creator.streams_completed || 0) >= (creator.streams_target || 0);
+                    return (
+                      <div key={creator.id} className="border rounded-lg p-3 bg-gray-50">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-2">
+                            {creator.creator_profiles?.avatar_url ? <img src={creator.creator_profiles.avatar_url} className="w-8 h-8 rounded-full object-cover" alt="" /> : <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-black text-xs">{creator.creator_profiles?.full_name?.[0] || "C"}</div>}
+                            <div><p className="font-bold text-sm">{creator.creator_profiles?.full_name || "Unknown"}</p>{creator.creator_profiles?.payment_method && <p className="text-[8px] text-gray-500 flex items-center gap-1"><CreditCard className="w-3 h-3" />{creator.creator_profiles.payment_method} &nbsp;<span className="font-mono text-xs">{creator.creator_profiles.payment_account || "No account set"}</span></p>}</div>
                           </div>
-
-                          {/* Stream proofs list */}
-                          <div className="space-y-2 mt-2">
-                            {streamStatuses.map(({ streamNum, proof }) => (
-                              <div key={streamNum} className="flex items-center justify-between text-sm border-b pb-1">
-                                <span>Stream {streamNum}</span>
-                                {proof ? (
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => window.open(proof.proof_url, '_blank')}
-                                      className="text-[#389C9A] text-xs underline flex items-center gap-1"
-                                    >
-                                      <Eye className="w-3 h-3" /> View
-                                    </button>
-                                    {proof.status === 'pending' && (
-                                      <button
-                                        onClick={() => verifyProof(proof.id, creator.id, streamNum)}
-                                        disabled={verifyingProofId === proof.id}
-                                        className="px-2 py-0.5 bg-green-500 text-white text-[9px] font-black rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1"
-                                      >
-                                        {verifyingProofId === proof.id ? (
-                                          <Loader2 className="w-3 h-3 animate-spin" />
-                                        ) : (
-                                          <CheckCircle className="w-3 h-3" />
-                                        )}
-                                        Verify
-                                      </button>
-                                    )}
-                                    <span className={`text-[8px] font-black uppercase ${
-                                      proof.status === 'verified' ? 'text-green-600' : 'text-yellow-600'
-                                    }`}>
-                                      {proof.status}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400 text-xs">No proof</span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Pay button – only if all streams completed and pending earnings > 0 */}
-                          {pendingPay > 0 && allStreamsCompleted && (
-                            <div className="mt-3 pt-2 border-t">
-                              <button
-                                onClick={() => payCreator(
-                                  creator.creator_id,
-                                  creator.creator_profiles?.user_id,
-                                  creator.id,
-                                  creator.total_earnings || 0,
-                                  creator.paid_out || 0,
-                                )}
-                                disabled={payingCreatorId === creator.creator_id}
-                                className="w-full py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                              >
-                                {payingCreatorId === creator.creator_id ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <CreditCard className="w-3 h-3" />
-                                )}
-                                Pay Pending (₦{pendingPay.toLocaleString()})
-                              </button>
-                            </div>
-                          )}
-                          {pendingPay > 0 && !allStreamsCompleted && (
-                            <div className="mt-3 pt-2 border-t">
-                              <p className="text-[9px] text-orange-500 text-center">
-                                ⚠️ Payment available after all streams are verified.
-                              </p>
-                            </div>
-                          )}
+                          <div className="text-right"><p className="text-xs font-black text-[#389C9A]">₦{(creator.total_earnings || 0).toLocaleString()} earned</p>{pendingPay > 0 && !allStreamsCompleted && <p className="text-[9px] text-orange-500">⚠️ Not all streams completed</p>}</div>
                         </div>
-                      );
-                    })
-                  )}
+                        <div className="space-y-2 mt-2">
+                          {streamStatuses.map(({ streamNum, proof }) => (
+                            <div key={streamNum} className="flex items-center justify-between text-sm border-b pb-1">
+                              <span>Stream {streamNum}</span>
+                              {proof ? (
+                                <div className="flex items-center gap-2">
+                                  <button onClick={() => window.open(proof.proof_url, '_blank')} className="text-[#389C9A] text-xs underline flex items-center gap-1"><Eye className="w-3 h-3" /> View</button>
+                                  {proof.status === 'pending' && <button onClick={() => verifyProof(proof.id, creator.id, streamNum)} disabled={verifyingProofId === proof.id} className="px-2 py-0.5 bg-green-500 text-white text-[9px] font-black rounded-lg hover:bg-green-600 disabled:opacity-50 flex items-center gap-1">{verifyingProofId === proof.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />} Verify</button>}
+                                  <span className={`text-[8px] font-black uppercase ${proof.status === 'verified' ? 'text-green-600' : 'text-yellow-600'}`}>{proof.status}</span>
+                                </div>
+                              ) : <span className="text-gray-400 text-xs">No proof</span>}
+                            </div>
+                          ))}
+                        </div>
+                        {pendingPay > 0 && allStreamsCompleted && (
+                          <div className="mt-3 pt-2 border-t"><button onClick={() => payCreator(creator.creator_id, creator.creator_profiles?.user_id, creator.id, creator.total_earnings || 0, creator.paid_out || 0)} disabled={payingCreatorId === creator.creator_id} className="w-full py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{payingCreatorId === creator.creator_id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CreditCard className="w-3 h-3" />} Pay Pending (₦{pendingPay.toLocaleString()})</button></div>
+                        )}
+                        {pendingPay > 0 && !allStreamsCompleted && <div className="mt-3 pt-2 border-t"><p className="text-[9px] text-orange-500 text-center">⚠️ Payment available after all streams are verified.</p></div>}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-
-              {/* Campaign action buttons */}
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1D1D1D]/5 ml-8 mt-2">
-                {camp.status === "pending_review" && (
-                  <>
-                    <button onClick={() => updateStatus(camp.id, "active")} disabled={updating === camp.id}
-                      className="bg-green-500 text-white py-2 text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                      <CheckCircle className="w-3 h-3" />
-                      {updating === camp.id ? "..." : "Approve"}
-                    </button>
-                    <button onClick={() => updateStatus(camp.id, "rejected")} disabled={updating === camp.id}
-                      className="bg-red-500 text-white py-2 text-[9px] font-black uppercase hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                      <XCircle className="w-3 h-3" /> Reject
-                    </button>
-                  </>
-                )}
-                {camp.status === "active" && (
-                  <>
-                    <button onClick={() => updateStatus(camp.id, "completed")} disabled={updating === camp.id}
-                      className="border-2 border-blue-400 text-blue-500 py-2 text-[9px] font-black uppercase hover:bg-blue-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                      <CheckCircle className="w-3 h-3" />
-                      {updating === camp.id ? "..." : "Complete"}
-                    </button>
-                    <button onClick={() => updateStatus(camp.id, "rejected")} disabled={updating === camp.id}
-                      className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                      <XCircle className="w-3 h-3" /> Reject
-                    </button>
-                  </>
-                )}
-                {(camp.status === "completed" || camp.status === "rejected") && (
-                  <button onClick={() => deleteCampaign(camp.id)} disabled={updating === camp.id}
-                    className="col-span-2 border-2 border-red-200 text-red-400 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50">
-                    <Trash2 className="w-3 h-3" /> Delete
-                  </button>
-                )}
+                {camp.status === "pending_review" && (<><button onClick={() => updateStatus(camp.id, "active")} disabled={updating === camp.id} className="bg-green-500 text-white py-2 text-[9px] font-black uppercase hover:bg-green-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"><CheckCircle className="w-3 h-3" />{updating === camp.id ? "..." : "Approve"}</button><button onClick={() => updateStatus(camp.id, "rejected")} disabled={updating === camp.id} className="bg-red-500 text-white py-2 text-[9px] font-black uppercase hover:bg-red-600 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"><XCircle className="w-3 h-3" /> Reject</button></>)}
+                {camp.status === "active" && (<><button onClick={() => updateStatus(camp.id, "completed")} disabled={updating === camp.id} className="border-2 border-blue-400 text-blue-500 py-2 text-[9px] font-black uppercase hover:bg-blue-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"><CheckCircle className="w-3 h-3" />{updating === camp.id ? "..." : "Complete"}</button><button onClick={() => updateStatus(camp.id, "rejected")} disabled={updating === camp.id} className="border-2 border-red-500 text-red-500 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"><XCircle className="w-3 h-3" /> Reject</button></>)}
+                {(camp.status === "completed" || camp.status === "rejected") && <button onClick={() => deleteCampaign(camp.id)} disabled={updating === camp.id} className="col-span-2 border-2 border-red-200 text-red-400 py-2 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"><Trash2 className="w-3 h-3" /> Delete</button>}
               </div>
             </motion.div>
           ))}
@@ -2016,71 +1713,50 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
 }
 
 // ─────────────────────────────────────────────
-// MESSAGES TAB (unchanged – kept as in original)
+// MESSAGES, SUPPORT, REPORTS, TRANSACTIONS, SETTINGS, MODALS
+// (Keep your existing implementations – they are unchanged)
 // ─────────────────────────────────────────────
 
 function AdminMessages({ adminUser }: { adminUser: any }) {
-  // ... (full implementation from original, too long to repeat but kept)
-  // For brevity, we assume it's unchanged. In the actual codebase you would keep your existing AdminMessages.
-  // We'll provide a placeholder that works without errors.
+  // Your existing AdminMessages implementation
   return (
     <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-8 text-center text-gray-500">
       <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-      <p>Message system (unchanged) – implement as original.</p>
+      <p>Messages system – implement as original.</p>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// SUPPORT TICKETS (unchanged)
-// ─────────────────────────────────────────────
-
 function AdminSupport() {
-  // ... (full implementation from original, too long to repeat)
   return (
     <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-8 text-center text-gray-500">
       <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-      <p>Support tickets (unchanged) – implement as original.</p>
+      <p>Support tickets – implement as original.</p>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// REPORTED CONTENT (unchanged)
-// ─────────────────────────────────────────────
-
 function AdminReports() {
-  // ... (full implementation from original)
   return (
     <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-8 text-center text-gray-500">
       <Flag className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-      <p>Reports (unchanged) – implement as original.</p>
+      <p>Reports – implement as original.</p>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// TRANSACTIONS (unchanged)
-// ─────────────────────────────────────────────
-
 function AdminTransactions() {
-  // ... (full implementation from original)
   return (
     <div className="bg-white border-2 border-[#1D1D1D] rounded-xl p-8 text-center text-gray-500">
       <CreditCard className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-      <p>Transactions (unchanged) – implement as original.</p>
+      <p>Transactions – implement as original.</p>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// SETTINGS (unchanged)
-// ─────────────────────────────────────────────
-
 function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: any }) {
   const [platformFee, setPlatformFee] = useState(stats.platformFee);
-  const [saving, setSaving]           = useState(false);
-
+  const [saving, setSaving] = useState(false);
   const save = async () => {
     setSaving(true);
     try {
@@ -2089,114 +1765,30 @@ function AdminSettings({ stats, setStats }: { stats: DashboardStats; setStats: a
       toast.success("Settings saved");
     } finally { setSaving(false); }
   };
-
   return (
     <div className="space-y-4">
       <div className="bg-white border-2 border-[#1D1D1D] p-5 rounded-xl">
-        <h4 className="font-black text-base uppercase tracking-tight mb-4 flex items-center gap-2">
-          <Settings className="w-4 h-4 text-[#389C9A]" /> Platform Settings
-        </h4>
-        <div className="mb-4">
-          <label className="block text-[10px] font-black uppercase tracking-widest mb-2 opacity-50">Platform Fee (%)</label>
-          <input type="number" value={platformFee} onChange={e => setPlatformFee(parseInt(e.target.value))}
-            min="0" max="100"
-            className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl" />
-          <p className="text-[9px] text-gray-400 mt-1">Percentage taken from each transaction</p>
-        </div>
-        <button onClick={save} disabled={saving}
-          className="w-full bg-[#1D1D1D] text-white px-6 py-4 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl disabled:opacity-50 flex items-center justify-center gap-2">
-          {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Settings"}
-        </button>
+        <h4 className="font-black text-base uppercase tracking-tight mb-4 flex items-center gap-2"><Settings className="w-4 h-4 text-[#389C9A]" /> Platform Settings</h4>
+        <div className="mb-4"><label className="block text-[10px] font-black uppercase tracking-widest mb-2 opacity-50">Platform Fee (%)</label><input type="number" value={platformFee} onChange={e => setPlatformFee(parseInt(e.target.value))} min="0" max="100" className="w-full p-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none transition-colors rounded-xl" /><p className="text-[9px] text-gray-400 mt-1">Percentage taken from each transaction</p></div>
+        <button onClick={save} disabled={saving} className="w-full bg-[#1D1D1D] text-white px-6 py-4 text-xs font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-xl disabled:opacity-50 flex items-center justify-center gap-2">{saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Settings"}</button>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// MODALS
-// ─────────────────────────────────────────────
-
 function CreatorDetailModal({ creator, onClose }: { creator: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <motion.div
-        initial={{ opacity: 0, y: "100%" }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: "100%" }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
-        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center">
-          <h3 className="font-black uppercase tracking-tight text-lg">Creator Details</h3>
-          <button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg"><X className="w-5 h-5" /></button>
-        </div>
+      <motion.div initial={{ opacity: 0, y: "100%" }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
+        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center"><h3 className="font-black uppercase tracking-tight text-lg">Creator Details</h3><button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg"><X className="w-5 h-5" /></button></div>
         <div className="p-5 space-y-5">
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] rounded-xl overflow-hidden flex items-center justify-center">
-              {creator.avatar_url
-                ? <img src={creator.avatar_url} alt={creator.full_name} className="w-full h-full object-cover" />
-                : <User className="w-8 h-8 text-gray-400" />}
-            </div>
-            <div>
-              <h2 className="text-xl font-black uppercase tracking-tight">{creator.full_name || creator.username || "Unknown"}</h2>
-              <p className="text-sm text-gray-500">{creator.email}</p>
-              <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full mt-1 inline-block ${
-                creator.status === "active" ? "bg-green-100 text-green-700" :
-                creator.status === "suspended" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-              }`}>{creator.status}</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: "Joined",      value: creator.created_at ? new Date(creator.created_at).toLocaleDateString() : "—" },
-              { label: "Location",    value: creator.location || "—" },
-              { label: "Avg Viewers", value: creator.avg_viewers || creator.avg_concurrent || 0 },
-              { label: "Rating",      value: creator.rating || "—" },
-            ].map(item => (
-              <div key={item.label} className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl">
-                <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p>
-                <p className="text-sm font-bold">{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Show full payment account */}
-          {creator.payment_method && (
-            <div className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl">
-              <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">Payment Details</p>
-              <p className="text-sm font-bold">
-                {creator.payment_method} – {creator.payment_account || "No account set"}
-              </p>
-            </div>
-          )}
-
-          {creator.bio && (
-            <div>
-              <h4 className="font-black text-xs mb-2 uppercase tracking-widest opacity-50">Bio</h4>
-              <p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{creator.bio}</p>
-            </div>
-          )}
-
-          {creator.niche?.length > 0 && (
-            <div>
-              <h4 className="font-black text-xs mb-2 uppercase tracking-widest opacity-50">Niches</h4>
-              <div className="flex flex-wrap gap-2">
-                {creator.niche.map((n: string) => (
-                  <span key={n} className="text-[8px] font-black uppercase bg-[#F8F8F8] px-2 py-1 rounded-full">{n}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {creator.verification_document_url && (
-            <a href={creator.verification_document_url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2 text-[#389C9A] text-sm font-black hover:underline">
-              <Eye className="w-4 h-4" /> View Verification Document
-            </a>
-          )}
-
-          <button onClick={onClose}
-            className="w-full border-2 border-[#1D1D1D] py-3 text-xs font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-xl">
-            Close
-          </button>
+          <div className="flex items-center gap-4"><div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] rounded-xl overflow-hidden flex items-center justify-center">{creator.avatar_url ? <img src={creator.avatar_url} alt={creator.full_name} className="w-full h-full object-cover" /> : <User className="w-8 h-8 text-gray-400" />}</div><div><h2 className="text-xl font-black uppercase tracking-tight">{creator.full_name || creator.username || "Unknown"}</h2><p className="text-sm text-gray-500">{creator.email}</p><span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full mt-1 inline-block ${creator.status === "active" ? "bg-green-100 text-green-700" : creator.status === "suspended" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>{creator.status}</span></div></div>
+          <div className="grid grid-cols-2 gap-3">{[{ label: "Joined", value: creator.created_at ? new Date(creator.created_at).toLocaleDateString() : "—" },{ label: "Location", value: creator.location || "—" },{ label: "Avg Viewers", value: creator.avg_viewers || creator.avg_concurrent || 0 },{ label: "Rating", value: creator.rating || "—" }].map(item => (<div key={item.label} className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl"><p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p><p className="text-sm font-bold">{item.value}</p></div>))}</div>
+          {creator.payment_method && (<div className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl"><p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">Payment Details</p><p className="text-sm font-bold">{creator.payment_method} – {creator.payment_account || "No account set"}</p></div>)}
+          {creator.bio && (<div><h4 className="font-black text-xs mb-2 uppercase tracking-widest opacity-50">Bio</h4><p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{creator.bio}</p></div>)}
+          {creator.niche?.length > 0 && (<div><h4 className="font-black text-xs mb-2 uppercase tracking-widest opacity-50">Niches</h4><div className="flex flex-wrap gap-2">{creator.niche.map((n: string) => <span key={n} className="text-[8px] font-black uppercase bg-[#F8F8F8] px-2 py-1 rounded-full">{n}</span>)}</div></div>)}
+          {creator.verification_document_url && (<a href={creator.verification_document_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[#389C9A] text-sm font-black hover:underline"><Eye className="w-4 h-4" /> View Verification Document</a>)}
+          <button onClick={onClose} className="w-full border-2 border-[#1D1D1D] py-3 text-xs font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-xl">Close</button>
         </div>
       </motion.div>
     </div>
@@ -2206,54 +1798,13 @@ function CreatorDetailModal({ creator, onClose }: { creator: any; onClose: () =>
 function BusinessDetailModal({ business, onClose }: { business: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <motion.div
-        initial={{ opacity: 0, y: "100%" }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: "100%" }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
-        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center">
-          <h3 className="font-black uppercase tracking-tight text-lg">Business Details</h3>
-          <button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg"><X className="w-5 h-5" /></button>
-        </div>
+      <motion.div initial={{ opacity: 0, y: "100%" }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="bg-white border-2 border-[#1D1D1D] w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl">
+        <div className="sticky top-0 bg-white border-b border-[#1D1D1D]/10 px-5 py-4 flex justify-between items-center"><h3 className="font-black uppercase tracking-tight text-lg">Business Details</h3><button onClick={onClose} className="p-2 hover:bg-[#F8F8F8] rounded-lg"><X className="w-5 h-5" /></button></div>
         <div className="p-5 space-y-5">
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] rounded-xl overflow-hidden flex items-center justify-center">
-              {business.logo_url
-                ? <img src={business.logo_url} alt={business.business_name} className="w-full h-full object-cover" />
-                : <Building2 className="w-8 h-8 text-gray-400" />}
-            </div>
-            <div>
-              <h2 className="text-xl font-black uppercase tracking-tight">{business.business_name || "Unknown"}</h2>
-              <p className="text-sm text-gray-500">{business.email}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: "Contact",  value: business.full_name || "—" },
-              { label: "Phone",    value: business.phone_number || "—" },
-              { label: "Industry", value: business.industry || "—" },
-              { label: "Location", value: [business.city, business.country].filter(Boolean).join(", ") || "—" },
-              { label: "Website",  value: business.website || "—" },
-              { label: "Joined",   value: business.created_at ? new Date(business.created_at).toLocaleDateString() : "—" },
-            ].map(item => (
-              <div key={item.label} className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl">
-                <p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p>
-                <p className="text-sm font-bold truncate">{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {business.description && (
-            <div>
-              <h4 className="font-black text-xs mb-2 uppercase tracking-widest opacity-50">About</h4>
-              <p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{business.description}</p>
-            </div>
-          )}
-
-          <button onClick={onClose}
-            className="w-full border-2 border-[#1D1D1D] py-3 text-xs font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-xl">
-            Close
-          </button>
+          <div className="flex items-center gap-4"><div className="w-20 h-20 border-2 border-[#1D1D1D] bg-[#F8F8F8] rounded-xl overflow-hidden flex items-center justify-center">{business.logo_url ? <img src={business.logo_url} alt={business.business_name} className="w-full h-full object-cover" /> : <Building2 className="w-8 h-8 text-gray-400" />}</div><div><h2 className="text-xl font-black uppercase tracking-tight">{business.business_name || "Unknown"}</h2><p className="text-sm text-gray-500">{business.email}</p></div></div>
+          <div className="grid grid-cols-2 gap-3">{[{ label: "Contact", value: business.full_name || "—" },{ label: "Phone", value: business.phone_number || "—" },{ label: "Industry", value: business.industry || "—" },{ label: "Location", value: [business.city, business.country].filter(Boolean).join(", ") || "—" },{ label: "Website", value: business.website || "—" },{ label: "Joined", value: business.created_at ? new Date(business.created_at).toLocaleDateString() : "—" }].map(item => (<div key={item.label} className="border-2 border-[#1D1D1D]/10 p-3 rounded-xl"><p className="text-[8px] uppercase tracking-widest opacity-50 mb-1">{item.label}</p><p className="text-sm font-bold truncate">{item.value}</p></div>))}</div>
+          {business.description && (<div><h4 className="font-black text-xs mb-2 uppercase tracking-widest opacity-50">About</h4><p className="text-sm text-gray-700 bg-[#F8F8F8] p-4 rounded-xl">{business.description}</p></div>)}
+          <button onClick={onClose} className="w-full border-2 border-[#1D1D1D] py-3 text-xs font-black uppercase tracking-widest hover:bg-[#1D1D1D] hover:text-white transition-colors rounded-xl">Close</button>
         </div>
       </motion.div>
     </div>
