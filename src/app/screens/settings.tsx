@@ -7,6 +7,7 @@ import {
   Bell, DollarSign, Users, Star, Award, ArrowLeft,
   MapPin, Phone, AtSign, Briefcase, Building2, Camera,
   Save, Eye, EyeOff, ChevronRight, Lock, Pause, Trash2,
+  CreditCard, // added for payment icon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../lib/contexts/AuthContext";
@@ -401,6 +402,9 @@ export function Settings() {
   const [creatorId, setCreatorId]           = useState<string | null>(null);
   const [creatorForm, setCreatorForm]       = useState({
     full_name: "", username: "", phone_number: "", location: "", bio: "", niche: [] as string[],
+    // NEW payment fields
+    payment_method: "",   // e.g., "Bank Transfer", "PayPal"
+    payment_account: "",  // bank account number or PayPal email
   });
   const [platforms, setPlatforms]           = useState<any[]>([]);
   const [editingPlatforms, setEditingPlatforms] = useState(false);
@@ -424,7 +428,6 @@ export function Settings() {
 
     const detect = async () => {
       try {
-        // Check metadata first (faster)
         const meta = user.user_metadata || {};
         if (meta.user_type === "business" || meta.role === "business") {
           setUserType("business");
@@ -476,6 +479,9 @@ export function Settings() {
       location:     data.location     || "",
       bio:          data.bio          || "",
       niche:        data.niche        || [],
+      // load payment fields
+      payment_method: data.payment_method || "",
+      payment_account: data.payment_account || "",
     });
     const { data: plats } = await supabase.from("creator_platforms").select("*").eq("creator_id", data.id);
     if (plats) setPlatforms(plats);
@@ -715,6 +721,54 @@ export function Settings() {
               </div>
               <p className="text-[8px] text-[#1D1D1D]/40 mt-2">Select up to 5 niches</p>
             </Field>
+
+            {/* NEW: Payment Details Section */}
+            <div className="border-t border-[#1D1D1D]/10 pt-6">
+              <SectionTitle>Payment Details</SectionTitle>
+
+              <Field label="Payment Method">
+                <select
+                  value={creatorForm.payment_method}
+                  onChange={e => setCreatorForm({ ...creatorForm, payment_method: e.target.value })}
+                  className={`${inputCls} bg-white`}
+                >
+                  <option value="">Select payment method</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="PayPal">PayPal</option>
+                </select>
+              </Field>
+
+              <Field label="Payment Account">
+                {creatorForm.payment_method === "PayPal" ? (
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#389C9A]" />
+                    <input
+                      type="email"
+                      value={creatorForm.payment_account}
+                      onChange={e => setCreatorForm({ ...creatorForm, payment_account: e.target.value })}
+                      placeholder="your-email@paypal.com"
+                      className={iconInputCls}
+                    />
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#389C9A]" />
+                    <input
+                      type="text"
+                      value={creatorForm.payment_account}
+                      onChange={e => setCreatorForm({ ...creatorForm, payment_account: e.target.value })}
+                      placeholder="Bank Account Number"
+                      className={iconInputCls}
+                    />
+                  </div>
+                )}
+                <p className="text-[8px] text-[#1D1D1D]/40 mt-1">
+                  {creatorForm.payment_method === "PayPal"
+                    ? "Your PayPal email address."
+                    : "Your bank account number where payments will be sent."}
+                </p>
+              </Field>
+            </div>
           </div>
         )}
 
