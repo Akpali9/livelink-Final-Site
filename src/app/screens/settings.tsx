@@ -7,7 +7,7 @@ import {
   Bell, DollarSign, Users, Star, Award, ArrowLeft,
   MapPin, Phone, AtSign, Briefcase, Building2, Camera,
   Save, Eye, EyeOff, ChevronRight, Lock, Pause, Trash2,
-  CreditCard, // added for payment icon
+  CreditCard,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../lib/contexts/AuthContext";
@@ -402,8 +402,7 @@ export function Settings() {
   const [creatorId, setCreatorId]           = useState<string | null>(null);
   const [creatorForm, setCreatorForm]       = useState({
     full_name: "", username: "", phone_number: "", location: "", bio: "", niche: [] as string[],
-    // NEW payment fields
-    payment_method: "",   // e.g., "Bank Transfer", "PayPal"
+    payment_method: "",   // "Bank Transfer" or "PayPal"
     payment_account: "",  // bank account number or PayPal email
   });
   const [platforms, setPlatforms]           = useState<any[]>([]);
@@ -479,7 +478,6 @@ export function Settings() {
       location:     data.location     || "",
       bio:          data.bio          || "",
       niche:        data.niche        || [],
-      // load payment fields
       payment_method: data.payment_method || "",
       payment_account: data.payment_account || "",
     });
@@ -550,11 +548,13 @@ export function Settings() {
       }
       setEditingPlatforms(false);
       toast.success("Platforms saved");
-    } catch { toast.error("Failed to save platforms"); }
-    finally { setSaving(false); }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to save platforms");
+    } finally { setSaving(false); }
   };
 
-  // ── Save all ───────────────────────────────────────────────────────────────
+  // ── Save all (including payment details) ───────────────────────────────────
   const handleSaveAll = async () => {
     if (!user) return;
     setSaving(true);
@@ -562,25 +562,44 @@ export function Settings() {
       const avatarUrl = avatarFile ? await uploadAvatar() : null;
 
       if (userType === "creator" && creatorId) {
-        const { error } = await supabase.from("creator_profiles").update({
-          ...creatorForm,
-          ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
+        // Ensure payment fields are included in the update
+        const updateData = {
+          full_name: creatorForm.full_name,
+          username: creatorForm.username,
+          phone_number: creatorForm.phone_number,
+          location: creatorForm.location,
+          bio: creatorForm.bio,
+          niche: creatorForm.niche,
+          payment_method: creatorForm.payment_method,
+          payment_account: creatorForm.payment_account,
           updated_at: new Date().toISOString(),
-        }).eq("id", creatorId);
+          ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
+        };
+        console.log("Updating creator with:", updateData);
+        const { error } = await supabase
+          .from("creator_profiles")
+          .update(updateData)
+          .eq("id", creatorId);
         if (error) throw error;
         toast.success("Creator profile saved!");
       } else if (userType === "business" && businessId) {
-        const { error } = await supabase.from("businesses").update({
+        const updateData = {
           ...businessForm,
           ...(avatarUrl ? { logo_url: avatarUrl } : {}),
           updated_at: new Date().toISOString(),
-        }).eq("id", businessId);
+        };
+        const { error } = await supabase
+          .from("businesses")
+          .update(updateData)
+          .eq("id", businessId);
         if (error) throw error;
         toast.success("Business profile saved!");
       } else {
         toast.error("No profile found to save");
+        return;
       }
 
+      // Save notification preferences
       await supabase.auth.updateUser({
         data: { notification_preferences: notifs },
       });
@@ -588,9 +607,9 @@ export function Settings() {
       setAvatarFile(null);
       setAvatarPreview(null);
       toast.success("All settings saved!");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to save settings");
+    } catch (err: any) {
+      console.error("Save error:", err);
+      toast.error(err.message || "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -722,7 +741,7 @@ export function Settings() {
               <p className="text-[8px] text-[#1D1D1D]/40 mt-2">Select up to 5 niches</p>
             </Field>
 
-            {/* NEW: Payment Details Section */}
+            {/* Payment Details Section */}
             <div className="border-t border-[#1D1D1D]/10 pt-6">
               <SectionTitle>Payment Details</SectionTitle>
 
