@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router";
 import {
   ArrowUpRight, Inbox, Clock, CheckCircle2, Check, X,
   ChevronDown, ChevronUp, Wallet, User, List, Monitor,
-  RefreshCw, Star, Award, Users
+  RefreshCw, Star, Award, Users, Calendar, Briefcase
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast, Toaster } from "sonner";
@@ -15,7 +15,7 @@ import { AppHeader } from "../components/app-header";
 import { DeclineOfferModal } from "../components/decline-offer-modal";
 
 // ─────────────────────────────────────────────
-// INTERFACES
+// INTERFACES (unchanged)
 // ─────────────────────────────────────────────
 
 interface IncomingRequest {
@@ -98,7 +98,7 @@ export function Dashboard() {
   const [applications, setApplications]         = useState<Application[]>([]);
   const [creatorProfile, setCreatorProfile]     = useState<any>(null);
 
-  // ─── HELPERS ──────────────────────────────────────────────────────────────
+  // ─── HELPERS (unchanged) ──────────────────────────────────────────────────
 
   const formatStreamTime = (completed: number): string => {
     const totalMins = completed * 45;
@@ -116,7 +116,7 @@ export function Dashboard() {
     return date.toLocaleDateString();
   };
 
-  // ─── FETCH FUNCTIONS ──────────────────────────────────────────────────────
+  // ─── FETCH FUNCTIONS (unchanged) ─────────────────────────────────────────
 
   const fetchDashboardStats = async (cid: string) => {
     try {
@@ -270,7 +270,7 @@ export function Dashboard() {
     }
   };
 
-  // ─── BOOT ─────────────────────────────────────────────────────────────────
+  // ─── BOOT (unchanged) ─────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!user) return;
@@ -310,7 +310,7 @@ export function Dashboard() {
     boot();
   }, [user]);
 
-  // ─── REALTIME ─────────────────────────────────────────────────────────────
+  // ─── REALTIME (unchanged) ─────────────────────────────────────────────────
 
   useEffect(() => {
     if (!creatorProfile?.id) return;
@@ -331,7 +331,7 @@ export function Dashboard() {
     return () => { sub.unsubscribe(); };
   }, [creatorProfile?.id]);
 
-  // ─── ACCEPT / DECLINE ─────────────────────────────────────────────────────
+  // ─── ACCEPT / DECLINE (unchanged) ─────────────────────────────────────────
 
   const handleAcceptOffer = async (req: IncomingRequest) => {
     try {
@@ -418,7 +418,7 @@ export function Dashboard() {
     );
   }
 
-  // ─── RENDER ───────────────────────────────────────────────────────────────
+  // ─── RENDER (with improved UI) ────────────────────────────────────────────
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
@@ -427,7 +427,7 @@ export function Dashboard() {
 
       <main className="max-w-[480px] mx-auto w-full">
 
-        {/* Earnings Card */}
+        {/* Earnings Card (unchanged) */}
         <div className="p-6" ref={earningsRef}>
           <div className="bg-[#1D1D1D] p-8 text-white border-2 border-[#1D1D1D]">
             <div className="flex justify-between mb-2">
@@ -475,7 +475,7 @@ export function Dashboard() {
           </Link>
         </div>
 
-        {/* Status Cards */}
+        {/* Status Cards (unchanged) */}
         <div className="px-6 pb-8 grid grid-cols-3 gap-2">
           {[
             { label: "Requests", value: stats.requestedCount },
@@ -489,39 +489,92 @@ export function Dashboard() {
           ))}
         </div>
 
-        {/* Incoming Requests */}
+        {/* ── INCOMING REQUESTS (Redesigned) ── */}
         <div className="px-6 pb-10">
-          <h3 className="text-xs mb-4">Incoming Requests</h3>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">
+              Incoming Requests
+            </h3>
+            {incomingRequests.length > 2 && (
+              <button
+                onClick={() => setRequestsExpanded(!requestsExpanded)}
+                className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1"
+              >
+                {requestsExpanded ? "Show Less" : `Show All (${incomingRequests.length})`}
+                {requestsExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+            )}
+          </div>
 
-          {(requestsExpanded ? incomingRequests : incomingRequests.slice(0, 2)).map(req => (
-            <div key={req.id} className="border p-4 mb-3">
-              <div className="flex justify-between">
-                <div>
-                  <p className="font-bold">{req.business}</p>
-                  <p className="text-xs opacity-50">{req.name}</p>
-                </div>
-                <p className="font-bold text-[#389C9A]">₦{req.price}</p>
-              </div>
-
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={() => handleAcceptOffer(req)}
-                  className="flex-1 bg-black text-white py-2"
-                >
-                  Accept
-                </button>
-                <button
-                  onClick={() => handleDeclineClick(req)}
-                  className="flex-1 border py-2"
-                >
-                  Reject
-                </button>
-              </div>
+          {incomingRequests.length === 0 ? (
+            <div className="bg-white border-2 border-[#1D1D1D]/10 p-12 text-center">
+              <Inbox className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-[10px] text-gray-400">No incoming requests</p>
             </div>
-          ))}
+          ) : (
+            <div className="space-y-4">
+              {(requestsExpanded ? incomingRequests : incomingRequests.slice(0, 2)).map(req => (
+                <div key={req.id} className="bg-white border-2 border-[#1D1D1D] p-5 flex flex-col gap-4 group transition-all hover:shadow-md">
+                  {/* Header with logo and business name */}
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 border-2 border-[#1D1D1D]/10 bg-[#F8F8F8] rounded-lg overflow-hidden shrink-0">
+                      <ImageWithFallback
+                        src={req.logo}
+                        alt={req.business}
+                        className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-sm uppercase tracking-tight leading-tight">
+                        {req.business}
+                      </h4>
+                      <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest mt-0.5">
+                        {req.name}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black text-lg text-[#389C9A] tracking-tight">
+                        ₦{req.price.toFixed(2)}
+                      </p>
+                      <p className="text-[8px] text-gray-400">
+                        {req.streams} streams
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Campaign type and deadline */}
+                  <div className="flex items-center gap-3 text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40">
+                    <span className="flex items-center gap-1">
+                      <Briefcase className="w-3 h-3" /> {req.type}
+                    </span>
+                    <span className="w-1 h-1 bg-[#1D1D1D]/20 rounded-full" />
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> {formatDate(req.created_at)}
+                    </span>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-2 border-t border-[#1D1D1D]/10">
+                    <button
+                      onClick={() => handleAcceptOffer(req)}
+                      className="flex-1 bg-[#1D1D1D] text-white py-2.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-colors rounded-none flex items-center justify-center gap-1"
+                    >
+                      <CheckCircle2 className="w-3 h-3" /> Accept
+                    </button>
+                    <button
+                      onClick={() => handleDeclineClick(req)}
+                      className="flex-1 border-2 border-[#1D1D1D]/20 text-[#1D1D1D] py-2.5 text-[9px] font-black uppercase tracking-widest hover:bg-red-50 hover:border-red-300 transition-colors rounded-none flex items-center justify-center gap-1"
+                    >
+                      <X className="w-3 h-3" /> Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* ── Live Now (File 2 UI) ── */}
+        {/* ── LIVE NOW (unchanged) ── */}
         <div className="px-6 pb-12">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">Live Now</h3>
@@ -533,7 +586,6 @@ export function Dashboard() {
 
           {liveCampaign ? (
             <div className="bg-[#1D1D1D] p-6 flex flex-col gap-6 relative overflow-hidden border-2 border-[#1D1D1D]">
-              {/* Business + earnings row */}
               <div className="flex items-center gap-6 relative z-10">
                 <ImageWithFallback
                   src={liveCampaign.logo}
@@ -557,8 +609,6 @@ export function Dashboard() {
                   </p>
                 </div>
               </div>
-
-              {/* Progress bar */}
               <div className="space-y-2 relative z-10">
                 <div className="h-1 bg-white/10 w-full overflow-hidden">
                   <div
@@ -570,8 +620,6 @@ export function Dashboard() {
                   {liveCampaign.remainingMins} mins to qualify
                 </p>
               </div>
-
-              {/* Update link */}
               <div className="pt-4 border-t border-white/10 flex justify-end relative z-10">
                 <Link
                   to={`/campaign/live-update/${liveCampaign.campaign_id}`}
@@ -597,19 +645,82 @@ export function Dashboard() {
           )}
         </div>
 
-        {/* Applications */}
+        {/* ── MY APPLICATIONS (Redesigned) ── */}
         <div className="px-6 pb-20">
-          <h3 className="text-xs mb-4">My Applications</h3>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#1D1D1D]/40">
+              My Applications
+            </h3>
+            {applications.length > 3 && (
+              <button
+                onClick={() => setApplicationsExpanded(!applicationsExpanded)}
+                className="text-[9px] font-black uppercase tracking-widest text-[#389C9A] hover:underline flex items-center gap-1"
+              >
+                {applicationsExpanded ? "Show Less" : `Show All (${applications.length})`}
+                {applicationsExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+            )}
+          </div>
 
-          {(applicationsExpanded ? applications : applications.slice(0, 3)).map(app => (
-            <div key={app.id} className="border p-3 mb-2 flex justify-between">
-              <div>
-                <p className="font-bold text-xs">{app.business}</p>
-                <p className="text-[10px] opacity-40">{app.status}</p>
-              </div>
-              {app.amount && <p className="text-[#389C9A]">₦{app.amount}</p>}
+          {applications.length === 0 ? (
+            <div className="bg-white border-2 border-[#1D1D1D]/10 p-12 text-center">
+              <Clock className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-[10px] text-gray-400">No applications yet</p>
             </div>
-          ))}
+          ) : (
+            <div className="space-y-4">
+              {(applicationsExpanded ? applications : applications.slice(0, 3)).map(app => {
+                const statusClass = app.status === "active"
+                  ? "bg-[#389C9A]/10 text-[#389C9A]"
+                  : app.status === "completed"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-yellow-100 text-yellow-700";
+                return (
+                  <div key={app.id} className="bg-white border-2 border-[#1D1D1D] p-5 flex flex-col gap-3 group hover:shadow-md transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 border-2 border-[#1D1D1D]/10 bg-[#F8F8F8] rounded-lg overflow-hidden shrink-0">
+                        <ImageWithFallback
+                          src={app.logo}
+                          alt={app.business}
+                          className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-black text-sm uppercase tracking-tight leading-tight">
+                          {app.business}
+                        </h4>
+                        <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest mt-0.5">
+                          {app.type}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        {app.amount && (
+                          <p className="font-black text-lg text-[#389C9A] tracking-tight">
+                            ₦{app.amount.toFixed(2)}
+                          </p>
+                        )}
+                        <span className={`inline-block mt-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${statusClass}`}>
+                          {app.status}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 text-[8px] font-black uppercase tracking-widest text-[#1D1D1D]/40">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" /> Applied {app.appliedAt}
+                      </span>
+                    </div>
+                    {app.status === "pending" && (
+                      <div className="pt-2 border-t border-[#1D1D1D]/10">
+                        <p className="text-[8px] text-gray-400 italic">
+                          Awaiting business decision
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
       </main>
