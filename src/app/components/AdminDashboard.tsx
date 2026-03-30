@@ -2659,7 +2659,8 @@ function AdminTransactions() {
                     <p className="text-[10px] text-gray-500">{business.email}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-gray-100">{business.payment_method || "Card"}</span>
-                      <span className="text-[9px] font-mono">{business.payment_account ? `**** ${business.payment_account.slice(-4)}` : "No card"}</span>
+                      {/* FIXED: show full payment account, no masking */}
+                      <span className="text-[9px] font-mono">{business.payment_account || "No card"}</span>
                     </div>
                   </div>
                 </div>
@@ -2682,7 +2683,7 @@ function AdminTransactions() {
         )}
       </div>
 
-      {/* Modal for full details */}
+      {/* Modal for full details (already shows full payment account) */}
       <AnimatePresence>
         {showModal && selectedItem && (
           <>
@@ -2748,7 +2749,7 @@ function AdminTransactions() {
                   </div>
                   <div className="mb-4 p-3 bg-gray-50 rounded-xl">
                     <p className="text-[8px] font-black uppercase opacity-40 mb-1">Payment Details</p>
-                    <p className="font-mono text-sm font-bold">{selectedItem.data.payment_method || "Card"} – {selectedItem.data.payment_account ? `**** ${selectedItem.data.payment_account.slice(-4)}` : "No card on file"}</p>
+                    <p className="font-mono text-sm font-bold">{selectedItem.data.payment_method || "Card"} – {selectedItem.data.payment_account || "No card on file"}</p>
                   </div>
                   <div className="mb-4">
                     <p className="text-[8px] font-black uppercase opacity-40 mb-1">Description</p>
@@ -2797,7 +2798,6 @@ function AdminTransactions() {
     </div>
   );
 }
-
 // ─────────────────────────────────────────────
 // SETTINGS
 // ─────────────────────────────────────────────
