@@ -246,18 +246,24 @@ export function BusinessCampaignOverview() {
 
       if (error) throw error;
 
-      // Notify creator
+      // ─── FIX: Non‑critical notification – use IIFE to avoid .catch error ───
       if (creatorUserId) {
-        await supabase.from("notifications").insert({
-          user_id: creatorUserId,
-          type: newStatus === "active" ? "campaign_accepted" : "campaign_rejected",
-          title: newStatus === "active" ? "Campaign Invitation Accepted ✅" : "Campaign Application Rejected",
-          message: newStatus === "active"
-            ? `Your application for campaign "${campaign?.name}" has been approved!`
-            : `Your application for campaign "${campaign?.name}" was not accepted.`,
-          data: { campaign_id: campaign?.id },
-          created_at: new Date().toISOString(),
-        }).catch(console.error);
+        (async () => {
+          try {
+            await supabase.from("notifications").insert({
+              user_id: creatorUserId,
+              type: newStatus === "active" ? "campaign_accepted" : "campaign_rejected",
+              title: newStatus === "active" ? "Campaign Invitation Accepted ✅" : "Campaign Application Rejected",
+              message: newStatus === "active"
+                ? `Your application for campaign "${campaign?.name}" has been approved!`
+                : `Your application for campaign "${campaign?.name}" was not accepted.`,
+              data: { campaign_id: campaign?.id },
+              created_at: new Date().toISOString(),
+            });
+          } catch (err) {
+            console.error("Notification failed:", err);
+          }
+        })();
       }
 
       toast.success(`Creator ${newStatus === "active" ? "approved" : "rejected"}!`);
