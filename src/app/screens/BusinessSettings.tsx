@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import {
   Mail, HelpCircle, FileText, Shield, User, Globe,
   Twitch, Youtube, Instagram, Twitter, Facebook,
-  Plus, X, CheckCircle2, AlertCircle, Loader2, LogOut,
+  Plus, Pencil, X, CheckCircle2, AlertCircle, Loader2, LogOut,
   Bell, DollarSign, Users, Star, Award, ArrowLeft,
   MapPin, Phone, AtSign, Briefcase, Building2, Camera,
   Save, Eye, EyeOff, ChevronRight, Lock, Pause, Trash2,
