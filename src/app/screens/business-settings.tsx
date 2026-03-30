@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import {
-  Mail, HelpCircle, FileText, Shield, User, Globe,
+  Mail, HelpCircle, FileText, Shield, User, Globe,Pencil,
   Twitch, Youtube, Instagram, Twitter, Facebook,
   Plus, X, CheckCircle2, AlertCircle, Loader2, LogOut,
   Bell, DollarSign, Users, Star, Award, ArrowLeft,
