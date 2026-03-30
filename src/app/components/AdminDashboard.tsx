@@ -1707,7 +1707,7 @@ function AdminCampaigns({ campaigns, selectedItems, onToggleSelect, onToggleSele
 }
 
 // ─────────────────────────────────────────────
-// MESSAGES TAB (full implementation)
+// MESSAGES TAB (with broadcast feature)
 // ─────────────────────────────────────────────
 
 function AdminMessages({ adminUser }: { adminUser: any }) {
@@ -1726,6 +1726,13 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
   const [attachments, setAttachments]                   = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
+
+  // Broadcast state
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTarget, setBroadcastTarget] = useState<"creators" | "businesses" | "both">("creators");
+  const [broadcastTitle, setBroadcastTitle] = useState("");
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [broadcasting, setBroadcasting] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1919,6 +1926,70 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
     }
   };
 
+  // ── Broadcast helpers ──
+  const fetchAllUsersByType = async (type: "creator" | "business") => {
+    if (type === "creator") {
+      const { data } = await supabase
+        .from("creator_profiles")
+        .select("user_id, full_name");
+      return data?.map(p => p.user_id).filter(Boolean) || [];
+    } else {
+      const { data } = await supabase
+        .from("businesses")
+        .select("user_id, business_name");
+      return data?.map(b => b.user_id).filter(Boolean) || [];
+    }
+  };
+
+  const sendBroadcast = async () => {
+    if (!broadcastMessage.trim() || !broadcastTitle.trim()) {
+      toast.error("Please fill in both title and message");
+      return;
+    }
+    setBroadcasting(true);
+    try {
+      let targetUserIds: string[] = [];
+      if (broadcastTarget === "creators" || broadcastTarget === "both") {
+        targetUserIds = [...targetUserIds, ...await fetchAllUsersByType("creator")];
+      }
+      if (broadcastTarget === "businesses" || broadcastTarget === "both") {
+        targetUserIds = [...targetUserIds, ...await fetchAllUsersByType("business")];
+      }
+      targetUserIds = [...new Set(targetUserIds)];
+
+      if (targetUserIds.length === 0) {
+        toast.error("No users found for the selected audience");
+        return;
+      }
+
+      const notifications = targetUserIds.map(userId => ({
+        user_id: userId,
+        type: "broadcast",
+        title: broadcastTitle.trim(),
+        message: broadcastMessage.trim(),
+        data: { sender: "admin", broadcast: true },
+        created_at: new Date().toISOString(),
+      }));
+
+      const batchSize = 200;
+      for (let i = 0; i < notifications.length; i += batchSize) {
+        const batch = notifications.slice(i, i + batchSize);
+        const { error } = await supabase.from("notifications").insert(batch);
+        if (error) throw error;
+      }
+
+      toast.success(`Broadcast sent to ${targetUserIds.length} users!`);
+      setShowBroadcastModal(false);
+      setBroadcastMessage("");
+      setBroadcastTitle("");
+    } catch (err: any) {
+      console.error("Broadcast error:", err);
+      toast.error(`Failed: ${err.message}`);
+    } finally {
+      setBroadcasting(false);
+    }
+  };
+
   const formatTime = (ts: string) => {
     if (!ts) return "";
     const diff = Date.now() - new Date(ts).getTime();
@@ -1953,10 +2024,21 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
               <h3 className="font-black uppercase tracking-tight text-sm flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-[#389C9A]" /> Messages
               </h3>
-              <button onClick={() => setShowUserSearch(true)}
-                className="p-2 bg-[#1D1D1D] text-white rounded-lg hover:bg-[#389C9A] transition-colors">
-                <Plus className="w-4 h-4" />
-              </button>
+              <div className="flex gap-2">
+                {/* Broadcast button */}
+                <button
+                  onClick={() => setShowBroadcastModal(true)}
+                  className="px-3 py-1.5 bg-[#389C9A] text-white text-[9px] font-black uppercase rounded-lg hover:bg-[#2d7f7d] transition-colors flex items-center gap-1"
+                >
+                  <Send className="w-3 h-3" /> Broadcast
+                </button>
+                <button
+                  onClick={() => setShowUserSearch(true)}
+                  className="p-2 bg-[#1D1D1D] text-white rounded-lg hover:bg-[#389C9A] transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
             </div>
             <div className="relative mb-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -2160,6 +2242,7 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
         </div>
       </div>
 
+      {/* New Message Modal */}
       <AnimatePresence>
         {showUserSearch && (
           <>
@@ -2215,6 +2298,106 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
                     <p className="text-sm text-gray-400">Start typing to search</p>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Broadcast Modal */}
+      <AnimatePresence>
+        {showBroadcastModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm"
+              onClick={() => !broadcasting && setShowBroadcastModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-lg bg-white p-6 z-50 rounded-2xl shadow-2xl border-2 border-[#1D1D1D]"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-black uppercase tracking-tighter italic">Send Broadcast</h3>
+                <button onClick={() => setShowBroadcastModal(false)} disabled={broadcasting}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-40">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[9px] font-black uppercase tracking-widest mb-2 opacity-50">
+                    Audience
+                  </label>
+                  <div className="flex gap-2">
+                    {(["creators", "businesses", "both"] as const).map(opt => (
+                      <button
+                        key={opt}
+                        onClick={() => setBroadcastTarget(opt)}
+                        className={`flex-1 py-2 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors ${
+                          broadcastTarget === opt
+                            ? "bg-[#1D1D1D] text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {opt === "creators" ? "Creators" : opt === "businesses" ? "Businesses" : "Both"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-black uppercase tracking-widest mb-2 opacity-50">
+                    Title
+                  </label>
+                  <input
+                    type="text"
+                    value={broadcastTitle}
+                    onChange={e => setBroadcastTitle(e.target.value)}
+                    placeholder="e.g., Important Announcement"
+                    className="w-full px-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-black uppercase tracking-widest mb-2 opacity-50">
+                    Message
+                  </label>
+                  <textarea
+                    value={broadcastMessage}
+                    onChange={e => setBroadcastMessage(e.target.value)}
+                    rows={5}
+                    placeholder="Type your message here..."
+                    className="w-full px-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#1D1D1D] outline-none rounded-xl text-sm resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={sendBroadcast}
+                    disabled={broadcasting || !broadcastMessage.trim() || !broadcastTitle.trim()}
+                    className="flex-1 bg-[#1D1D1D] text-white py-3 text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {broadcasting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {broadcasting ? "Sending..." : "Send Broadcast"}
+                  </button>
+                  <button
+                    onClick={() => setShowBroadcastModal(false)}
+                    disabled={broadcasting}
+                    className="flex-1 border-2 border-[#1D1D1D]/10 py-3 text-[9px] font-black uppercase tracking-widest rounded-xl hover:border-[#1D1D1D] transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <p className="text-[8px] text-center text-gray-400">
+                  This will send a notification to all selected users. They will see it in their notifications list.
+                </p>
               </div>
             </motion.div>
           </>
@@ -2659,7 +2842,6 @@ function AdminTransactions() {
                     <p className="text-[10px] text-gray-500">{business.email}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-gray-100">{business.payment_method || "Card"}</span>
-                      {/* FIXED: show full payment account, no masking */}
                       <span className="text-[9px] font-mono">{business.payment_account || "No card"}</span>
                     </div>
                   </div>
@@ -2683,7 +2865,7 @@ function AdminTransactions() {
         )}
       </div>
 
-      {/* Modal for full details (already shows full payment account) */}
+      {/* Modal for full details */}
       <AnimatePresence>
         {showModal && selectedItem && (
           <>
@@ -2798,6 +2980,7 @@ function AdminTransactions() {
     </div>
   );
 }
+
 // ─────────────────────────────────────────────
 // SETTINGS
 // ─────────────────────────────────────────────
