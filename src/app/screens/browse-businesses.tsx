@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { ImageWithFallback } from "../components/ImageWithFallback";
 
 // ──────────────────────────────────────────────────────────────
-// Types (unchanged)
+// Types
 // ──────────────────────────────────────────────────────────────
 
 type PartnershipType = "Pay + Code" | "Paying" | "Code Only" | "Open to Offers";
@@ -55,7 +55,7 @@ interface CampaignWithBusiness {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Helpers (unchanged)
+// Helpers
 // ──────────────────────────────────────────────────────────────
 
 function getBadgeColor(type: PartnershipType) {
@@ -89,9 +89,8 @@ function getPayRate(campaign: CampaignWithBusiness): string {
   return amount ? `₦${Number(amount).toLocaleString()}` : "Negotiable";
 }
 
-// Compute niche match percentage (simple heuristic)
 function getNicheMatchPercentage(creatorNiches: string[], campaignNiches: string[]): number {
-  if (!campaignNiches.length) return 100; // no specific niche required
+  if (!campaignNiches.length) return 100;
   if (!creatorNiches.length) return 0;
   const common = campaignNiches.filter(niche => creatorNiches.some(cn => cn.toLowerCase() === niche.toLowerCase()));
   return Math.round((common.length / campaignNiches.length) * 100);
@@ -122,7 +121,7 @@ export function BrowseBusinesses() {
     type: "All",
   });
 
-  // ─── Fetch campaigns (unchanged) ───────────────────────────────────
+  // ─── Fetch campaigns ────────────────────────────────────────
   const fetchCampaigns = useCallback(async (silent = false) => {
     if (!user) return;
     if (silent) setRefreshing(true);
@@ -175,7 +174,7 @@ export function BrowseBusinesses() {
     }
   }, [user]);
 
-  // ─── Fetch creator profile (unchanged) ────────────────────────────
+  // ─── Fetch creator profile ──────────────────────────────────
   useEffect(() => {
     if (!user) return;
     const fetch = async () => {
@@ -192,7 +191,7 @@ export function BrowseBusinesses() {
     fetch();
   }, [user]);
 
-  // ─── Fetch applications & saved (unchanged) ───────────────────────
+  // ─── Fetch applications & saved ─────────────────────────────
   useEffect(() => {
     if (!creatorId || !user) return;
 
@@ -221,7 +220,7 @@ export function BrowseBusinesses() {
     return () => { sub.unsubscribe(); };
   }, [creatorId, user]);
 
-  // ─── Realtime subscriptions (unchanged) ──────────────────────────
+  // ─── Realtime subscriptions ─────────────────────────────────
   useEffect(() => {
     if (!user) return;
 
@@ -252,7 +251,7 @@ export function BrowseBusinesses() {
     };
   }, [user, fetchCampaigns]);
 
-  // ─── Save toggle (unchanged) ─────────────────────────────────────
+  // ─── Save toggle ────────────────────────────────────────────
   const toggleSave = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user) { toast.error("Please login to save campaigns"); navigate("/login/portal"); return; }
@@ -265,7 +264,7 @@ export function BrowseBusinesses() {
     localStorage.setItem(`saved_campaigns_${user.id}`, JSON.stringify([...next]));
   };
 
-  // ─── Apply logic (unchanged) ─────────────────────────────────────
+  // ─── Apply to campaign (FIXED: no .catch, proper try/catch) ──
   const applyToCampaign = async (campaign: CampaignWithBusiness, e?: React.MouseEvent) => {
     e?.stopPropagation();
 
@@ -297,7 +296,7 @@ export function BrowseBusinesses() {
 
     setApplying(true);
     try {
-      // Double-check for existing application
+      // Double-check for existing application (in case state is stale)
       const { data: existing } = await supabase
         .from("campaign_creators")
         .select("id")
@@ -311,7 +310,7 @@ export function BrowseBusinesses() {
         return;
       }
 
-      // Insert application
+      // Insert application – NO .catch() here!
       const { error: insertError } = await supabase
         .from("campaign_creators")
         .insert({
@@ -335,19 +334,25 @@ export function BrowseBusinesses() {
         description: `You've applied to ${campaign.business?.business_name || campaign.name}`,
       });
 
-      // Notify the business owner
+      // Notify the business owner (non‑critical, fire‑and‑forget)
       if (campaign.business?.user_id) {
-        await supabase.from("notifications").insert({
-          user_id:    campaign.business.user_id,
-          type:       "new_application",
-          title:      "New Campaign Application! 🎉",
-          message:    `${creatorProfile.full_name || "A creator"} applied to your campaign "${campaign.name}"`,
-          data: {
-            campaign_id: campaign.id,
-            creator_id:  creatorId,
-          },
-          created_at: new Date().toISOString(),
-        }).catch(console.error);
+        (async () => {
+          try {
+            await supabase.from("notifications").insert({
+              user_id:    campaign.business.user_id,
+              type:       "new_application",
+              title:      "New Campaign Application! 🎉",
+              message:    `${creatorProfile.full_name || "A creator"} applied to your campaign "${campaign.name}"`,
+              data: {
+                campaign_id: campaign.id,
+                creator_id:  creatorId,
+              },
+              created_at: new Date().toISOString(),
+            });
+          } catch (err) {
+            console.warn("Failed to send notification:", err);
+          }
+        })();
       }
 
       // Close modal after a short delay
@@ -360,7 +365,7 @@ export function BrowseBusinesses() {
     }
   };
 
-  // ─── Filters & derived data (unchanged) ──────────────────────────
+  // ─── Filters & derived data ─────────────────────────────────
   const industries = ["All", ...Array.from(new Set(
     campaigns.map((c) => c.business?.industry).filter((i): i is string => !!i)
   ))];
@@ -385,7 +390,6 @@ export function BrowseBusinesses() {
     return (creatorProfile.avg_viewers || creatorProfile.avg_concurrent || 0) >= minFollowers;
   };
 
-  // Compute niche match for selected campaign
   const nicheMatchPercentage = useMemo(() => {
     if (!selectedCampaign || !creatorProfile) return 0;
     const creatorNiches = [
@@ -395,7 +399,7 @@ export function BrowseBusinesses() {
     return getNicheMatchPercentage(creatorNiches, selectedCampaign.target_niches || []);
   }, [selectedCampaign, creatorProfile]);
 
-  // ─── Loading state (unchanged) ───────────────────────────────────
+  // ─── Loading state ──────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -407,7 +411,7 @@ export function BrowseBusinesses() {
     );
   }
 
-  // ─── Render ──────────────────────────────────────────────────────
+  // ─── Render ──────────────────────────────────────────────────
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <AppHeader showBack title="Browse Brands" />
