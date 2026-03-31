@@ -158,6 +158,46 @@ export function Profile() {
   const [businessProfile, setBusinessProfile] = useState<any>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
 
+  // ─── Helper to compute stats from campaign data ──────────────────────────
+  const computeCreatorStats = async (creatorId: string) => {
+    // 1. Total completed streams from campaigns
+    const { data: campaignRows, error: campError } = await supabase
+      .from("campaign_creators")
+      .select("streams_completed, status")
+      .eq("creator_id", creatorId)
+      .in("status", ["active", "completed"]);
+
+    if (campError) {
+      console.error("Error fetching campaign_creators:", campError);
+      return null;
+    }
+    const totalStreams = (campaignRows || []).reduce(
+      (sum, cc) => sum + (cc.streams_completed || 0),
+      0
+    );
+
+    // 2. Average viewers from stream_proofs (if viewer_count column exists)
+    //    If your table does not have viewer_count, comment this out and keep profile avg.
+    let avgViewers = 0;
+    try {
+      const { data: proofs, error: proofError } = await supabase
+        .from("stream_proofs")
+        .select("viewer_count")
+        .eq("campaign_creator_id", creatorId)
+        .not("viewer_count", "is", null);
+
+      if (!proofError && proofs && proofs.length > 0) {
+        const sum = proofs.reduce((s, p) => s + (p.viewer_count || 0), 0);
+        avgViewers = Math.round(sum / proofs.length);
+      }
+    } catch (err) {
+      // If column doesn't exist, ignore and fallback to profile value
+      console.warn("viewer_count column may not exist. Falling back to profile avg_viewers.");
+    }
+
+    return { totalStreams, avgViewers };
+  };
+
   // ─── FETCH CREATOR ───────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -166,6 +206,7 @@ export function Profile() {
     const fetchCreator = async () => {
       setLoading(true);
       try {
+        // 1. Get creator profile
         const { data: creatorData, error: creatorError } = await supabase
           .from("creator_profiles")
           .select(`
@@ -181,19 +222,26 @@ export function Profile() {
         if (creatorError) throw creatorError;
         if (!creatorData) { setCreator(null); setLoading(false); return; }
 
+        // 2. Get platforms
         const { data: platformsData } = await supabase
           .from("creator_platforms")
           .select("*")
           .eq("creator_id", id);
 
+        // 3. Compute stats from campaigns
+        const computedStats = await computeCreatorStats(id);
+
+        // 4. Determine packages (you can load from DB or use defaults)
         const defaultPackages: CreatorPackage[] = [
           { id: "1", name: "Bronze Package", streams: 4,  price: 15000, description: "Perfect for testing the partnership",  enabled: true,  is_default: false },
           { id: "2", name: "Silver Package", streams: 8,  price: 28000, description: "Best value for ongoing campaigns",     enabled: true,  is_default: true  },
           { id: "3", name: "Gold Package",   streams: 12, price: 40000, description: "Maximum exposure for premium brands",  enabled: true,  is_default: false },
         ];
 
+        // 5. Check if viewing own profile
         if (user && creatorData.user_id === user.id) setIsOwnProfile(true);
 
+        // 6. Check if viewer is a business
         if (user) {
           const { data: business } = await supabase
             .from("businesses")
@@ -203,6 +251,7 @@ export function Profile() {
           if (business) { setIsBusiness(true); setBusinessProfile(business); }
         }
 
+        // 7. Build final creator object
         const formatted: FormattedCreator = {
           id:           creatorData.id,
           user_id:      creatorData.user_id,
@@ -219,9 +268,9 @@ export function Profile() {
           availability: creatorData.status === "active" ? "Available for campaigns" : "Not available",
           niches:       (creatorData.niche?.length ? creatorData.niche : creatorData.categories) || [],
           stats: {
-            avgViewers:  creatorData.avg_viewers || creatorData.avg_concurrent || 0,
-            totalStreams: creatorData.total_streams || 0,
-            rating:       creatorData.rating || 0,
+            avgViewers:  computedStats?.avgViewers ?? creatorData.avg_viewers ?? creatorData.avg_concurrent ?? 0,
+            totalStreams: computedStats?.totalStreams ?? creatorData.total_streams ?? 0,
+            rating:       creatorData.rating ?? 0,
           },
           platforms: (platformsData || []).map((p: CreatorPlatform) => ({
             name:      p.platform_type,
@@ -306,7 +355,7 @@ export function Profile() {
       const { error } = await supabase.from("campaign_creators").insert({
         campaign_id:       campaignRow.id,
         creator_id:        creator.id,
-         status: "NOT STARTED",
+        status: "NOT STARTED",
         streams_target:    streams,
         streams_completed: 0,
         total_earnings:    streams * rate,
@@ -425,7 +474,6 @@ export function Profile() {
               </button>
             )}
 
-            {/* Avatar — square, no border-radius, grayscale (File 1 style) */}
             <div className="relative mb-6">
               <div className="w-32 h-32 border-4 border-[#1D1D1D] overflow-hidden bg-[#F8F8F8]">
                 <ImageWithFallback
@@ -436,7 +484,6 @@ export function Profile() {
               </div>
             </div>
 
-            {/* Name & Username */}
             <div className="flex flex-col items-center mb-4">
               <h1 className="text-3xl font-black uppercase tracking-tighter leading-none italic mb-1">
                 {creator.name}
@@ -446,7 +493,6 @@ export function Profile() {
               </span>
             </div>
 
-            {/* Platform Badges */}
             {creator.platforms.length > 0 && (
               <div className="flex flex-wrap justify-center gap-2 mb-4">
                 {creator.platforms.map((p, i) => (
@@ -464,13 +510,11 @@ export function Profile() {
               </div>
             )}
 
-            {/* Location */}
             <div className="flex items-center gap-1 mb-4 text-[10px] font-bold uppercase tracking-widest italic">
               <MapPin className="w-3 h-3 text-[#1D1D1D]/40" />
               <span>{creator.location}</span>
             </div>
 
-            {/* Niches */}
             {creator.niches.length > 0 && (
               <div className="flex flex-wrap justify-center gap-2 mb-6">
                 {creator.niches.map((n, i) => (
@@ -481,7 +525,6 @@ export function Profile() {
               </div>
             )}
 
-            {/* Bio */}
             <div className="w-full max-w-sm mb-6">
               <p className={`text-sm leading-relaxed text-[#1D1D1D]/80 ${!isBioExpanded ? "line-clamp-3" : ""}`}>
                 {creator.bio}
@@ -498,7 +541,6 @@ export function Profile() {
               )}
             </div>
 
-            {/* Contact details (business only) */}
             {isBusiness && (creator.email || creator.phone_number) && (
               <div className="flex flex-col gap-2 w-full max-w-sm mb-6 p-4 bg-[#F8F8F8] border border-[#1D1D1D]/10 text-left">
                 <p className="text-[8px] font-black uppercase tracking-widest opacity-40 mb-1">Contact Details</p>
@@ -517,20 +559,17 @@ export function Profile() {
               </div>
             )}
 
-            {/* Availability Pill */}
             <div className="inline-flex items-center gap-2 px-4 py-2 border-2 border-[#1D1D1D] text-[9px] font-black uppercase tracking-widest italic">
               <span className={`w-2 h-2 ${creator.availability.includes("Available") ? "bg-[#389C9A]" : "bg-red-500"}`} />
               {creator.availability}
             </div>
 
-            {/* Business action buttons */}
             {!isOwnProfile && isBusiness && (
               <div className="flex gap-3 w-full mt-6">
                 <button
                   onClick={() => {
                     setSelectedPackageId(null);
                     setOfferSent(false);
-                    // Scroll to offer section
                     document.getElementById("offer-section")?.scrollIntoView({ behavior: "smooth" });
                   }}
                   className="flex-1 bg-[#1D1D1D] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#389C9A] transition-all italic flex items-center justify-center gap-2"
@@ -546,7 +585,6 @@ export function Profile() {
               </div>
             )}
 
-            {/* Own profile edit button */}
             {isOwnProfile && (
               <button
                 onClick={() => navigate("/settings")}
@@ -558,7 +596,7 @@ export function Profile() {
           </div>
         </div>
 
-        {/* ── Stats Row (File 1 style: gap-[1px] grid with bg-[#1D1D1D]) ── */}
+        {/* ── Stats Row – now uses computed stats ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-[#1D1D1D] border-b border-[#1D1D1D]">
           <div className="bg-white p-6 flex flex-col gap-1 items-center text-center">
             <span className="text-2xl font-black italic">{formatNumber(creator.stats.avgViewers)}</span>
@@ -580,7 +618,7 @@ export function Profile() {
 
         <div className="px-6 py-12" id="offer-section">
 
-          {/* ── Partnership Packages (File 1 style) ── */}
+          {/* ── Partnership Packages ── */}
           {creator.packages.length > 0 && (
             <div className="mb-12">
               <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">Partnership Packages</h2>
@@ -637,7 +675,7 @@ export function Profile() {
             </div>
           )}
 
-          {/* ── Estimated Viewership (File 1 style) ── */}
+          {/* ── Estimated Viewership ── */}
           <AnimatePresence>
             {selectedPackage && estimates && isBusiness && (
               <motion.div
@@ -704,7 +742,7 @@ export function Profile() {
             )}
           </AnimatePresence>
 
-          {/* ── Custom Offer / Send Offer Form (business only, File 1 style) ── */}
+          {/* ── Custom Offer / Send Offer Form ── */}
           {isBusiness && (
             <div className="mb-12 pt-12 border-t border-[#1D1D1D]/10" id="custom-offer-form">
               <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-1">
@@ -739,7 +777,6 @@ export function Profile() {
                 </motion.div>
               ) : (
                 <form onSubmit={handleSendOffer} className="space-y-6">
-                  {/* Number of streams — hidden if package selected */}
                   {!selectedPackage && (
                     <div>
                       <label className="block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 mb-2 italic">
@@ -757,7 +794,6 @@ export function Profile() {
                     </div>
                   )}
 
-                  {/* Rate — hidden if package selected */}
                   {!selectedPackage && (
                     <div>
                       <label className="block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 mb-2 italic">
@@ -778,7 +814,6 @@ export function Profile() {
                     </div>
                   )}
 
-                  {/* Package summary if one is selected */}
                   {selectedPackage && (
                     <div className="bg-[#F8F8F8] border border-[#1D1D1D]/10 p-4 flex items-center justify-between">
                       <div>
@@ -798,7 +833,6 @@ export function Profile() {
                     </div>
                   )}
 
-                  {/* Campaign type */}
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 mb-2 italic">
                       Campaign type
@@ -821,7 +855,6 @@ export function Profile() {
                     </div>
                   </div>
 
-                  {/* Message */}
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#1D1D1D]/40 mb-2 italic">
                       Message to the creator
@@ -846,7 +879,7 @@ export function Profile() {
             </div>
           )}
 
-          {/* ── Important Notes (File 1 style) ── */}
+          {/* ── Important Notes ── */}
           <div className="bg-[#F8F8F8] border border-[#1D1D1D]/10 p-8 mb-12">
             <div className="flex flex-col gap-4">
               <div className="flex items-start gap-3">
