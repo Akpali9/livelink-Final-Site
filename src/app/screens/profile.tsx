@@ -160,10 +160,10 @@ export function Profile() {
 
   // ─── Helper to compute stats from campaign data ──────────────────────────
   const computeCreatorStats = async (creatorId: string) => {
-    // 1. Total completed streams from campaigns
+    // 1. Total completed streams and completed campaigns
     const { data: campaignRows, error: campError } = await supabase
       .from("campaign_creators")
-      .select("streams_completed, status")
+      .select("streams_completed, streams_target, status")
       .eq("creator_id", creatorId)
       .in("status", ["active", "completed"]);
 
@@ -177,7 +177,6 @@ export function Profile() {
     );
 
     // 2. Average viewers from stream_proofs (if viewer_count column exists)
-    //    If your table does not have viewer_count, comment this out and keep profile avg.
     let avgViewers = 0;
     try {
       const { data: proofs, error: proofError } = await supabase
@@ -191,11 +190,22 @@ export function Profile() {
         avgViewers = Math.round(sum / proofs.length);
       }
     } catch (err) {
-      // If column doesn't exist, ignore and fallback to profile value
       console.warn("viewer_count column may not exist. Falling back to profile avg_viewers.");
     }
 
-    return { totalStreams, avgViewers };
+    // 3. Compute rating based on number of campaigns where creator completed all required streams
+    let completedCampaigns = 0;
+    if (campaignRows) {
+      completedCampaigns = campaignRows.filter(cc => cc.streams_completed >= cc.streams_target).length;
+    }
+    let rating = 0;
+    if (completedCampaigns >= 7) rating = 5;
+    else if (completedCampaigns >= 5) rating = 4;
+    else if (completedCampaigns >= 3) rating = 3;
+    else if (completedCampaigns >= 1) rating = 2;
+    else rating = 0;
+
+    return { totalStreams, avgViewers, rating };
   };
 
   // ─── FETCH CREATOR ───────────────────────────────────────────────────────
@@ -270,7 +280,7 @@ export function Profile() {
           stats: {
             avgViewers:  computedStats?.avgViewers ?? creatorData.avg_viewers ?? creatorData.avg_concurrent ?? 0,
             totalStreams: computedStats?.totalStreams ?? creatorData.total_streams ?? 0,
-            rating:       creatorData.rating ?? 0,
+            rating:       computedStats?.rating ?? creatorData.rating ?? 0,
           },
           platforms: (platformsData || []).map((p: CreatorPlatform) => ({
             name:      p.platform_type,
@@ -596,7 +606,7 @@ export function Profile() {
           </div>
         </div>
 
-        {/* ── Stats Row – now uses computed stats ── */}
+        {/* ── Stats Row – now uses computed rating ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-[1px] bg-[#1D1D1D] border-b border-[#1D1D1D]">
           <div className="bg-white p-6 flex flex-col gap-1 items-center text-center">
             <span className="text-2xl font-black italic">{formatNumber(creator.stats.avgViewers)}</span>
