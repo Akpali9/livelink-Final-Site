@@ -607,7 +607,7 @@ export function LiveCampaignUpdate() {
               Contact the brand representative directly for any questions regarding assets or technical issues.
             </p>
             <Link
-              to={`/messages/${campaign.id}/business/${business?.user_id}`}
+              to={`/messages`}
               className="w-full flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-widest border-2 border-[#1D1D1D] bg-white py-6 px-8 hover:bg-[#1D1D1D] hover:text-white transition-all italic active:scale-[0.98]"
             >
               <MessageSquare className="w-5 h-5 text-[#389C9A]" /> MESSAGE {businessName}
