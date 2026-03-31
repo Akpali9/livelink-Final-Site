@@ -42,14 +42,14 @@ interface CreatorWithPlatforms {
   }[];
 }
 
-// Helper to compute total streams and average viewers for a list of creators
+// Helper to compute total streams, avg viewers, and rating for a list of creators
 async function computeCreatorStatsBatch(creatorIds: string[]) {
-  if (creatorIds.length === 0) return {};
+  if (creatorIds.length === 0) return { totalStreamsMap: {}, avgViewersMap: {}, ratingMap: {} };
 
-  // 1. Total completed streams per creator
+  // 1. Total completed streams and completed campaigns per creator
   const { data: campaignData, error: campError } = await supabase
     .from("campaign_creators")
-    .select("creator_id, streams_completed")
+    .select("creator_id, streams_completed, streams_target, status")
     .in("creator_id", creatorIds)
     .in("status", ["active", "completed"]);
 
@@ -58,9 +58,13 @@ async function computeCreatorStatsBatch(creatorIds: string[]) {
   }
 
   const totalStreamsMap: Record<string, number> = {};
+  const completedCampaignsMap: Record<string, number> = {};
   if (campaignData) {
     for (const row of campaignData) {
       totalStreamsMap[row.creator_id] = (totalStreamsMap[row.creator_id] || 0) + (row.streams_completed || 0);
+      if (row.streams_completed >= row.streams_target) {
+        completedCampaignsMap[row.creator_id] = (completedCampaignsMap[row.creator_id] || 0) + 1;
+      }
     }
   }
 
@@ -73,9 +77,7 @@ async function computeCreatorStatsBatch(creatorIds: string[]) {
       .not("viewer_count", "is", null);
 
     if (!proofsError && proofsData) {
-      // Group by campaign_creator_id, then average, then map to creator_id
-      // We need to get the creator_id for each campaign_creator
-      // Get all campaign_creator ids
+      // Get campaign_creator -> creator mapping
       const campaignCreatorIds = [...new Set(proofsData.map(p => p.campaign_creator_id))];
       if (campaignCreatorIds.length > 0) {
         const { data: ccData } = await supabase
@@ -107,7 +109,20 @@ async function computeCreatorStatsBatch(creatorIds: string[]) {
     console.warn("viewer_count column may not exist, skipping avg viewers from proofs.");
   }
 
-  return { totalStreamsMap, avgViewersMap };
+  // 3. Compute rating based on completed campaigns
+  const ratingMap: Record<string, number> = {};
+  for (const creatorId of creatorIds) {
+    const completed = completedCampaignsMap[creatorId] || 0;
+    let rating = 0;
+    if (completed >= 7) rating = 5;
+    else if (completed >= 5) rating = 4;
+    else if (completed >= 3) rating = 3;
+    else if (completed >= 1) rating = 2;
+    else rating = 0;
+    ratingMap[creatorId] = rating;
+  }
+
+  return { totalStreamsMap, avgViewersMap, ratingMap };
 }
 
 export function BrowseCreators() {
@@ -197,13 +212,14 @@ export function BrowseCreators() {
 
       // Compute real stats for the filtered creators
       const creatorIds = filteredData.map(c => c.id);
-      const { totalStreamsMap, avgViewersMap } = await computeCreatorStatsBatch(creatorIds);
+      const { totalStreamsMap, avgViewersMap, ratingMap } = await computeCreatorStatsBatch(creatorIds);
 
       // Merge computed stats into the objects
       const enriched = filteredData.map(creator => ({
         ...creator,
         total_streams: totalStreamsMap[creator.id] ?? creator.total_streams ?? 0,
         avg_viewers: avgViewersMap[creator.id] ?? creator.avg_viewers ?? 0,
+        rating: ratingMap[creator.id] ?? creator.rating ?? 0,
       }));
 
       setCreators(enriched as CreatorWithPlatforms[]);
