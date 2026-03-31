@@ -1830,54 +1830,48 @@ function AdminMessages({ adminUser }: { adminUser: any }) {
     setConversations(prev => prev.map(c => c.id === convId ? { ...c, unread_count: 0 } : c));
   };
 
-const sendBroadcast = async () => {
-  if (!broadcastMessage.trim() || !broadcastTitle.trim()) {
-    toast.error("Please fill in both title and message");
-    return;
-  }
-  setBroadcasting(true);
-  try {
-    let targetUserIds: string[] = [];
-    if (broadcastTarget === "creators" || broadcastTarget === "both") {
-      targetUserIds = [...targetUserIds, ...await fetchAllUsersByType("creator")];
-    }
-    if (broadcastTarget === "businesses" || broadcastTarget === "both") {
-      targetUserIds = [...targetUserIds, ...await fetchAllUsersByType("business")];
-    }
-    targetUserIds = [...new Set(targetUserIds)];
+  const sendMessage = async () => {
+    if (!messageInput.trim() && attachments.length === 0) return;
+    if (!selectedConversation) return;
+    setSending(true);
+    try {
+      const attachmentUrls: any[] = [];
+      for (const file of attachments) {
+        const fileName = `admin/${selectedConversation.id}/${Date.now()}-${file.name}`;
+        const { error: upErr } = await supabase.storage.from("message-attachments").upload(fileName, file);
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage.from("message-attachments").getPublicUrl(fileName);
+        attachmentUrls.push({ url: publicUrl, type: file.type, name: file.name, size: file.size });
+      }
 
-    if (targetUserIds.length === 0) {
-      toast.error("No users found for the selected audience");
-      return;
-    }
+      const { data, error } = await supabase.from("messages").insert({
+        conversation_id: selectedConversation.id,
+        sender_id: adminUser?.id,
+        content: messageInput.trim(),
+        is_read: false,
+        attachments: attachmentUrls.length > 0 ? attachmentUrls : undefined,
+        created_at: new Date().toISOString(),
+      }).select().single();
 
-    // Build notifications array – remove the 'data' field
-    const notifications = targetUserIds.map(userId => ({
-      user_id: userId,
-      type: "broadcast",
-      title: broadcastTitle.trim(),
-      message: broadcastMessage.trim(),
-      created_at: new Date().toISOString(),
-    }));
-
-    const batchSize = 200;
-    for (let i = 0; i < notifications.length; i += batchSize) {
-      const batch = notifications.slice(i, i + batchSize);
-      const { error } = await supabase.from("notifications").insert(batch);
       if (error) throw error;
-    }
 
-    toast.success(`Broadcast sent to ${targetUserIds.length} users!`);
-    setShowBroadcastModal(false);
-    setBroadcastMessage("");
-    setBroadcastTitle("");
-  } catch (err: any) {
-    console.error("Broadcast error:", err);
-    toast.error(`Failed: ${err.message}`);
-  } finally {
-    setBroadcasting(false);
-  }
-};
+      await supabase.from("conversations")
+        .update({ last_message_at: new Date().toISOString() }).eq("id", selectedConversation.id);
+
+      setMessages(prev => [...prev, data]);
+      setMessageInput("");
+      setAttachments([]);
+      setConversations(prev => prev.map(c =>
+        c.id === selectedConversation.id
+          ? { ...c, last_message: messageInput.trim(), last_message_time: new Date().toISOString(), last_message_sender: "You" }
+          : c
+      ));
+    } catch (e) {
+      console.error("sendMessage:", e);
+      toast.error("Failed to send message");
+    } finally { setSending(false); }
+  };
+
   const searchUsers = async (query: string) => {
     if (!query.trim()) { setSearchResults([]); return; }
     setSearching(true);
@@ -1947,6 +1941,7 @@ const sendBroadcast = async () => {
     }
   };
 
+  // FIXED: removed the 'data' field to avoid column error
   const sendBroadcast = async () => {
     if (!broadcastMessage.trim() || !broadcastTitle.trim()) {
       toast.error("Please fill in both title and message");
@@ -1973,7 +1968,6 @@ const sendBroadcast = async () => {
         type: "broadcast",
         title: broadcastTitle.trim(),
         message: broadcastMessage.trim(),
-        data: { sender: "admin", broadcast: true },
         created_at: new Date().toISOString(),
       }));
 
