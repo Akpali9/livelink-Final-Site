@@ -51,6 +51,27 @@ interface CampaignStats {
   active_campaigns: number;
 }
 
+// ─────────────────────────────────────────────
+// CONFIRM TOAST HELPER (reusable)
+// ─────────────────────────────────────────────
+
+function confirmToast(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    toast(message, {
+      duration: 10000,
+      action: {
+        label: "Confirm",
+        onClick: () => resolve(true),
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => resolve(false),
+      },
+      onDismiss: () => resolve(false),
+    });
+  });
+}
+
 export function BusinessCampaigns() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -67,9 +88,23 @@ export function BusinessCampaigns() {
   });
   const [businessId, setBusinessId] = useState<string | null>(null);
 
+  // For dropdown menu – track which campaign's menu is open
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+
   useEffect(() => {
     if (user) fetchBusinessProfile();
   }, [user]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (openDropdownId && !(e.target as HTMLElement).closest(`[data-dropdown-id="${openDropdownId}"]`)) {
+        setOpenDropdownId(null);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [openDropdownId]);
 
   const fetchBusinessProfile = async () => {
     if (!user) return;
@@ -145,21 +180,21 @@ export function BusinessCampaigns() {
     toast.success("Campaigns updated");
   };
 
-  const handleDeleteCampaign = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm("Delete this campaign? Cannot be undone.")) return;
+  const handleDeleteCampaign = async (id: string) => {
+    const confirmed = await confirmToast("Delete this campaign? Cannot be undone.");
+    if (!confirmed) return;
     try {
       const { error } = await supabase.from("campaigns").delete().eq("id", id);
       if (error) throw error;
       setCampaigns(prev => prev.filter(c => c.id !== id));
       toast.success("Campaign deleted");
+      setOpenDropdownId(null);
     } catch (e) {
       toast.error("Failed to delete campaign");
     }
   };
 
-  const handleDuplicateCampaign = async (camp: Campaign, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDuplicateCampaign = async (camp: Campaign) => {
     try {
       const { data, error } = await supabase
         .from("campaigns")
@@ -279,7 +314,7 @@ export function BusinessCampaigns() {
           </button>
         </div>
 
-        {/* ── Filter Tabs — wrapped, no scroll ── */}
+        {/* ── Filter Tabs ── */}
         <div className="flex flex-wrap gap-1.5 mb-5">
           {filters.map(f => (
             <button
@@ -412,32 +447,46 @@ export function BusinessCampaigns() {
                       </button>
                     )}
 
-                    <div className="relative group/actions">
-                      <button className="px-3 py-2 border-2 border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white transition-colors">
+                    {/* Dropdown Menu (Click to open) */}
+                    <div className="relative" data-dropdown-id={camp.id}>
+                      <button
+                        onClick={() => setOpenDropdownId(openDropdownId === camp.id ? null : camp.id)}
+                        className="px-3 py-2 border-2 border-[#1D1D1D] hover:bg-[#1D1D1D] hover:text-white transition-colors"
+                      >
                         <MoreVertical className="w-3 h-3" />
                       </button>
-                      <div className="absolute right-0 bottom-full mb-1 bg-white border-2 border-[#1D1D1D] shadow-xl hidden group-hover/actions:block z-10 min-w-[140px]">
-                        <button
-                          onClick={e => handleDuplicateCampaign(camp, e)}
-                          className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-gray-100 flex items-center gap-2"
-                        >
-                          <Copy className="w-3 h-3" /> Duplicate
-                        </button>
-                        {!["completed", "cancelled"].includes(camp.status) && (
-                          <button
-                            onClick={() => navigate(`/business/campaign/edit/${camp.id}`)}
-                            className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-gray-100 flex items-center gap-2"
+                      <AnimatePresence>
+                        {openDropdownId === camp.id && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                            transition={{ duration: 0.1 }}
+                            className="absolute right-0 bottom-full mb-1 bg-white border-2 border-[#1D1D1D] shadow-xl z-10 min-w-[140px]"
                           >
-                            <Edit className="w-3 h-3" /> Edit
-                          </button>
+                            <button
+                              onClick={() => handleDuplicateCampaign(camp)}
+                              className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-gray-100 flex items-center gap-2"
+                            >
+                              <Copy className="w-3 h-3" /> Duplicate
+                            </button>
+                            {!["completed", "cancelled"].includes(camp.status) && (
+                              <button
+                                onClick={() => navigate(`/business/campaign/edit/${camp.id}`)}
+                                className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-gray-100 flex items-center gap-2"
+                              >
+                                <Edit className="w-3 h-3" /> Edit
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteCampaign(camp.id)}
+                              className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 flex items-center gap-2"
+                            >
+                              <Trash2 className="w-3 h-3" /> Delete
+                            </button>
+                          </motion.div>
                         )}
-                        <button
-                          onClick={e => handleDeleteCampaign(camp.id, e)}
-                          className="w-full text-left px-4 py-2 text-[9px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 flex items-center gap-2"
-                        >
-                          <Trash2 className="w-3 h-3" /> Delete
-                        </button>
-                      </div>
+                      </AnimatePresence>
                     </div>
                   </div>
                 </motion.div>
