@@ -4,7 +4,7 @@ import {
   MessageSquare, Send, Paperclip, Image as ImageIcon, FileText,
   X, User, Building2, MoreVertical, Search, ArrowLeft,
   CheckCheck, Loader2, ShieldCheck, Flag, AlertTriangle,
-  ChevronDown,
+  ChevronDown, Plus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -39,8 +39,21 @@ interface Conversation {
   unread_count: number;
 }
 
+interface UserProfile {
+  id: string;
+  user_id: string;
+  full_name?: string;
+  business_name?: string;
+  avatar_url?: string;
+  logo_url?: string;
+  email: string;
+  type: "creator" | "business";
+  status: string;
+  created_at: string;
+}
+
 // ─────────────────────────────────────────────
-// REPORT REASONS
+// REPORT REASONS (unchanged)
 // ─────────────────────────────────────────────
 
 const REPORT_REASONS = [
@@ -75,7 +88,13 @@ export function Messages() {
   const [searchQuery, setSearchQuery]                   = useState("");
   const [attachments, setAttachments]                   = useState<File[]>([]);
 
-  // ── Report / options menu state ──
+  // New message modal
+  const [showUserSearch, setShowUserSearch]             = useState(false);
+  const [searchResults, setSearchResults]               = useState<UserProfile[]>([]);
+  const [searching, setSearching]                       = useState(false);
+  const [newMsgSearch, setNewMsgSearch]                 = useState("");
+
+  // Report modal
   const [showMenu, setShowMenu]               = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason]       = useState("");
@@ -264,18 +283,73 @@ export function Messages() {
     }
   };
 
+  // ─── START NEW CONVERSATION (SEARCH USERS) ────────────────────────────
+
+  const searchUsers = async (query: string) => {
+    if (!query.trim()) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      const [{ data: c }, { data: b }] = await Promise.all([
+        supabase.from("creator_profiles").select("id, user_id, full_name, email, avatar_url, status, created_at")
+          .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`).limit(8),
+        supabase.from("businesses").select("id, user_id, business_name, email, logo_url, status, created_at")
+          .or(`business_name.ilike.%${query}%,email.ilike.%${query}%`).limit(8),
+      ]);
+      setSearchResults([
+        ...(c || []).map((x: any) => ({ ...x, type: "creator" as const })),
+        ...(b || []).map((x: any) => ({ ...x, full_name: x.business_name, avatar_url: x.logo_url, type: "business" as const })),
+      ]);
+    } catch (e) { console.error("searchUsers:", e); }
+    finally { setSearching(false); }
+  };
+
+  const startConversation = async (u: UserProfile) => {
+    try {
+      const { data: existing } = await supabase
+        .from("conversations").select("id")
+        .or(`and(participant1_id.eq.${user?.id},participant2_id.eq.${u.user_id}),and(participant1_id.eq.${u.user_id},participant2_id.eq.${user?.id})`)
+        .maybeSingle();
+
+      let convId = existing?.id;
+
+      if (!convId) {
+        const { data: newConv, error } = await supabase.from("conversations").insert({
+          participant1_id: user?.id, participant2_id: u.user_id,
+          participant1_type: isCreator ? "creator" : "business",
+          participant2_type: u.type,
+          last_message_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        }).select().single();
+        if (error) throw error;
+        convId = newConv.id;
+      }
+
+      await loadConversations();
+      setShowUserSearch(false);
+      setNewMsgSearch("");
+      setSearchResults([]);
+
+      setTimeout(() => {
+        const found = conversations.find(c => c.id === convId);
+        if (found) setSelectedConversation(found);
+        else loadConversations().then(() => {
+          const newlyFound = conversations.find(c => c.id === convId);
+          if (newlyFound) setSelectedConversation(newlyFound);
+        });
+      }, 300);
+    } catch (e) {
+      console.error("startConversation:", e);
+      toast.error("Failed to start conversation");
+    }
+  };
+
   // ─── REPORT CONVERSATION ──────────────────────────────────────────────
-  //
-  // Creates a support_ticket row so it shows up in AdminSupport,
-  // and notifies the reported participant.
 
   const submitReport = async () => {
     if (!reportReason) { toast.error("Please select a reason"); return; }
     if (!selectedConversation || !user) return;
     setSubmittingReport(true);
     try {
-      // 1. Create support ticket for admin
-      // Build a message body that captures all the context we need
       const ticketMessage = [
         `Reason: ${reportReason}`,
         reportDetails.trim() ? `Details: ${reportDetails.trim()}` : null,
@@ -294,7 +368,6 @@ export function Messages() {
       });
       if (error) throw error;
 
-      // Notify the reporter that their report was received
       await supabase.from("notifications").insert({
         user_id:    user.id,
         type:       "system",
@@ -392,10 +465,19 @@ export function Messages() {
       <div className="flex" style={{ height: "calc(100vh - 144px)" }}>
 
         {/* ── Conversations sidebar ── */}
-        <div className={`border-r border-[#1D1D1D]/10 flex flex-col ${
-          selectedConversation ? "hidden md:flex w-72" : "flex w-full"
-        }`}>
-          <div className="p-4 border-b border-[#1D1D1D]/10 shrink-0">
+        <div className={`border-r border-[#1D1D1D]/10 flex flex-col ${selectedConversation ? "hidden md:flex w-72" : "flex w-full"}`}>
+          <div className="p-4 border-b border-[#1D1D1D]/10 bg-white shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-black uppercase tracking-tight text-sm flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-[#389C9A]" /> Messages
+              </h3>
+              <button
+                onClick={() => setShowUserSearch(true)}
+                className="p-2 bg-[#1D1D1D] text-white rounded-lg hover:bg-[#389C9A] transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
@@ -409,9 +491,12 @@ export function Messages() {
               <div className="flex flex-col items-center justify-center h-full p-6 text-center gap-3">
                 <MessageSquare className="w-12 h-12 text-gray-200" />
                 <p className="text-sm text-gray-400 font-medium">No conversations yet</p>
-                <p className="text-xs text-gray-300">
-                  {isCreator ? "Apply to campaigns to start chatting" : "Accept applications to start chatting"}
-                </p>
+                <button
+                  onClick={() => setShowUserSearch(true)}
+                  className="text-[#389C9A] text-[10px] font-black hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Start a new conversation
+                </button>
               </div>
             ) : (
               filteredConversations.map((conv) => (
@@ -446,7 +531,7 @@ export function Messages() {
         <div className={`flex-1 flex flex-col min-w-0 ${!selectedConversation ? "hidden md:flex" : "flex"}`}>
           {selectedConversation ? (
             <>
-              {/* ── Conversation header with options menu ── */}
+              {/* Conversation header with options menu (unchanged) */}
               <div className="px-4 py-3 border-b border-[#1D1D1D]/10 flex items-center justify-between bg-white shrink-0">
                 <div className="flex items-center gap-3">
                   <button onClick={() => setSelectedConversation(null)}
@@ -460,7 +545,6 @@ export function Messages() {
                   </div>
                 </div>
 
-                {/* ── Options menu (⋮) ── */}
                 <div className="relative" ref={menuRef}>
                   <button
                     onClick={() => setShowMenu((v) => !v)}
@@ -478,7 +562,6 @@ export function Messages() {
                         transition={{ duration: 0.12 }}
                         className="absolute right-0 top-full mt-1 w-48 bg-white border-2 border-[#1D1D1D] rounded-xl shadow-xl z-30 overflow-hidden"
                       >
-                        {/* Only show Report if not talking to admin/support */}
                         {selectedConversation.participant_type !== "admin" && (
                           <button
                             onClick={() => { setShowMenu(false); setShowReportModal(true); }}
@@ -501,7 +584,7 @@ export function Messages() {
                 </div>
               </div>
 
-              {/* ── Message list ── */}
+              {/* Message list (unchanged) */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F9F9F9]">
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center gap-2">
@@ -554,7 +637,7 @@ export function Messages() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* ── Input area ── */}
+              {/* Input area (unchanged) */}
               <div className="p-4 border-t border-[#1D1D1D]/10 bg-white shrink-0">
                 <AnimatePresence>
                   {attachments.length > 0 && (
@@ -621,14 +704,88 @@ export function Messages() {
               <MessageSquare className="w-16 h-16 text-gray-200" />
               <h3 className="text-xl font-black uppercase tracking-tighter italic">No Conversation Selected</h3>
               <p className="text-gray-400 text-sm max-w-xs">
-                Select a conversation from the list to start messaging.
+                Select a conversation from the list or start a new one.
               </p>
+              <button
+                onClick={() => setShowUserSearch(true)}
+                className="mt-4 px-6 py-3 bg-[#1D1D1D] text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-[#389C9A] transition-all flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> New Message
+              </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Report Modal ── */}
+      {/* ── New Message Modal ── */}
+      <AnimatePresence>
+        {showUserSearch && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm"
+              onClick={() => { setShowUserSearch(false); setSearchResults([]); setNewMsgSearch(""); }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-lg bg-white p-6 z-50 rounded-2xl shadow-2xl border-2 border-[#1D1D1D]"
+            >
+              <div className="flex justify-between items-center mb-5">
+                <h3 className="text-xl font-black uppercase tracking-tighter italic">New Message</h3>
+                <button onClick={() => { setShowUserSearch(false); setSearchResults([]); setNewMsgSearch(""); }}
+                  className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input type="text" value={newMsgSearch}
+                  onChange={e => { setNewMsgSearch(e.target.value); searchUsers(e.target.value); }}
+                  placeholder="Search by name or email..."
+                  className="w-full pl-10 pr-4 py-3 border-2 border-[#1D1D1D]/10 focus:border-[#389C9A] outline-none rounded-xl text-sm"
+                  autoFocus />
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {searching ? (
+                  <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" /></div>
+                ) : searchResults.length > 0 ? (
+                  <div className="space-y-2">
+                    {searchResults.map(u => (
+                      <button key={u.id} onClick={() => startConversation(u)}
+                        className="w-full p-3 flex items-center gap-3 hover:bg-gray-50 rounded-xl transition-all group border border-transparent hover:border-[#1D1D1D]/10">
+                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#389C9A] to-[#1D1D1D] text-white flex items-center justify-center font-black text-sm shrink-0">
+                          {getInitials(u.full_name || u.business_name || "")}
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="font-black text-sm uppercase tracking-tight">{u.full_name || u.business_name}</p>
+                          <div className="flex items-center gap-2 text-[9px] text-gray-500">
+                            <span>{u.type === "creator" ? "Creator" : "Business"}</span>
+                            <span>·</span>
+                            <span className="truncate">{u.email}</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-[#389C9A] transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                ) : newMsgSearch ? (
+                  <div className="text-center py-8">
+                    <User className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">No users found</p>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <MessageSquare className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Start typing to search</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Report Modal (unchanged) */}
       <AnimatePresence>
         {showReportModal && (
           <>
@@ -644,10 +801,8 @@ export function Messages() {
               style={{ maxHeight: "90vh" }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Drag handle */}
+              {/* ... (report modal content unchanged) ... */}
               <div className="w-12 h-1 bg-[#1D1D1D]/10 rounded-full mx-auto my-4 shrink-0" />
-
-              {/* Sticky header */}
               <div className="px-6 pb-4 shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -666,10 +821,7 @@ export function Messages() {
                 </div>
               </div>
 
-              {/* Scrollable content */}
               <div className="flex-1 overflow-y-auto px-6">
-
-                {/* Reason selector */}
                 <div className="mb-4">
                   <label className="block text-[9px] font-black uppercase tracking-widest mb-2 opacity-50">
                     Reason for report *
@@ -691,7 +843,6 @@ export function Messages() {
                   </div>
                 </div>
 
-                {/* Additional details */}
                 <div className="mb-6">
                   <label className="block text-[9px] font-black uppercase tracking-widest mb-2 opacity-50">
                     Additional details (optional)
@@ -705,19 +856,15 @@ export function Messages() {
                   />
                 </div>
 
-                {/* Warning note */}
                 <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
                   <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                   <p className="text-[9px] text-amber-700 leading-relaxed">
                     False reports may result in account suspension. Our team reviews every report within 24 hours.
                   </p>
                 </div>
-
-                {/* Spacer so last item isn't hidden behind sticky footer */}
                 <div className="h-2" />
-              </div>{/* end overflow-y-auto scrollable area */}
+              </div>
 
-              {/* Sticky submit footer */}
               <div className="px-6 py-4 border-t border-[#1D1D1D]/10 bg-white shrink-0 mb-18">
                 <button
                   onClick={submitReport}
