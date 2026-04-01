@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
   MessageSquare, Send, Paperclip, Image as ImageIcon, FileText,
-  X, User, Building2, MoreVertical, Search, ArrowLeft,
+  X, User, Building2, MoreVertical, Search, ArrowLeft,ChevronRight,
   CheckCheck, Loader2, ShieldCheck, Flag, AlertTriangle,
   ChevronDown, Plus,
 } from "lucide-react";
