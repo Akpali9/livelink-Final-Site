@@ -702,26 +702,8 @@ export function BusinessCreateCampaign() {
               <ArrowLeft className="w-5 h-5 text-[#1D1D1D]" />
             </button>
             <h1 className="text-base font-black uppercase tracking-tighter italic text-[#1D1D1D]">
-              CREATE CAMPAIGN
+              UPDATE CAMPAIGN
             </h1>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button className="relative p-1.5">
-              <MessageSquare className="w-4.5 h-4.5 text-[#1D1D1D]" />
-              <div className="absolute top-1 right-1 w-2 h-2 bg-[#389C9A] border-2 border-white rounded-full" />
-            </button>
-
-            <button className="relative p-1.5">
-              <Bell className="w-4.5 h-4.5 text-[#1D1D1D]" />
-              <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-[#FEDB71] text-[#1D1D1D] text-[7px] font-black flex items-center justify-center border border-[#1D1D1D]">
-                3
-              </div>
-            </button>
-
-            <button className="w-8 h-8 border border-[#1D1D1D] flex items-center justify-center bg-white">
-              <User className="w-4 h-4 text-[#1D1D1D]" />
-            </button>
           </div>
         </div>
       </header>
