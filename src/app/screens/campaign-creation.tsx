@@ -38,11 +38,12 @@ const CATEGORIES = [
 export function CampaignCreation() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { campaignId } = useParams<{ campaignId?: string }>();
+  const { campaignId: urlCampaignId } = useParams<{ campaignId?: string }>();
   const { user } = useAuth();
   const campaignData = location.state;
 
-  // Determine if we're editing an existing campaign
+  // Determine if we're editing an existing campaign (from URL param or state)
+  const campaignId = urlCampaignId || campaignData?.campaignId;
   const isEditMode = !!campaignId;
   const [loadingCampaign, setLoadingCampaign] = useState(isEditMode);
 
@@ -181,7 +182,7 @@ export function CampaignCreation() {
           mustMention: campaign.must_mention || "",
           mustAvoid: campaign.must_avoid || "",
           bannerFile: campaign.banner_url || null,
-          agreePolicy: true, // Already agreed when created
+          agreePolicy: true,
           agreeTerms: true,
           agreeFee: true,
         });
@@ -788,8 +789,8 @@ export function CampaignCreation() {
             </div>
           </div>
 
-          {/* Promo Code Section (only for banner-promo or promo-only in edit mode, or always in create? We'll show in create as well if needed) */}
-          {(isEditMode && (campaignType === "banner-promo" || campaignType === "promo-only")) && (
+          {/* Promo Code Section (only for banner-promo or promo-only in edit mode) */}
+          {isEditMode && (campaignType === "banner-promo" || campaignType === "promo-only") && (
             <div className="px-6 py-12 border-b border-[#1D1D1D]/10">
               <h2 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">
                 Promo Code Details
@@ -850,7 +851,7 @@ export function CampaignCreation() {
             </div>
           )}
 
-          {/* SECTION 5: BEFORE YOU CONTINUE - only for create mode */}
+          {/* SECTION 5: BEFORE YOU CONTINUE - ONLY FOR CREATE MODE */}
           {!isEditMode && (
             <div className="px-6 py-12">
               <div className="bg-[#1D1D1D] p-8 border-2 border-[#FEDB71] mb-8">
