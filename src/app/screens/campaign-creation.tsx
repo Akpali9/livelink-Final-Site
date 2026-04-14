@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useLocation, Link, useParams } from "react-router";
+import { useNavigate, useLocation, useParams } from "react-router";
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,12 +15,10 @@ import {
   ShieldCheck,
   CheckCircle2,
   Info,
-  CreditCard,
   X,
   Loader2,
   Lock,
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { AppHeader } from "../components/app-header";
 import { toast, Toaster } from "sonner";
@@ -48,11 +46,13 @@ export function CampaignCreation() {
   const isEditMode = !!campaignId;
   const [loadingCampaign, setLoadingCampaign] = useState(isEditMode);
 
-  // Get campaign details from previous screen (or defaults)
-  const campaignType = campaignData?.campaignType || "banner";
+  // Get campaign details from previous screen (or defaults) - used only in creation
+  const campaignTypeFromState = campaignData?.campaignType || "banner";
   const bidAmount = parseInt(campaignData?.bidAmount || "25");
   const creatorCount = campaignData?.creatorCount || 1;
-  const campaignNamePrefilled = campaignData?.campaignName || "";
+
+  // For edit mode, we'll store the actual campaign type from DB
+  const [campaignType, setCampaignType] = useState(campaignTypeFromState);
 
   const [step, setStep] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export function CampaignCreation() {
 
   // Form State
   const [formData, setFormData] = useState({
-    campaignName: campaignNamePrefilled,
+    campaignName: campaignData?.campaignName || "",
     businessName: "",
     businessOffer: "",
     websiteUrl: "",
@@ -73,7 +73,7 @@ export function CampaignCreation() {
     agreeFee: false,
   });
 
-  // Promo code state (for editing campaigns that include promo)
+  // Promo code state (for campaigns that include promo)
   const [promoCodeData, setPromoCodeData] = useState({
     code: "",
     discountType: "percentage",
@@ -141,44 +141,40 @@ export function CampaignCreation() {
 
     const fetchCampaign = async () => {
       try {
-        // 1. Fetch campaign
+        // 1. Get business ID for current user
+        const { data: business, error: businessError } = await supabase
+          .from("businesses")
+          .select("id")
+          .eq("user_id", user.id)
+          .single();
+
+        if (businessError || !business) {
+          toast.error("Business profile not found");
+          navigate("/become-business");
+          return;
+        }
+
+        // 2. Fetch campaign
         const { data: campaign, error: campaignError } = await supabase
           .from("campaigns")
           .select("*")
           .eq("id", campaignId)
+          .eq("business_id", business.id)
           .single();
 
         if (campaignError) throw campaignError;
 
-        // Verify business ownership
-        const { data: business, error: businessError } = await supabase
-          .from("businesses")
-          .select("id, name")
-          .eq("user_id", user.id)
-          .maybeSingle();
+        // 3. Set campaign type from DB
+        let dbCampaignType = "banner";
+        if (campaign.type === "Banner + Promo Code") dbCampaignType = "banner-promo";
+        else if (campaign.type === "Promo Code Only") dbCampaignType = "promo-only";
+        setCampaignType(dbCampaignType);
 
-        if (businessError || !business || business.id !== campaign.business_id) {
-          toast.error("You don't have permission to edit this campaign");
-          navigate("/business/dashboard");
-          return;
-        }
-
-        // 2. Fetch promo code if campaign type includes promo
-        let promoData = null;
-        if (campaign.type === "Banner + Promo Code" || campaign.type === "Promo Code Only") {
-          const { data: promo } = await supabase
-            .from("promo_codes")
-            .select("*")
-            .eq("campaign_id", campaign.id)
-            .maybeSingle();
-          promoData = promo;
-        }
-
-        // 3. Populate form state
+        // 4. Populate form state
         setSelectedCategory(campaign.category || "product");
         setFormData({
           campaignName: campaign.name || "",
-          businessName: campaign.business_name || business.name || "",
+          businessName: campaign.business_name || "",
           businessOffer: campaign.business_offer || "",
           websiteUrl: campaign.website_url || "",
           keyMessage: campaign.description || "",
@@ -186,26 +182,31 @@ export function CampaignCreation() {
           mustAvoid: campaign.must_avoid || "",
           bannerFile: campaign.banner_url || null,
           agreePolicy: true, // Already agreed when created
-          agreeTerms: isEditMode ? true : false,
-          agreeFee: isEditMode ? true : false,
+          agreeTerms: true,
+          agreeFee: true,
         });
 
-        // Populate promo code data if exists
-        if (promoData) {
-          setPromoCodeData({
-            code: promoData.code || "",
-            discountType: promoData.discount_type || "percentage",
-            discountValue: promoData.discount_value || 20,
-            usageLimit: promoData.usage_limit,
-            expiresAt: promoData.expires_at,
-            instructions: promoData.instructions || "",
-            goal: promoData.goal || "sales",
-            offerDuration: promoData.offer_duration || "30",
-          });
-        }
+        // 5. Fetch promo code if applicable
+        if (dbCampaignType === "banner-promo" || dbCampaignType === "promo-only") {
+          const { data: promo } = await supabase
+            .from("promo_codes")
+            .select("*")
+            .eq("campaign_id", campaign.id)
+            .maybeSingle();
 
-        // For edit mode, we don't need payment step
-        setStep(1);
+          if (promo) {
+            setPromoCodeData({
+              code: promo.code || "",
+              discountType: promo.discount_type || "percentage",
+              discountValue: promo.discount_value || 20,
+              usageLimit: promo.usage_limit,
+              expiresAt: promo.expires_at,
+              instructions: promo.instructions || "",
+              goal: promo.goal || "sales",
+              offerDuration: promo.offer_duration || "30",
+            });
+          }
+        }
       } catch (error: any) {
         console.error("Error fetching campaign:", error);
         toast.error(error.message || "Failed to load campaign");
@@ -218,7 +219,7 @@ export function CampaignCreation() {
     fetchCampaign();
   }, [isEditMode, campaignId, user, navigate]);
 
-  // File upload handler (unchanged)
+  // File upload handler
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -320,10 +321,7 @@ export function CampaignCreation() {
       if (campaignError) throw campaignError;
 
       // Update promo code if campaign type includes promo
-      const campaignTypeFromDb = campaignData?.campaignType || 
-        (formData.bannerFile ? (promoCodeData.code ? "banner-promo" : "banner") : "promo-only");
-      if (campaignTypeFromDb === "banner-promo" || campaignTypeFromDb === "promo-only") {
-        // Check if promo code exists
+      if (campaignType === "banner-promo" || campaignType === "promo-only") {
         const { data: existingPromo } = await supabase
           .from("promo_codes")
           .select("id")
@@ -331,7 +329,6 @@ export function CampaignCreation() {
           .maybeSingle();
 
         if (existingPromo) {
-          // Update existing
           await supabase
             .from("promo_codes")
             .update({
@@ -346,7 +343,6 @@ export function CampaignCreation() {
             })
             .eq("campaign_id", campaignId);
         } else if (promoCodeData.code) {
-          // Insert new if missing
           await supabase.from("promo_codes").insert({
             campaign_id: campaignId,
             business_id: businessData.id,
@@ -386,7 +382,7 @@ export function CampaignCreation() {
 
     setSubmitting(true);
 
-    // Simulate payment processing (replace with real payment gateway later)
+    // Simulate payment processing
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Get business ID for the current user
@@ -404,7 +400,7 @@ export function CampaignCreation() {
     }
 
     try {
-      // 1. Insert campaign with all fields
+      // Insert campaign
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
@@ -435,7 +431,7 @@ export function CampaignCreation() {
 
       if (campaignError) throw campaignError;
 
-      // 2. Insert promo code if campaign type includes promo
+      // Insert promo code if needed
       if (campaignType === "banner-promo" || campaignType === "promo-only") {
         const { error: promoError } = await supabase
           .from("promo_codes")
@@ -454,7 +450,7 @@ export function CampaignCreation() {
         if (promoError) throw promoError;
       }
 
-      // 3. Notify admins
+      // Notify admins
       const { data: adminRows } = await supabase
         .from("admins")
         .select("user_id");
@@ -503,7 +499,7 @@ export function CampaignCreation() {
         <Toaster position="top-center" richColors />
 
         <main className="max-w-[480px] mx-auto w-full">
-          {/* STEP INDICATOR */}
+          {/* STEP INDICATOR - only for create mode */}
           <div className="px-6 py-4 flex items-center justify-between border-b border-[#1D1D1D]/5">
             <span className="text-[10px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic">
               {isEditMode ? "Update your campaign details" : "Tell us about your campaign"}
@@ -521,8 +517,7 @@ export function CampaignCreation() {
               What are you promoting?
             </h2>
             <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest mb-6 italic">
-              Select the type of product or service you want the creator to
-              advertise.
+              Select the type of product or service you want the creator to advertise.
             </p>
 
             <div className="grid grid-cols-2 gap-3">
@@ -624,8 +619,7 @@ export function CampaignCreation() {
                   />
                 </div>
                 <p className="text-[8px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic">
-                  Make sure this page is live and working before your campaign
-                  starts.
+                  Make sure this page is live and working before your campaign starts.
                 </p>
               </div>
             </div>
@@ -637,8 +631,7 @@ export function CampaignCreation() {
               Creator Instructions
             </h2>
             <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest mb-8 italic">
-              Be specific. The clearer your instructions the better the creator
-              can represent your brand.
+              Be specific. The clearer your instructions the better the creator can represent your brand.
             </p>
 
             <div className="flex flex-col gap-8">
@@ -713,8 +706,7 @@ export function CampaignCreation() {
               Upload your banner
             </h2>
             <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest mb-8 italic">
-              Your banner will appear on screen during the creator's live
-              streams. All banners are reviewed before going live.
+              Your banner will appear on screen during the creator's live streams. All banners are reviewed before going live.
             </p>
 
             <div className="flex flex-col gap-6">
@@ -770,9 +762,7 @@ export function CampaignCreation() {
                     </div>
                   </div>
                   <button
-                    onClick={() =>
-                      setFormData({ ...formData, bannerFile: null })
-                    }
+                    onClick={() => setFormData({ ...formData, bannerFile: null })}
                     className="absolute top-2 right-2 p-1 bg-white border border-[#1D1D1D] active:scale-95 transition-all"
                   >
                     <X className="w-3 h-3" />
@@ -792,16 +782,14 @@ export function CampaignCreation() {
               <div className="bg-white border border-[#1D1D1D]/10 p-6 flex items-start gap-3 italic">
                 <Info className="w-4 h-4 text-[#389C9A] shrink-0" />
                 <p className="text-[9px] font-bold leading-relaxed text-[#1D1D1D]/60 uppercase tracking-tight">
-                  Our team reviews all banners within 2 hours. Banners must not
-                  contain misleading claims, competitor references or offensive
-                  content.
+                  Our team reviews all banners within 2 hours. Banners must not contain misleading claims, competitor references or offensive content.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Promo Code Section (only for banner-promo or promo-only in edit mode) */}
-          {isEditMode && (campaignType === "banner-promo" || campaignType === "promo-only") && (
+          {/* Promo Code Section (only for banner-promo or promo-only in edit mode, or always in create? We'll show in create as well if needed) */}
+          {(isEditMode && (campaignType === "banner-promo" || campaignType === "promo-only")) && (
             <div className="px-6 py-12 border-b border-[#1D1D1D]/10">
               <h2 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">
                 Promo Code Details
@@ -862,7 +850,7 @@ export function CampaignCreation() {
             </div>
           )}
 
-          {/* SECTION 5: BEFORE YOU CONTINUE (create mode only) */}
+          {/* SECTION 5: BEFORE YOU CONTINUE - only for create mode */}
           {!isEditMode && (
             <div className="px-6 py-12">
               <div className="bg-[#1D1D1D] p-8 border-2 border-[#FEDB71] mb-8">
@@ -879,8 +867,7 @@ export function CampaignCreation() {
                       1
                     </div>
                     <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
-                      Your campaign will be reviewed by our team within 24 hours
-                      before going live to creators.
+                      Your campaign will be reviewed by our team within 24 hours before going live to creators.
                     </p>
                   </div>
                   <div className="flex items-start gap-4">
@@ -888,8 +875,7 @@ export function CampaignCreation() {
                       2
                     </div>
                     <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
-                      Payment is collected on the next screen and held securely
-                      until streams are verified.
+                      Payment is collected on the next screen and held securely until streams are verified.
                     </p>
                   </div>
                   <div className="flex items-start gap-4">
@@ -897,9 +883,7 @@ export function CampaignCreation() {
                       3
                     </div>
                     <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
-                      All communication must happen exclusively within the
-                      platform. Sharing contact details outside the app results in
-                      account closure and loss of funds.
+                      All communication must happen exclusively within the platform. Sharing contact details outside the app results in account closure and loss of funds.
                     </p>
                   </div>
                 </div>
@@ -921,8 +905,7 @@ export function CampaignCreation() {
                     </div>
                   </div>
                   <span className="text-[10px] font-black uppercase tracking-tight text-white/60 italic group-hover:text-white transition-colors">
-                    I confirm my brief and all uploaded assets comply with the
-                    platform's Advertiser Policy.
+                    I confirm my brief and all uploaded assets comply with the platform's Advertiser Policy.
                   </span>
                 </label>
               </div>
@@ -969,8 +952,7 @@ export function CampaignCreation() {
                   />
                 </button>
                 <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest text-center mt-6 italic">
-                  You will review your order and confirm payment on the next
-                  screen.
+                  You will review your order and confirm payment on the next screen.
                 </p>
               </>
             )}
@@ -1152,8 +1134,7 @@ export function CampaignCreation() {
             </div>
 
             <p className="text-[8px] font-medium opacity-30 italic uppercase leading-relaxed text-center">
-              Released to creators per verified stream cycle. Full refund
-              guaranteed if no creators match or streams are not completed.
+              Released to creators per verified stream cycle. Full refund guaranteed if no creators match or streams are not completed.
             </p>
           </div>
         </div>
@@ -1190,9 +1171,7 @@ export function CampaignCreation() {
             </ul>
 
             <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-tight leading-relaxed italic">
-              The service fee is non-refundable once a creator accepts your
-              campaign. If no creator accepts your full payment including the
-              service fee is refunded.
+              The service fee is non-refundable once a creator accepts your campaign. If no creator accepts, your full payment including the service fee is refunded.
             </p>
           </div>
         </div>
@@ -1285,9 +1264,7 @@ export function CampaignCreation() {
           <div className="bg-[#FFF8DC] border border-[#D2691E]/20 p-6 flex items-start gap-4 italic">
             <ShieldCheck className="w-6 h-6 text-[#D2691E] shrink-0" />
             <p className="text-[10px] font-bold text-[#D2691E] leading-relaxed uppercase tracking-tight">
-              Your ₦{totalHeld.toFixed(2)} is held securely. Released only after
-              each verified stream cycle. Full refund guaranteed if work is not
-              completed. Service fee is refunded if no creator accepts.
+              Your ₦{totalHeld.toFixed(2)} is held securely. Released only after each verified stream cycle. Full refund guaranteed if work is not completed. Service fee is refunded if no creator accepts.
             </p>
           </div>
         </div>
@@ -1312,8 +1289,7 @@ export function CampaignCreation() {
                 </div>
               </div>
               <span className="text-[10px] font-black uppercase tracking-tight text-[#1D1D1D]/40 italic group-hover:text-[#1D1D1D] transition-colors">
-                I confirm my campaign brief and banner comply with the platform's
-                Advertiser Policy.
+                I confirm my campaign brief and banner comply with the platform's Advertiser Policy.
               </span>
             </label>
 
@@ -1334,9 +1310,7 @@ export function CampaignCreation() {
                 </div>
               </div>
               <span className="text-[10px] font-black uppercase tracking-tight text-[#1D1D1D]/40 italic group-hover:text-[#1D1D1D] transition-colors">
-                I understand the total includes an 8% service fee. I agree that
-                the service fee is refunded if no creator accepts and
-                non-refundable once accepted.
+                I understand the total includes an 8% service fee. I agree that the service fee is refunded if no creator accepts and non-refundable once accepted.
               </span>
             </label>
           </div>
@@ -1361,8 +1335,7 @@ export function CampaignCreation() {
           </button>
 
           <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest text-center mt-6 italic max-w-[300px] mx-auto leading-relaxed">
-            Your campaign goes to admin review after payment is held. It will be
-            live to creators within 24 hours.
+            Your campaign goes to admin review after payment is held. It will be live to creators within 24 hours.
           </p>
         </div>
       </main>
