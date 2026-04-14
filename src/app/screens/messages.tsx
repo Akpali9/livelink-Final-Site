@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
   MessageSquare, Send, Paperclip, Image as ImageIcon, FileText,
-  X, User, Building2, MoreVertical, Search, ArrowLeft,ChevronRight,
+  X, User, Building2, MoreVertical, Search, ArrowLeft, ChevronRight,
   CheckCheck, Loader2, ShieldCheck, Flag, AlertTriangle,
   ChevronDown, Plus,
 } from "lucide-react";
@@ -10,7 +10,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
-import { AppHeader } from "../components/app-header";
 import { BottomNav } from "../components/bottom-nav";
 
 // ─────────────────────────────────────────────
@@ -71,39 +70,40 @@ const REPORT_REASONS = [
 // ─────────────────────────────────────────────
 
 export function Messages() {
+  const navigate = useNavigate();
   const { id: conversationId } = useParams();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
 
-  const role      = searchParams.get("role") || "creator";
+  const role = searchParams.get("role") || "creator";
   const isCreator = role === "creator";
-  const backPath  = isCreator ? "/dashboard" : "/business/dashboard";
+  const backPath = isCreator ? "/dashboard" : "/business/dashboard";
 
-  const [loading, setLoading]                           = useState(true);
-  const [conversations, setConversations]               = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [messages, setMessages]                         = useState<Message[]>([]);
-  const [messageInput, setMessageInput]                 = useState("");
-  const [sending, setSending]                           = useState(false);
-  const [searchQuery, setSearchQuery]                   = useState("");
-  const [attachments, setAttachments]                   = useState<File[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [messageInput, setMessageInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
 
   // New message modal
-  const [showUserSearch, setShowUserSearch]             = useState(false);
-  const [searchResults, setSearchResults]               = useState<UserProfile[]>([]);
-  const [searching, setSearching]                       = useState(false);
-  const [newMsgSearch, setNewMsgSearch]                 = useState("");
+  const [showUserSearch, setShowUserSearch] = useState(false);
+  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [newMsgSearch, setNewMsgSearch] = useState("");
 
   // Report modal
-  const [showMenu, setShowMenu]               = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [reportReason, setReportReason]       = useState("");
-  const [reportDetails, setReportDetails]     = useState("");
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
   const [submittingReport, setSubmittingReport] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef   = useRef<HTMLInputElement>(null);
-  const menuRef        = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Close menu on outside click
   useEffect(() => {
@@ -171,7 +171,7 @@ export function Messages() {
       if (error) throw error;
 
       const formatted = await Promise.all((convData || []).map(async (conv) => {
-        const otherId   = conv.participant1_id === user?.id ? conv.participant2_id   : conv.participant1_id;
+        const otherId = conv.participant1_id === user?.id ? conv.participant2_id : conv.participant1_id;
         const otherType = conv.participant1_id === user?.id ? conv.participant2_type : conv.participant1_type;
 
         let name = "Unknown", avatar = "";
@@ -194,13 +194,13 @@ export function Messages() {
 
         return {
           id: conv.id,
-          participant_id:     otherId,
-          participant_name:   name,
+          participant_id: otherId,
+          participant_name: name,
           participant_avatar: avatar,
-          participant_type:   otherType as "creator" | "business" | "admin",
-          last_message:       conv.last_message || "No messages yet",
-          last_message_time:  conv.last_message_at || conv.created_at,
-          unread_count:       count || 0,
+          participant_type: otherType as "creator" | "business" | "admin",
+          last_message: conv.last_message || "No messages yet",
+          last_message_time: conv.last_message_at || conv.created_at,
+          unread_count: count || 0,
         };
       }));
 
@@ -253,17 +253,17 @@ export function Messages() {
 
       const { data, error } = await supabase.from("messages").insert({
         conversation_id: selectedConversation.id,
-        sender_id:       user?.id,
-        content:         messageInput.trim(),
-        is_read:         false,
-        attachments:     attachmentUrls.length > 0 ? attachmentUrls : undefined,
-        created_at:      new Date().toISOString(),
+        sender_id: user?.id,
+        content: messageInput.trim(),
+        is_read: false,
+        attachments: attachmentUrls.length > 0 ? attachmentUrls : undefined,
+        created_at: new Date().toISOString(),
       }).select().single();
 
       if (error) throw error;
 
       await supabase.from("conversations").update({
-        last_message:    messageInput.trim(),
+        last_message: messageInput.trim(),
         last_message_at: new Date().toISOString(),
       }).eq("id", selectedConversation.id);
 
@@ -360,22 +360,22 @@ export function Messages() {
       ].filter(Boolean).join("\n");
 
       const { error } = await supabase.from("support_tickets").insert({
-        user_id:    user.id,
-        subject:    `Report: ${reportReason} — ${selectedConversation.participant_name}`,
-        message:    ticketMessage,
-        status:     "open",
+        user_id: user.id,
+        subject: `Report: ${reportReason} — ${selectedConversation.participant_name}`,
+        message: ticketMessage,
+        status: "open",
         created_at: new Date().toISOString(),
       });
       if (error) throw error;
 
       await supabase.from("notifications").insert({
-        user_id:    user.id,
-        type:       "system",
-        title:      "Report Submitted ✅",
-        message:    `Your report against ${selectedConversation.participant_name} has been received. We'll review it within 24 hours.`,
-        data:       { conversation_id: selectedConversation.id },
+        user_id: user.id,
+        type: "system",
+        title: "Report Submitted ✅",
+        message: `Your report against ${selectedConversation.participant_name} has been received. We'll review it within 24 hours.`,
+        data: { conversation_id: selectedConversation.id },
         created_at: new Date().toISOString(),
-      }).catch(() => {});
+      }).catch(() => { });
 
       toast.success("Report submitted — our team will review it within 24 hours");
       setShowReportModal(false);
@@ -392,14 +392,14 @@ export function Messages() {
 
   const formatTime = (ts: string) => {
     if (!ts) return "";
-    const diff  = Date.now() - new Date(ts).getTime();
-    const mins  = Math.floor(diff / 60000);
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
-    const days  = Math.floor(diff / 86400000);
-    if (mins < 1)   return "Just now";
-    if (mins < 60)  return `${mins}m ago`;
+    const days = Math.floor(diff / 86400000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
     if (hours < 24) return `${hours}h ago`;
-    if (days < 7)   return `${days}d ago`;
+    if (days < 7) return `${days}d ago`;
     return new Date(ts).toLocaleDateString();
   };
 
@@ -407,8 +407,8 @@ export function Messages() {
     name.split(" ").map((w) => w[0]).join("").toUpperCase().substring(0, 2);
 
   const ParticipantAvatar = ({ conv, size = "md" }: { conv: Conversation; size?: "sm" | "md" }) => {
-    const s  = size === "sm" ? "w-9 h-9 text-xs"   : "w-11 h-11 text-sm";
-    const bd = size === "sm" ? "w-3.5 h-3.5"        : "w-4 h-4";
+    const s = size === "sm" ? "w-9 h-9 text-xs" : "w-11 h-11 text-sm";
+    const bd = size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4";
 
     if (conv.participant_type === "admin") {
       return (
@@ -427,9 +427,8 @@ export function Messages() {
             {getInitials(conv.participant_name)}
           </div>
         )}
-        <div className={`absolute -bottom-0.5 -right-0.5 ${bd} rounded-full border-2 border-white flex items-center justify-center ${
-          conv.participant_type === "creator" ? "bg-[#389C9A]" : "bg-[#FEDB71]"
-        }`}>
+        <div className={`absolute -bottom-0.5 -right-0.5 ${bd} rounded-full border-2 border-white flex items-center justify-center ${conv.participant_type === "creator" ? "bg-[#389C9A]" : "bg-[#FEDB71]"
+          }`}>
           {conv.participant_type === "creator"
             ? <User className="w-1.5 h-1.5 text-white" />
             : <Building2 className="w-1.5 h-1.5 text-[#1D1D1D]" />}
@@ -442,12 +441,25 @@ export function Messages() {
     c.participant_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // ─── CUSTOM HEADER WITH WORKING BACK BUTTON ───────────────────────────
+  const CustomHeader = () => (
+    <div className="sticky top-0 z-10 bg-white border-b border-[#1D1D1D]/10 px-4 py-3 flex items-center gap-3">
+      <button
+        onClick={() => navigate(backPath)}
+        className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors"
+      >
+        <ArrowLeft className="w-5 h-5" />
+      </button>
+      <h1 className="text-xl font-black uppercase tracking-tighter italic">Messages</h1>
+    </div>
+  );
+
   // ─── LOADING ───────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
-        <AppHeader showBack title="Messages" backPath={backPath} userType={isCreator ? "creator" : "business"} />
+        <CustomHeader />
         <div className="flex items-center justify-center h-[80vh]">
           <Loader2 className="w-10 h-10 animate-spin text-[#389C9A]" />
         </div>
@@ -460,7 +472,7 @@ export function Messages() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
-      <AppHeader showBack title="Messages" backPath={backPath} userType={isCreator ? "creator" : "business"} />
+      <CustomHeader />
 
       <div className="flex" style={{ height: "calc(100vh - 144px)" }}>
 
@@ -501,9 +513,8 @@ export function Messages() {
             ) : (
               filteredConversations.map((conv) => (
                 <button key={conv.id} onClick={() => setSelectedConversation(conv)}
-                  className={`w-full p-4 flex items-start gap-3 border-b border-[#1D1D1D]/10 hover:bg-gray-50 transition-colors text-left ${
-                    selectedConversation?.id === conv.id ? "bg-[#389C9A]/5 border-l-4 border-l-[#389C9A]" : ""
-                  }`}>
+                  className={`w-full p-4 flex items-start gap-3 border-b border-[#1D1D1D]/10 hover:bg-gray-50 transition-colors text-left ${selectedConversation?.id === conv.id ? "bg-[#389C9A]/5 border-l-4 border-l-[#389C9A]" : ""
+                    }`}>
                   <ParticipantAvatar conv={conv} />
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-0.5">
@@ -599,22 +610,20 @@ export function Messages() {
                       <motion.div key={msg.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                         className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                         <div className={`max-w-[72%] flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                          <div className={`px-4 py-2.5 rounded-2xl ${
-                            isMe
+                          <div className={`px-4 py-2.5 rounded-2xl ${isMe
                               ? "bg-[#389C9A] text-white rounded-tr-none"
                               : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D] rounded-tl-none"
-                          }`}>
+                            }`}>
                             <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
                             {msg.attachments && msg.attachments.length > 0 && (
                               <div className="mt-2 space-y-1.5">
                                 {msg.attachments.map((att, i) => (
                                   <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
-                                    className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-colors ${
-                                      isMe ? "bg-white/20 hover:bg-white/30" : "bg-gray-100 hover:bg-gray-200"
-                                    }`}>
+                                    className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-colors ${isMe ? "bg-white/20 hover:bg-white/30" : "bg-gray-100 hover:bg-gray-200"
+                                      }`}>
                                     {att.type.startsWith("image/")
                                       ? <ImageIcon className="w-3.5 h-3.5 shrink-0" />
-                                      : <FileText  className="w-3.5 h-3.5 shrink-0" />}
+                                      : <FileText className="w-3.5 h-3.5 shrink-0" />}
                                     <span className="truncate flex-1 text-[10px] font-medium">{att.name}</span>
                                   </a>
                                 ))}
@@ -684,11 +693,10 @@ export function Messages() {
                     rows={Math.min(3, messageInput.split("\n").length || 1)} />
                   <button onClick={sendMessage}
                     disabled={(!messageInput.trim() && attachments.length === 0) || sending}
-                    className={`p-2.5 rounded-xl transition-all shrink-0 ${
-                      messageInput.trim() || attachments.length > 0
+                    className={`p-2.5 rounded-xl transition-all shrink-0 ${messageInput.trim() || attachments.length > 0
                         ? "bg-[#1D1D1D] text-white hover:bg-[#389C9A]"
                         : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                    }`}>
+                      }`}>
                     {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </button>
                 </div>
@@ -785,7 +793,7 @@ export function Messages() {
         )}
       </AnimatePresence>
 
-      {/* ── Report Modal (unchanged) ── */}
+      {/* ── Report Modal (complete) ── */}
       <AnimatePresence>
         {showReportModal && (
           <>
@@ -801,7 +809,83 @@ export function Messages() {
               style={{ maxHeight: "90vh" }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* (full report modal content as before) */}
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <Flag className="w-6 h-6 text-red-500" />
+                    <h3 className="text-xl font-black uppercase tracking-tighter italic">Report Conversation</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowReportModal(false)}
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-6">
+                  Reporting <span className="font-black">{selectedConversation?.participant_name}</span>. Our team will review this conversation.
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">
+                      Reason for report *
+                    </label>
+                    <select
+                      value={reportReason}
+                      onChange={(e) => setReportReason(e.target.value)}
+                      className="w-full border-2 border-[#1D1D1D]/10 p-3 text-sm outline-none focus:border-[#1D1D1D] rounded-xl"
+                    >
+                      <option value="">Select a reason</option>
+                      {REPORT_REASONS.map((reason) => (
+                        <option key={reason} value={reason}>{reason}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">
+                      Additional details (optional)
+                    </label>
+                    <textarea
+                      value={reportDetails}
+                      onChange={(e) => setReportDetails(e.target.value)}
+                      rows={4}
+                      placeholder="Please provide any additional context that might help our team investigate..."
+                      className="w-full border-2 border-[#1D1D1D]/10 p-3 text-sm outline-none focus:border-[#1D1D1D] rounded-xl resize-none"
+                    />
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3 mt-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      False reports may result in account restrictions. Please only report genuine violations of our community guidelines.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={submitReport}
+                    disabled={!reportReason || submittingReport}
+                    className={`w-full py-4 text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${!reportReason || submittingReport
+                        ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                        : "bg-red-500 text-white hover:bg-red-600"
+                      }`}
+                  >
+                    {submittingReport ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Flag className="w-4 h-4" />
+                        Submit Report
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </>
         )}
