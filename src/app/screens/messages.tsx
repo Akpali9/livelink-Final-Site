@@ -4,7 +4,7 @@ import {
   MessageSquare, Send, Paperclip, Image as ImageIcon, FileText,
   X, User, Building2, MoreVertical, Search, ArrowLeft, ChevronRight,
   CheckCheck, Loader2, ShieldCheck, Flag, AlertTriangle,
-  ChevronDown, Plus,
+  Plus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -13,7 +13,7 @@ import { useAuth } from "../lib/contexts/AuthContext";
 import { BottomNav } from "../components/bottom-nav";
 
 // ─────────────────────────────────────────────
-// TYPES (unchanged)
+// TYPES
 // ─────────────────────────────────────────────
 
 interface Message {
@@ -52,7 +52,7 @@ interface UserProfile {
 }
 
 // ─────────────────────────────────────────────
-// REPORT REASONS (unchanged)
+// REPORT REASONS
 // ─────────────────────────────────────────────
 
 const REPORT_REASONS = [
@@ -159,7 +159,7 @@ export function Messages() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ─── FETCH HELPERS (unchanged) ────────────────────────────────────────
+  // ─── FETCH HELPERS ────────────────────────────────────────────────────
 
   const loadConversations = async () => {
     try {
@@ -233,7 +233,7 @@ export function Messages() {
       .update({ is_read: true, read_at: new Date().toISOString() }).eq("id", messageId);
   };
 
-  // ─── SEND MESSAGE (unchanged) ──────────────────────────────────────────
+  // ─── SEND MESSAGE ──────────────────────────────────────────────────────
 
   const sendMessage = async () => {
     if (!messageInput.trim() && attachments.length === 0) return;
@@ -343,7 +343,7 @@ export function Messages() {
     }
   };
 
-  // ─── REPORT CONVERSATION (unchanged) ───────────────────────────────────
+  // ─── REPORT CONVERSATION ───────────────────────────────────────────────
 
   const submitReport = async () => {
     if (!reportReason) { toast.error("Please select a reason"); return; }
@@ -375,7 +375,7 @@ export function Messages() {
         message: `Your report against ${selectedConversation.participant_name} has been received. We'll review it within 24 hours.`,
         data: { conversation_id: selectedConversation.id },
         created_at: new Date().toISOString(),
-      }).catch(() => { });
+      }).catch(() => {});
 
       toast.success("Report submitted — our team will review it within 24 hours");
       setShowReportModal(false);
@@ -388,7 +388,7 @@ export function Messages() {
     }
   };
 
-  // ─── HELPERS (unchanged) ───────────────────────────────────────────────
+  // ─── HELPERS ──────────────────────────────────────────────────────────
 
   const formatTime = (ts: string) => {
     if (!ts) return "";
@@ -427,8 +427,9 @@ export function Messages() {
             {getInitials(conv.participant_name)}
           </div>
         )}
-        <div className={`absolute -bottom-0.5 -right-0.5 ${bd} rounded-full border-2 border-white flex items-center justify-center ${conv.participant_type === "creator" ? "bg-[#389C9A]" : "bg-[#FEDB71]"
-          }`}>
+        <div className={`absolute -bottom-0.5 -right-0.5 ${bd} rounded-full border-2 border-white flex items-center justify-center ${
+          conv.participant_type === "creator" ? "bg-[#389C9A]" : "bg-[#FEDB71]"
+        }`}>
           {conv.participant_type === "creator"
             ? <User className="w-1.5 h-1.5 text-white" />
             : <Building2 className="w-1.5 h-1.5 text-[#1D1D1D]" />}
@@ -476,7 +477,7 @@ export function Messages() {
 
       <div className="flex" style={{ height: "calc(100vh - 144px)" }}>
 
-        {/* ── Conversations sidebar – same on all screens ── */}
+        {/* ── Conversations sidebar ── */}
         <div className={`flex flex-col w-full ${selectedConversation ? "hidden" : "flex"}`}>
           <div className="p-4 border-b border-[#1D1D1D]/10 bg-white shrink-0">
             <div className="flex items-center justify-between mb-3">
@@ -513,8 +514,9 @@ export function Messages() {
             ) : (
               filteredConversations.map((conv) => (
                 <button key={conv.id} onClick={() => setSelectedConversation(conv)}
-                  className={`w-full p-4 flex items-start gap-3 border-b border-[#1D1D1D]/10 hover:bg-gray-50 transition-colors text-left ${selectedConversation?.id === conv.id ? "bg-[#389C9A]/5 border-l-4 border-l-[#389C9A]" : ""
-                    }`}>
+                  className={`w-full p-4 flex items-start gap-3 border-b border-[#1D1D1D]/10 hover:bg-gray-50 transition-colors text-left ${
+                    selectedConversation?.id === conv.id ? "bg-[#389C9A]/5 border-l-4 border-l-[#389C9A]" : ""
+                  }`}>
                   <ParticipantAvatar conv={conv} />
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-0.5">
@@ -538,7 +540,7 @@ export function Messages() {
           </div>
         </div>
 
-        {/* ── Message area – same on all screens ── */}
+        {/* ── Message area ── */}
         <div className={`flex-1 flex flex-col min-w-0 ${!selectedConversation ? "hidden" : "flex"}`}>
           {selectedConversation ? (
             <>
@@ -610,17 +612,19 @@ export function Messages() {
                       <motion.div key={msg.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                         className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                         <div className={`max-w-[72%] flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                          <div className={`px-4 py-2.5 rounded-2xl ${isMe
+                          <div className={`px-4 py-2.5 rounded-2xl ${
+                            isMe
                               ? "bg-[#389C9A] text-white rounded-tr-none"
                               : "bg-white border-2 border-[#1D1D1D]/10 text-[#1D1D1D] rounded-tl-none"
-                            }`}>
+                          }`}>
                             <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
                             {msg.attachments && msg.attachments.length > 0 && (
                               <div className="mt-2 space-y-1.5">
                                 {msg.attachments.map((att, i) => (
                                   <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
-                                    className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-colors ${isMe ? "bg-white/20 hover:bg-white/30" : "bg-gray-100 hover:bg-gray-200"
-                                      }`}>
+                                    className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-colors ${
+                                      isMe ? "bg-white/20 hover:bg-white/30" : "bg-gray-100 hover:bg-gray-200"
+                                    }`}>
                                     {att.type.startsWith("image/")
                                       ? <ImageIcon className="w-3.5 h-3.5 shrink-0" />
                                       : <FileText className="w-3.5 h-3.5 shrink-0" />}
@@ -693,10 +697,11 @@ export function Messages() {
                     rows={Math.min(3, messageInput.split("\n").length || 1)} />
                   <button onClick={sendMessage}
                     disabled={(!messageInput.trim() && attachments.length === 0) || sending}
-                    className={`p-2.5 rounded-xl transition-all shrink-0 ${messageInput.trim() || attachments.length > 0
+                    className={`p-2.5 rounded-xl transition-all shrink-0 ${
+                      messageInput.trim() || attachments.length > 0
                         ? "bg-[#1D1D1D] text-white hover:bg-[#389C9A]"
                         : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      }`}>
+                    }`}>
                     {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </button>
                 </div>
@@ -793,7 +798,7 @@ export function Messages() {
         )}
       </AnimatePresence>
 
-      {/* ── Report Modal (complete) ── */}
+      {/* ── Report Modal ── */}
       <AnimatePresence>
         {showReportModal && (
           <>
@@ -867,10 +872,11 @@ export function Messages() {
                   <button
                     onClick={submitReport}
                     disabled={!reportReason || submittingReport}
-                    className={`w-full py-4 text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${!reportReason || submittingReport
+                    className={`w-full py-4 text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
+                      !reportReason || submittingReport
                         ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                         : "bg-red-500 text-white hover:bg-red-600"
-                      }`}
+                    }`}
                   >
                     {submittingReport ? (
                       <>
