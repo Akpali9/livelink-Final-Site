@@ -12,10 +12,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { BottomNav } from "../components/bottom-nav";
 
-// ─────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────
-
+// Types (unchanged)
 interface Message {
   id: string;
   conversation_id: string;
@@ -51,10 +48,6 @@ interface UserProfile {
   created_at: string;
 }
 
-// ─────────────────────────────────────────────
-// REPORT REASONS
-// ─────────────────────────────────────────────
-
 const REPORT_REASONS = [
   "Harassment or bullying",
   "Spam or scam",
@@ -64,10 +57,6 @@ const REPORT_REASONS = [
   "Threatening behaviour",
   "Other",
 ];
-
-// ─────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────
 
 export function Messages() {
   const navigate = useNavigate();
@@ -79,6 +68,7 @@ export function Messages() {
   const isCreator = role === "creator";
   const backPath = isCreator ? "/dashboard" : "/business/dashboard";
 
+  // State declarations (unchanged)
   const [loading, setLoading] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -87,14 +77,10 @@ export function Messages() {
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
-
-  // New message modal
   const [showUserSearch, setShowUserSearch] = useState(false);
   const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [searching, setSearching] = useState(false);
   const [newMsgSearch, setNewMsgSearch] = useState("");
-
-  // Report modal
   const [showMenu, setShowMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("");
@@ -116,23 +102,20 @@ export function Messages() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ─── LOAD CONVERSATIONS ────────────────────────────────────────────────
-
+  // Load conversations
   useEffect(() => {
     if (!user) return;
     loadConversations();
   }, [user]);
 
-  // ─── SELECT CONVERSATION FROM URL PARAM ────────────────────────────────
-
+  // Select conversation from URL param
   useEffect(() => {
     if (!conversationId || conversations.length === 0) return;
     const found = conversations.find((c) => c.id === conversationId);
     if (found) setSelectedConversation(found);
   }, [conversationId, conversations]);
 
-  // ─── SUBSCRIBE TO SELECTED CONVERSATION ───────────────────────────────
-
+  // Subscribe to selected conversation
   useEffect(() => {
     if (!selectedConversation) return;
     loadMessages(selectedConversation.id);
@@ -153,14 +136,12 @@ export function Messages() {
     return () => { sub.unsubscribe(); };
   }, [selectedConversation]);
 
-  // ─── AUTO-SCROLL ───────────────────────────────────────────────────────
-
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ─── FETCH HELPERS ────────────────────────────────────────────────────
-
+  // Fetch helpers (unchanged)
   const loadConversations = async () => {
     try {
       const { data: convData, error } = await supabase
@@ -233,8 +214,7 @@ export function Messages() {
       .update({ is_read: true, read_at: new Date().toISOString() }).eq("id", messageId);
   };
 
-  // ─── SEND MESSAGE ──────────────────────────────────────────────────────
-
+  // Send message
   const sendMessage = async () => {
     if (!messageInput.trim() && attachments.length === 0) return;
     if (!selectedConversation) return;
@@ -283,8 +263,7 @@ export function Messages() {
     }
   };
 
-  // ─── START NEW CONVERSATION (SEARCH USERS) ────────────────────────────
-
+  // Search users
   const searchUsers = async (query: string) => {
     if (!query.trim()) { setSearchResults([]); return; }
     setSearching(true);
@@ -343,8 +322,7 @@ export function Messages() {
     }
   };
 
-  // ─── REPORT CONVERSATION ───────────────────────────────────────────────
-
+  // Submit report
   const submitReport = async () => {
     if (!reportReason) { toast.error("Please select a reason"); return; }
     if (!selectedConversation || !user) return;
@@ -388,8 +366,7 @@ export function Messages() {
     }
   };
 
-  // ─── HELPERS ──────────────────────────────────────────────────────────
-
+  // Helpers
   const formatTime = (ts: string) => {
     if (!ts) return "";
     const diff = Date.now() - new Date(ts).getTime();
@@ -442,11 +419,21 @@ export function Messages() {
     c.participant_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // ─── CUSTOM HEADER WITH WORKING BACK BUTTON ───────────────────────────
+  // --- CUSTOM HEADER WITH ROBUST BACK BUTTON ---
+  const handleBack = () => {
+    // Try React Router navigation first
+    try {
+      navigate(backPath);
+    } catch (e) {
+      // Fallback to browser history if navigate fails
+      window.history.back();
+    }
+  };
+
   const CustomHeader = () => (
     <div className="sticky top-0 z-10 bg-white border-b border-[#1D1D1D]/10 px-4 py-3 flex items-center gap-3">
       <button
-        onClick={() => navigate(backPath)}
+        onClick={handleBack}
         className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors"
       >
         <ArrowLeft className="w-5 h-5" />
@@ -455,8 +442,7 @@ export function Messages() {
     </div>
   );
 
-  // ─── LOADING ───────────────────────────────────────────────────────────
-
+  // Loading state
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
@@ -469,15 +455,13 @@ export function Messages() {
     );
   }
 
-  // ─── RENDER ────────────────────────────────────────────────────────────
-
+  // Main render
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[60px] max-w-[480px] mx-auto w-full">
       <CustomHeader />
 
       <div className="flex" style={{ height: "calc(100vh - 144px)" }}>
-
-        {/* ── Conversations sidebar ── */}
+        {/* Conversations sidebar */}
         <div className={`flex flex-col w-full ${selectedConversation ? "hidden" : "flex"}`}>
           <div className="p-4 border-b border-[#1D1D1D]/10 bg-white shrink-0">
             <div className="flex items-center justify-between mb-3">
@@ -540,7 +524,7 @@ export function Messages() {
           </div>
         </div>
 
-        {/* ── Message area ── */}
+        {/* Message area */}
         <div className={`flex-1 flex flex-col min-w-0 ${!selectedConversation ? "hidden" : "flex"}`}>
           {selectedConversation ? (
             <>
@@ -730,7 +714,7 @@ export function Messages() {
         </div>
       </div>
 
-      {/* ── New Message Modal ── */}
+      {/* New Message Modal */}
       <AnimatePresence>
         {showUserSearch && (
           <>
@@ -798,7 +782,7 @@ export function Messages() {
         )}
       </AnimatePresence>
 
-      {/* ── Report Modal ── */}
+      {/* Report Modal */}
       <AnimatePresence>
         {showReportModal && (
           <>
