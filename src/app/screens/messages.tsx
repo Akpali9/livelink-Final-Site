@@ -68,7 +68,6 @@ export function Messages() {
   const isCreator = role === "creator";
   const backPath = isCreator ? "/dashboard" : "/business/dashboard";
 
-  // State declarations (unchanged)
   const [loading, setLoading] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -419,7 +418,7 @@ export function Messages() {
     c.participant_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // --- CUSTOM HEADER WITH ROBUST BACK BUTTON ---
+  // --- CUSTOM HEADER WITH ROBUST BACK BUTTON (goes to dashboard) ---
   const handleBack = () => {
     // Try React Router navigation first
     try {
@@ -528,13 +527,10 @@ export function Messages() {
         <div className={`flex-1 flex flex-col min-w-0 ${!selectedConversation ? "hidden" : "flex"}`}>
           {selectedConversation ? (
             <>
-              {/* Conversation header */}
+              {/* Conversation header – removed back arrow to avoid confusion, only menu */}
               <div className="px-4 py-3 border-b border-[#1D1D1D]/10 flex items-center justify-between bg-white shrink-0">
                 <div className="flex items-center gap-3">
-                  <button onClick={() => setSelectedConversation(null)}
-                    className="p-2 -ml-1 hover:bg-gray-100 rounded-lg transition-colors">
-                    <ArrowLeft className="w-5 h-5" />
-                  </button>
+                  {/* No back arrow here – use the top header to go back to dashboard */}
                   <ParticipantAvatar conv={selectedConversation} size="sm" />
                   <div>
                     <h3 className="font-black text-sm leading-tight">{selectedConversation.participant_name}</h3>
