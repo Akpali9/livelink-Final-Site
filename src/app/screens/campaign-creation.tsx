@@ -38,11 +38,13 @@ const CATEGORIES = [
 export function CampaignCreation() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { campaignId: urlCampaignId } = useParams<{ campaignId?: string }>();
+  // FIX: Read both 'id' (from route) and 'campaignId' for flexibility
+  const params = useParams<{ id?: string; campaignId?: string }>();
+  const urlCampaignId = params.campaignId || params.id;
   const { user } = useAuth();
   const campaignData = location.state;
 
-  // Determine if we're editing an existing campaign (from URL param or state)
+  // Determine if we're editing an existing campaign
   const campaignId = urlCampaignId || campaignData?.campaignId;
   const isEditMode = !!campaignId;
   const [loadingCampaign, setLoadingCampaign] = useState(isEditMode);
