@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useLocation, Link } from "react-router";
+import { useNavigate, useLocation, Link, useParams } from "react-router";
 import {
   ArrowLeft,
   ArrowRight,
@@ -40,8 +40,13 @@ const CATEGORIES = [
 export function CampaignCreation() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { campaignId } = useParams<{ campaignId?: string }>();
   const { user } = useAuth();
   const campaignData = location.state;
+
+  // Determine if we're editing an existing campaign
+  const isEditMode = !!campaignId;
+  const [loadingCampaign, setLoadingCampaign] = useState(isEditMode);
 
   // Get campaign details from previous screen (or defaults)
   const campaignType = campaignData?.campaignType || "banner";
@@ -68,7 +73,19 @@ export function CampaignCreation() {
     agreeFee: false,
   });
 
-  // Card details state
+  // Promo code state (for editing campaigns that include promo)
+  const [promoCodeData, setPromoCodeData] = useState({
+    code: "",
+    discountType: "percentage",
+    discountValue: 20,
+    usageLimit: null as number | null,
+    expiresAt: null as string | null,
+    instructions: "",
+    goal: "sales",
+    offerDuration: "30",
+  });
+
+  // Card details state (only for create mode)
   const [cardNumber, setCardNumber] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvc, setCardCvc] = useState("");
@@ -80,12 +97,12 @@ export function CampaignCreation() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Calculate totals
+  // Calculate totals (only relevant for create mode)
   const subtotal = bidAmount * creatorCount;
   const serviceFee = subtotal * 0.08;
   const totalHeld = subtotal + serviceFee;
 
-  // Validation flags
+  // Validation flags for create mode
   const canContinueToPayment =
     selectedCategory &&
     formData.campaignName &&
@@ -98,19 +115,16 @@ export function CampaignCreation() {
 
   const canConfirmPayment = formData.agreeTerms && formData.agreeFee;
 
-  // Validate card details
+  // Validate card details (create mode only)
   const validateCard = () => {
     const errors: { [key: string]: string } = {};
-    // Basic card number validation (16 digits, no spaces)
     const cleanCard = cardNumber.replace(/\s/g, "");
     if (!/^\d{16}$/.test(cleanCard)) {
       errors.cardNumber = "Enter a valid 16-digit card number";
     }
-    // Expiry: MM/YY format
     if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(cardExpiry)) {
       errors.cardExpiry = "Use MM/YY format";
     }
-    // CVC: 3-4 digits
     if (!/^\d{3,4}$/.test(cardCvc)) {
       errors.cardCvc = "Enter 3 or 4 digits";
     }
@@ -120,6 +134,89 @@ export function CampaignCreation() {
     setCardErrors(errors);
     return Object.keys(errors).length === 0;
   };
+
+  // Fetch existing campaign data for edit mode
+  useEffect(() => {
+    if (!isEditMode || !user) return;
+
+    const fetchCampaign = async () => {
+      try {
+        // 1. Fetch campaign
+        const { data: campaign, error: campaignError } = await supabase
+          .from("campaigns")
+          .select("*")
+          .eq("id", campaignId)
+          .single();
+
+        if (campaignError) throw campaignError;
+
+        // Verify business ownership
+        const { data: business, error: businessError } = await supabase
+          .from("businesses")
+          .select("id, name")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (businessError || !business || business.id !== campaign.business_id) {
+          toast.error("You don't have permission to edit this campaign");
+          navigate("/business/dashboard");
+          return;
+        }
+
+        // 2. Fetch promo code if campaign type includes promo
+        let promoData = null;
+        if (campaign.type === "Banner + Promo Code" || campaign.type === "Promo Code Only") {
+          const { data: promo } = await supabase
+            .from("promo_codes")
+            .select("*")
+            .eq("campaign_id", campaign.id)
+            .maybeSingle();
+          promoData = promo;
+        }
+
+        // 3. Populate form state
+        setSelectedCategory(campaign.category || "product");
+        setFormData({
+          campaignName: campaign.name || "",
+          businessName: campaign.business_name || business.name || "",
+          businessOffer: campaign.business_offer || "",
+          websiteUrl: campaign.website_url || "",
+          keyMessage: campaign.description || "",
+          mustMention: campaign.must_mention || "",
+          mustAvoid: campaign.must_avoid || "",
+          bannerFile: campaign.banner_url || null,
+          agreePolicy: true, // Already agreed when created
+          agreeTerms: isEditMode ? true : false,
+          agreeFee: isEditMode ? true : false,
+        });
+
+        // Populate promo code data if exists
+        if (promoData) {
+          setPromoCodeData({
+            code: promoData.code || "",
+            discountType: promoData.discount_type || "percentage",
+            discountValue: promoData.discount_value || 20,
+            usageLimit: promoData.usage_limit,
+            expiresAt: promoData.expires_at,
+            instructions: promoData.instructions || "",
+            goal: promoData.goal || "sales",
+            offerDuration: promoData.offer_duration || "30",
+          });
+        }
+
+        // For edit mode, we don't need payment step
+        setStep(1);
+      } catch (error: any) {
+        console.error("Error fetching campaign:", error);
+        toast.error(error.message || "Failed to load campaign");
+        navigate("/business/dashboard");
+      } finally {
+        setLoadingCampaign(false);
+      }
+    };
+
+    fetchCampaign();
+  }, [isEditMode, campaignId, user, navigate]);
 
   // File upload handler (unchanged)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,7 +243,7 @@ export function CampaignCreation() {
         .substring(2)}.${fileExt}`;
       const filePath = `campaign-banners/${user?.id}/${fileName}`;
 
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from("campaign-assets")
         .upload(filePath, file, {
           cacheControl: "3600",
@@ -178,7 +275,104 @@ export function CampaignCreation() {
     fileInputRef.current?.click();
   };
 
-  // Submit campaign to Supabase (with simulated payment)
+  // Update existing campaign (edit mode)
+  const handleUpdate = async () => {
+    if (!selectedCategory || !formData.campaignName || !formData.businessName ||
+        !formData.businessOffer || !formData.websiteUrl || !formData.keyMessage) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      // Get business ID
+      const { data: businessData, error: businessError } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("user_id", user?.id)
+        .single();
+
+      if (businessError || !businessData) {
+        toast.error("Business profile not found");
+        navigate("/become-business");
+        setSubmitting(false);
+        return;
+      }
+
+      // Update campaign
+      const { error: campaignError } = await supabase
+        .from("campaigns")
+        .update({
+          name: formData.campaignName,
+          category: selectedCategory,
+          business_name: formData.businessName,
+          business_offer: formData.businessOffer,
+          website_url: formData.websiteUrl,
+          description: formData.keyMessage,
+          must_mention: formData.mustMention,
+          must_avoid: formData.mustAvoid,
+          banner_url: formData.bannerFile,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", campaignId);
+
+      if (campaignError) throw campaignError;
+
+      // Update promo code if campaign type includes promo
+      const campaignTypeFromDb = campaignData?.campaignType || 
+        (formData.bannerFile ? (promoCodeData.code ? "banner-promo" : "banner") : "promo-only");
+      if (campaignTypeFromDb === "banner-promo" || campaignTypeFromDb === "promo-only") {
+        // Check if promo code exists
+        const { data: existingPromo } = await supabase
+          .from("promo_codes")
+          .select("id")
+          .eq("campaign_id", campaignId)
+          .maybeSingle();
+
+        if (existingPromo) {
+          // Update existing
+          await supabase
+            .from("promo_codes")
+            .update({
+              code: promoCodeData.code,
+              discount_type: promoCodeData.discountType,
+              discount_value: promoCodeData.discountValue,
+              usage_limit: promoCodeData.usageLimit,
+              expires_at: promoCodeData.expiresAt,
+              instructions: promoCodeData.instructions,
+              goal: promoCodeData.goal,
+              offer_duration: promoCodeData.offerDuration,
+            })
+            .eq("campaign_id", campaignId);
+        } else if (promoCodeData.code) {
+          // Insert new if missing
+          await supabase.from("promo_codes").insert({
+            campaign_id: campaignId,
+            business_id: businessData.id,
+            code: promoCodeData.code,
+            discount_type: promoCodeData.discountType,
+            discount_value: promoCodeData.discountValue,
+            usage_limit: promoCodeData.usageLimit,
+            expires_at: promoCodeData.expiresAt,
+            instructions: promoCodeData.instructions,
+            goal: promoCodeData.goal,
+            offer_duration: promoCodeData.offerDuration,
+          });
+        }
+      }
+
+      toast.success("Campaign updated successfully!");
+      navigate(`/business/campaign/overview/${campaignId}`);
+    } catch (error: any) {
+      console.error("Update error:", error);
+      toast.error(error.message || "Failed to update campaign");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Submit new campaign (create mode)
   const handleSubmit = async () => {
     if (!validateCard()) {
       toast.error("Please check your card details");
@@ -210,7 +404,7 @@ export function CampaignCreation() {
     }
 
     try {
-      // 1. Insert campaign
+      // 1. Insert campaign with all fields
       const { data: campaign, error: campaignError } = await supabase
         .from("campaigns")
         .insert({
@@ -221,7 +415,13 @@ export function CampaignCreation() {
             : campaignType === "banner-promo"
             ? "Banner + Promo Code"
             : "Promo Code Only",
+          category: selectedCategory,
+          business_name: formData.businessName,
+          business_offer: formData.businessOffer,
+          website_url: formData.websiteUrl,
           description: formData.keyMessage,
+          must_mention: formData.mustMention,
+          must_avoid: formData.mustAvoid,
           budget: totalHeld,
           status: "pending_review",
           start_date: null,
@@ -237,20 +437,19 @@ export function CampaignCreation() {
 
       // 2. Insert promo code if campaign type includes promo
       if (campaignType === "banner-promo" || campaignType === "promo-only") {
-        // In a real app, you'd collect these from the user; for now, use placeholders
         const { error: promoError } = await supabase
           .from("promo_codes")
           .insert({
             campaign_id: campaign.id,
             business_id: businessData.id,
-            code: "WELCOME20", // this should come from user input
-            discount_type: "percentage",
-            discount_value: 20,
-            usage_limit: null,
-            expires_at: null,
-            instructions: "Use this code at checkout",
-            goal: "sales",
-            offer_duration: "30",
+            code: promoCodeData.code || "WELCOME20",
+            discount_type: promoCodeData.discountType,
+            discount_value: promoCodeData.discountValue,
+            usage_limit: promoCodeData.usageLimit,
+            expires_at: promoCodeData.expiresAt,
+            instructions: promoCodeData.instructions || "Use this code at checkout",
+            goal: promoCodeData.goal,
+            offer_duration: promoCodeData.offerDuration,
           });
         if (promoError) throw promoError;
       }
@@ -284,22 +483,36 @@ export function CampaignCreation() {
     }
   };
 
-  // Step 1: Campaign Brief (unchanged)
+  // Loading state
+  if (loadingCampaign) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[#389C9A]" />
+      </div>
+    );
+  }
+
+  // Step 1: Campaign Brief (shared between create and edit)
   if (step === 1) {
     return (
       <div className="min-h-screen bg-white pb-24 max-w-md mx-auto">
-        <AppHeader showBack title="Campaign Brief" />
+        <AppHeader 
+          showBack 
+          title={isEditMode ? "Edit Campaign" : "Campaign Brief"} 
+        />
         <Toaster position="top-center" richColors />
 
         <main className="max-w-[480px] mx-auto w-full">
           {/* STEP INDICATOR */}
           <div className="px-6 py-4 flex items-center justify-between border-b border-[#1D1D1D]/5">
             <span className="text-[10px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest italic">
-              Tell us about your campaign
+              {isEditMode ? "Update your campaign details" : "Tell us about your campaign"}
             </span>
-            <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A]">
-              Step 2 of 3
-            </span>
+            {!isEditMode && (
+              <span className="text-[10px] font-black uppercase tracking-widest text-[#389C9A]">
+                Step 2 of 3
+              </span>
+            )}
           </div>
 
           {/* SECTION 1: WHAT ARE YOU PROMOTING? */}
@@ -535,7 +748,7 @@ export function CampaignCreation() {
                     <Upload className="w-6 h-6 text-[#1D1D1D]/40 group-hover:text-[#389C9A]" />
                     <div className="text-center">
                       <p className="text-[10px] font-black uppercase tracking-widest">
-                        Tap to upload your banner
+                        {formData.bannerFile ? "Replace banner" : "Tap to upload your banner"}
                       </p>
                       <p className="text-[8px] font-bold text-[#1D1D1D]/30 uppercase tracking-tight">
                         PNG, GIF or MP4 · Max 2MB · 1920 x 100px
@@ -587,99 +800,187 @@ export function CampaignCreation() {
             </div>
           </div>
 
-          {/* SECTION 5: BEFORE YOU CONTINUE */}
-          <div className="px-6 py-12">
-            <div className="bg-[#1D1D1D] p-8 border-2 border-[#FEDB71] mb-8">
-              <div className="flex flex-col items-center text-center gap-4 mb-8">
-                <AlertTriangle className="w-8 h-8 text-[#FEDB71]" />
-                <h3 className="text-[12px] font-black uppercase tracking-[0.2em] text-white">
-                  Before you continue
-                </h3>
-              </div>
-
-              <div className="flex flex-col gap-6 mb-8">
-                <div className="flex items-start gap-4">
-                  <div className="w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] flex items-center justify-center text-[10px] font-black shrink-0">
-                    1
-                  </div>
-                  <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
-                    Your campaign will be reviewed by our team within 24 hours
-                    before going live to creators.
-                  </p>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] flex items-center justify-center text-[10px] font-black shrink-0">
-                    2
-                  </div>
-                  <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
-                    Payment is collected on the next screen and held securely
-                    until streams are verified.
-                  </p>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] flex items-center justify-center text-[10px] font-black shrink-0">
-                    3
-                  </div>
-                  <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
-                    All communication must happen exclusively within the
-                    platform. Sharing contact details outside the app results in
-                    account closure and loss of funds.
-                  </p>
-                </div>
-              </div>
-
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <div className="relative mt-0.5">
+          {/* Promo Code Section (only for banner-promo or promo-only in edit mode) */}
+          {isEditMode && (campaignType === "banner-promo" || campaignType === "promo-only") && (
+            <div className="px-6 py-12 border-b border-[#1D1D1D]/10">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.3em] mb-6">
+                Promo Code Details
+              </h2>
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
+                    Promo Code
+                  </label>
                   <input
-                    type="checkbox"
-                    className="peer hidden"
-                    checked={formData.agreePolicy}
-                    onChange={(e) =>
-                      setFormData({ ...formData, agreePolicy: e.target.checked })
-                    }
+                    type="text"
+                    placeholder="e.g., SAVE20"
+                    className="w-full bg-white border border-[#1D1D1D]/10 p-3 text-sm font-medium outline-none focus:border-[#1D1D1D] italic"
+                    value={promoCodeData.code}
+                    onChange={(e) => setPromoCodeData({ ...promoCodeData, code: e.target.value.toUpperCase() })}
                   />
-                  <div className="w-5 h-5 border-2 border-[#FEDB71] peer-checked:bg-[#FEDB71] transition-all flex items-center justify-center">
-                    {formData.agreePolicy && (
-                      <CheckCircle2 className="w-4 h-4 text-[#1D1D1D]" />
-                    )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
+                      Discount Type
+                    </label>
+                    <select
+                      className="w-full bg-white border border-[#1D1D1D]/10 p-3 text-sm font-medium outline-none focus:border-[#1D1D1D] italic"
+                      value={promoCodeData.discountType}
+                      onChange={(e) => setPromoCodeData({ ...promoCodeData, discountType: e.target.value })}
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed Amount (₦)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
+                      Discount Value
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="20"
+                      className="w-full bg-white border border-[#1D1D1D]/10 p-3 text-sm font-medium outline-none focus:border-[#1D1D1D] italic"
+                      value={promoCodeData.discountValue}
+                      onChange={(e) => setPromoCodeData({ ...promoCodeData, discountValue: parseInt(e.target.value) || 0 })}
+                    />
                   </div>
                 </div>
-                <span className="text-[10px] font-black uppercase tracking-tight text-white/60 italic group-hover:text-white transition-colors">
-                  I confirm my brief and all uploaded assets comply with the
-                  platform's Advertiser Policy.
-                </span>
-              </label>
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#1D1D1D]/40 italic">
+                    Instructions
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="How to redeem this offer..."
+                    className="w-full bg-white border border-[#1D1D1D]/10 p-3 text-sm font-medium outline-none focus:border-[#1D1D1D] resize-none italic"
+                    value={promoCodeData.instructions}
+                    onChange={(e) => setPromoCodeData({ ...promoCodeData, instructions: e.target.value })}
+                  />
+                </div>
+              </div>
             </div>
+          )}
 
-            <div className="flex flex-col gap-4">
+          {/* SECTION 5: BEFORE YOU CONTINUE (create mode only) */}
+          {!isEditMode && (
+            <div className="px-6 py-12">
+              <div className="bg-[#1D1D1D] p-8 border-2 border-[#FEDB71] mb-8">
+                <div className="flex flex-col items-center text-center gap-4 mb-8">
+                  <AlertTriangle className="w-8 h-8 text-[#FEDB71]" />
+                  <h3 className="text-[12px] font-black uppercase tracking-[0.2em] text-white">
+                    Before you continue
+                  </h3>
+                </div>
+
+                <div className="flex flex-col gap-6 mb-8">
+                  <div className="flex items-start gap-4">
+                    <div className="w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] flex items-center justify-center text-[10px] font-black shrink-0">
+                      1
+                    </div>
+                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
+                      Your campaign will be reviewed by our team within 24 hours
+                      before going live to creators.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-4">
+                    <div className="w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] flex items-center justify-center text-[10px] font-black shrink-0">
+                      2
+                    </div>
+                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
+                      Payment is collected on the next screen and held securely
+                      until streams are verified.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-4">
+                    <div className="w-5 h-5 bg-[#FEDB71] text-[#1D1D1D] flex items-center justify-center text-[10px] font-black shrink-0">
+                      3
+                    </div>
+                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-tight leading-relaxed italic">
+                      All communication must happen exclusively within the
+                      platform. Sharing contact details outside the app results in
+                      account closure and loss of funds.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div className="relative mt-0.5">
+                    <input
+                      type="checkbox"
+                      className="peer hidden"
+                      checked={formData.agreePolicy}
+                      onChange={(e) =>
+                        setFormData({ ...formData, agreePolicy: e.target.checked })
+                      }
+                    />
+                    <div className="w-5 h-5 border-2 border-[#FEDB71] peer-checked:bg-[#FEDB71] transition-all flex items-center justify-center">
+                      {formData.agreePolicy && (
+                        <CheckCircle2 className="w-4 h-4 text-[#1D1D1D]" />
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-tight text-white/60 italic group-hover:text-white transition-colors">
+                    I confirm my brief and all uploaded assets comply with the
+                    platform's Advertiser Policy.
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* ACTION BUTTONS */}
+          <div className="px-6 pb-12">
+            {isEditMode ? (
               <button
-                onClick={() => setStep(2)}
-                disabled={!canContinueToPayment}
+                onClick={handleUpdate}
+                disabled={submitting}
                 className={`w-full py-6 text-xl font-black uppercase italic tracking-tighter flex items-center justify-center gap-4 transition-all ${
-                  canContinueToPayment
+                  !submitting
                     ? "bg-[#1D1D1D] text-white active:scale-[0.98]"
                     : "bg-[#1D1D1D]/10 text-[#1D1D1D]/20 cursor-not-allowed"
                 }`}
               >
-                Continue to Payment{" "}
-                <ArrowRight
-                  className={`w-6 h-6 ${
-                    canContinueToPayment ? "text-[#FEDB71]" : "text-[#1D1D1D]/20"
-                  }`}
-                />
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    Saving Changes...
+                  </>
+                ) : (
+                  <>Save Changes →</>
+                )}
               </button>
-              <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest text-center italic">
-                You will review your order and confirm payment on the next
-                screen.
-              </p>
-            </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setStep(2)}
+                  disabled={!canContinueToPayment}
+                  className={`w-full py-6 text-xl font-black uppercase italic tracking-tighter flex items-center justify-center gap-4 transition-all ${
+                    canContinueToPayment
+                      ? "bg-[#1D1D1D] text-white active:scale-[0.98]"
+                      : "bg-[#1D1D1D]/10 text-[#1D1D1D]/20 cursor-not-allowed"
+                  }`}
+                >
+                  Continue to Payment{" "}
+                  <ArrowRight
+                    className={`w-6 h-6 ${
+                      canContinueToPayment ? "text-[#FEDB71]" : "text-[#1D1D1D]/20"
+                    }`}
+                  />
+                </button>
+                <p className="text-[9px] font-bold text-[#1D1D1D]/40 uppercase tracking-widest text-center mt-6 italic">
+                  You will review your order and confirm payment on the next
+                  screen.
+                </p>
+              </>
+            )}
           </div>
         </main>
       </div>
     );
   }
 
-  // SCREEN 2: PAYMENT & ORDER REVIEW
+  // SCREEN 2: PAYMENT & ORDER REVIEW (create mode only)
   return (
     <div className="flex flex-col min-h-screen bg-white text-[#1D1D1D] pb-[100px]">
       <AppHeader showBack title="Confirm & Pay" />
