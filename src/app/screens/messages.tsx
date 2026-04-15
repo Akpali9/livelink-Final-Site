@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
   MessageSquare, Send, Paperclip, Image as ImageIcon, FileText,
@@ -12,7 +12,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/contexts/AuthContext";
 import { BottomNav } from "../components/bottom-nav";
 
-// Types (unchanged)
+// Types
 interface Message {
   id: string;
   conversation_id: string;
@@ -21,7 +21,7 @@ interface Message {
   is_read: boolean;
   read_at?: string;
   created_at: string;
-  attachments?: { url: string; type: string; name: string; size?: number }[];
+  attachments?: { path: string; type: string; name: string; size?: number }[];
 }
 
 interface Conversation {
@@ -86,9 +86,45 @@ export function Messages() {
   const [reportDetails, setReportDetails] = useState("");
   const [submittingReport, setSubmittingReport] = useState(false);
 
+  // Store signed URLs for attachments (key: file path)
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Helper: get signed URL for a file path (expires in 1 hour)
+  const getSignedUrl = useCallback(async (path: string): Promise<string | null> => {
+    const { data, error } = await supabase.storage
+      .from("message-attachments")
+      .createSignedUrl(path, 3600);
+    if (error) {
+      console.error("Signed URL error:", error);
+      return null;
+    }
+    return data.signedUrl;
+  }, []);
+
+  // Generate signed URLs for all attachments in messages (when messages change)
+  useEffect(() => {
+    const loadSignedUrls = async () => {
+      const newUrls: Record<string, string> = {};
+      for (const msg of messages) {
+        if (msg.attachments) {
+          for (const att of msg.attachments) {
+            if (att.path && !signedUrls[att.path]) {
+              const url = await getSignedUrl(att.path);
+              if (url) newUrls[att.path] = url;
+            }
+          }
+        }
+      }
+      if (Object.keys(newUrls).length > 0) {
+        setSignedUrls(prev => ({ ...prev, ...newUrls }));
+      }
+    };
+    loadSignedUrls();
+  }, [messages, getSignedUrl, signedUrls]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -140,7 +176,7 @@ export function Messages() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Fetch helpers (unchanged)
+  // Fetch helpers
   const loadConversations = async () => {
     try {
       const { data: convData, error } = await supabase
@@ -213,21 +249,25 @@ export function Messages() {
       .update({ is_read: true, read_at: new Date().toISOString() }).eq("id", messageId);
   };
 
-  // Send message
+  // Send message with secure attachments (store file paths, not public URLs)
   const sendMessage = async () => {
     if (!messageInput.trim() && attachments.length === 0) return;
     if (!selectedConversation) return;
     setSending(true);
     try {
-      const attachmentUrls: any[] = [];
+      const attachmentData = [];
       for (const file of attachments) {
-        const fileName = `${selectedConversation.id}/${Date.now()}-${file.name}`;
+        const filePath = `${selectedConversation.id}/${Date.now()}-${file.name}`;
         const { error: upErr } = await supabase.storage
-          .from("message-attachments").upload(fileName, file);
+          .from("message-attachments")
+          .upload(filePath, file);
         if (upErr) throw upErr;
-        const { data: { publicUrl } } = supabase.storage
-          .from("message-attachments").getPublicUrl(fileName);
-        attachmentUrls.push({ url: publicUrl, type: file.type, name: file.name, size: file.size });
+        attachmentData.push({
+          path: filePath,
+          type: file.type,
+          name: file.name,
+          size: file.size,
+        });
       }
 
       const { data, error } = await supabase.from("messages").insert({
@@ -235,7 +275,7 @@ export function Messages() {
         sender_id: user?.id,
         content: messageInput.trim(),
         is_read: false,
-        attachments: attachmentUrls.length > 0 ? attachmentUrls : undefined,
+        attachments: attachmentData.length > 0 ? attachmentData : undefined,
         created_at: new Date().toISOString(),
       }).select().single();
 
@@ -365,7 +405,7 @@ export function Messages() {
     }
   };
 
-  // Helpers
+  // Format time helper
   const formatTime = (ts: string) => {
     if (!ts) return "";
     const diff = Date.now() - new Date(ts).getTime();
@@ -418,13 +458,11 @@ export function Messages() {
     c.participant_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // --- CUSTOM HEADER WITH ROBUST BACK BUTTON (goes to dashboard) ---
+  // Custom header with working back button (goes to dashboard)
   const handleBack = () => {
-    // Try React Router navigation first
     try {
       navigate(backPath);
     } catch (e) {
-      // Fallback to browser history if navigate fails
       window.history.back();
     }
   };
@@ -527,10 +565,9 @@ export function Messages() {
         <div className={`flex-1 flex flex-col min-w-0 ${!selectedConversation ? "hidden" : "flex"}`}>
           {selectedConversation ? (
             <>
-              {/* Conversation header – removed back arrow to avoid confusion, only menu */}
+              {/* Conversation header – no back arrow, only menu */}
               <div className="px-4 py-3 border-b border-[#1D1D1D]/10 flex items-center justify-between bg-white shrink-0">
                 <div className="flex items-center gap-3">
-                  {/* No back arrow here – use the top header to go back to dashboard */}
                   <ParticipantAvatar conv={selectedConversation} size="sm" />
                   <div>
                     <h3 className="font-black text-sm leading-tight">{selectedConversation.participant_name}</h3>
@@ -600,17 +637,21 @@ export function Messages() {
                             <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
                             {msg.attachments && msg.attachments.length > 0 && (
                               <div className="mt-2 space-y-1.5">
-                                {msg.attachments.map((att, i) => (
-                                  <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
-                                    className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-colors ${
-                                      isMe ? "bg-white/20 hover:bg-white/30" : "bg-gray-100 hover:bg-gray-200"
-                                    }`}>
-                                    {att.type.startsWith("image/")
-                                      ? <ImageIcon className="w-3.5 h-3.5 shrink-0" />
-                                      : <FileText className="w-3.5 h-3.5 shrink-0" />}
-                                    <span className="truncate flex-1 text-[10px] font-medium">{att.name}</span>
-                                  </a>
-                                ))}
+                                {msg.attachments.map((att, i) => {
+                                  const signedUrl = signedUrls[att.path];
+                                  if (!signedUrl) return null;
+                                  return (
+                                    <a key={i} href={signedUrl} target="_blank" rel="noopener noreferrer"
+                                      className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-colors ${
+                                        isMe ? "bg-white/20 hover:bg-white/30" : "bg-gray-100 hover:bg-gray-200"
+                                      }`}>
+                                      {att.type.startsWith("image/")
+                                        ? <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                                        : <FileText className="w-3.5 h-3.5 shrink-0" />}
+                                      <span className="truncate flex-1 text-[10px] font-medium">{att.name}</span>
+                                    </a>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
